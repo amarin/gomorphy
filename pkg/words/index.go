@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/amarin/binutils"
+	"github.com/amarin/gomorphy/internal/grammeme"
 	"golang.org/x/text/encoding/charmap"
 
 	"github.com/amarin/gomorphy/internal/grammemes"
@@ -17,13 +18,13 @@ var (
 
 // Index stores all added words with attached grammemes sets.
 type Index struct {
-	grammemesIndex *grammemes.Index
+	grammemesIndex *grammeme.Index
 	container      *NodesContainer
 	runesIndex     map[rune]*NodeList
 }
 
 // NewIndex creates new words index.
-func NewIndex(grammemesIndex *grammemes.Index) *Index {
+func NewIndex(grammemesIndex *grammeme.Index) *Index {
 	return &Index{
 		container:      NewNodeContainer(nil),
 		grammemesIndex: grammemesIndex,
@@ -32,7 +33,7 @@ func NewIndex(grammemesIndex *grammemes.Index) *Index {
 }
 
 // GrammemesIndex returns used grammemes index. Implements GrammemesIndexer.
-func (index Index) GrammemesIndex() *grammemes.Index {
+func (index Index) GrammemesIndex() *grammeme.Index {
 	return index.grammemesIndex
 }
 

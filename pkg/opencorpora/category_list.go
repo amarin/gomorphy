@@ -2,8 +2,7 @@ package opencorpora
 
 import (
 	"github.com/amarin/binutils"
-
-	"github.com/amarin/gomorphy/internal/grammemes"
+	"github.com/amarin/gomorphy/internal/grammeme"
 )
 
 // CategoryList содержит список категорий. Используется в классификации словоформ.
@@ -75,8 +74,8 @@ func (c CategoryList) MarshalBinary() (data []byte, err error) {
 }
 
 // GrammemeNames возвращает список имён граммем, заданных в списке категорий.
-func (c CategoryList) GrammemeNames() []grammemes.GrammemeName {
-	res := make([]grammemes.GrammemeName, 0)
+func (c CategoryList) GrammemeNames() []grammeme.Name {
+	res := make([]grammeme.Name, 0)
 	for _, item := range c {
 		res = append(res, item.VAttr)
 	}

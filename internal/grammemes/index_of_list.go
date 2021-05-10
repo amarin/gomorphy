@@ -1,17 +1,21 @@
 package grammemes
 
 import (
+	"fmt"
+
 	"github.com/amarin/binutils"
+	"github.com/amarin/gomorphy/internal/grammeme"
+	"github.com/amarin/gomorphy/pkg/common"
 )
 
 // ListIndex allow store indexed grammemes lists.
 type ListIndex struct {
-	index *Index
+	index *grammeme.Index
 	items ListList
 }
 
 // NewListIndex creates new grammemes lists index for requested grammemes index.
-func NewListIndex(index *Index, lists ...*List) *ListIndex {
+func NewListIndex(index *grammeme.Index, lists ...*List) *ListIndex {
 	return &ListIndex{index: index, items: lists}
 }
 
@@ -75,15 +79,15 @@ func (listIndex *ListIndex) MarshalBinary() (data []byte, err error) {
 	usingBits, err = binutils.CalculateUseBitsPerIndex(listIndex.Len(), false)
 
 	if err != nil {
-		return []byte{}, WrapErrorf(err, "cant calculate required bits for indexing items")
+		return []byte{}, fmt.Errorf("%w: cant calculate required bits for indexing items: %v", common.ErrMarshal, err)
 	}
 
 	if _, err = buffer.WriteObject(usingBits); err != nil {
-		return []byte{}, WrapErrorf(err, "cant write sizing bit")
+		return []byte{}, fmt.Errorf("%w: cant write sizing bit: %v", common.ErrMarshal, err)
 	}
 
 	if _, err = binutils.WriteUint64ToBufferUsingBits(uint64(listIndex.Len()), buffer, usingBits); err != nil {
-		return buffer.Bytes(), WrapErrorf(err, "cant write list len")
+		return buffer.Bytes(), fmt.Errorf("%w: cant write list len: %v", common.ErrMarshal, err)
 	}
 
 	for _, existedList := range listIndex.items {
@@ -104,21 +108,19 @@ func (listIndex *ListIndex) UnmarshalFromBuffer(buffer *binutils.Buffer) (err er
 	)
 
 	if err = buffer.ReadObjectBytes(&usingBits, 1); err != nil {
-		return WrapErrorf(err, "cant read sizing byte")
+		return fmt.Errorf("%w: cant read sizing byte: %v", common.ErrUnmarshal, err)
 	}
 
 	if err = binutils.ReadUint64FromBufferUsingBits(&expectedLen, buffer, usingBits); err != nil {
-		return WrapErrorf(err, "cant read index len")
+		return fmt.Errorf("%w: cant read index len: %v", common.ErrUnmarshal, err)
 	}
 
 	for currentIdx := 0; uint64(currentIdx) < expectedLen; currentIdx++ {
 		list := NewList(listIndex.index)
 		if err = buffer.ReadObject(list); err != nil {
-			err = WrapErrorf(err, "item %d, buffer len %d", currentIdx, buffer.Len())
-			break
-		} else {
-			listIndex.Add(list)
+			return fmt.Errorf("%w: item %d, buffer len %d: %v", currentIdx, buffer.Len(), common.ErrUnmarshal, err)
 		}
+		listIndex.Add(list)
 	}
 
 	return err

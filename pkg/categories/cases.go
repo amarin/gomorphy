@@ -47,7 +47,8 @@ func (c CaseDictionary) ByString(text string) *Case {
 // Названия переменных на латыни согласно https://ru.wikipedia.org/wiki/Падеж,
 // Значения совпадают с OpenCorpora
 const (
-	NominativusCase      Case = "nomn" // Номинатив (именительный). Кто? Что? хомяк ест
+	// NominativusCase Номинатив (именительный). Кто? Что? хомяк ест
+	NominativusCase      Case = "nomn"
 	GenitivusCase        Case = "gent" // Генитив (родительный). Кого? Чего?	у нас нет хомяка
 	DativusCase          Case = "datv" // Датив (дательный). Кому? Чему?	сказать хомяку спасибо
 	AccusativusCase      Case = "accs" // Аккузатив (винительный). Кого? Что? хомяк читает книгу

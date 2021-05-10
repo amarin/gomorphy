@@ -5,15 +5,15 @@ import (
 	"testing"
 
 	"github.com/amarin/binutils"
+	"github.com/amarin/gomorphy/internal/grammeme"
 
-	"github.com/amarin/gomorphy/internal/grammemes"
 	. "github.com/amarin/gomorphy/pkg/opencorpora"
 )
 
 type testGrammemeStruct struct {
 	name        string
-	ParentAttr  grammemes.GrammemeName
-	Name        grammemes.GrammemeName
+	ParentAttr  grammeme.Name
+	Name        grammeme.Name
 	Alias       string
 	Description string
 	want        string // hex.EncodeToString() result. Take []byte with hex.DecodeFromString()

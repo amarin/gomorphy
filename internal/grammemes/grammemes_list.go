@@ -1,16 +1,19 @@
 package grammemes
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/amarin/binutils"
+	"github.com/amarin/gomorphy/internal/grammeme"
+	"github.com/amarin/gomorphy/pkg/common"
 )
 
 // List хранит список граммем, определённых в индексе.
 type List struct {
-	index     *Index
-	grammemes []*Grammeme
+	index     *grammeme.Index
+	grammemes []*grammeme.Grammeme
 }
 
 // String возвращает строковое представление списка граммем.
@@ -24,12 +27,12 @@ func (g *List) String() string {
 }
 
 // GrammemeIndex возвращает указатель на использованный индекс.
-func (g *List) GrammemeIndex() *Index {
+func (g *List) GrammemeIndex() *grammeme.Index {
 	return g.index
 }
 
 // NewList создаёт новый список граммем для заданного индекса.
-func NewList(index *Index, grammemes ...*Grammeme) *List {
+func NewList(index *grammeme.Index, grammemes ...*grammeme.Grammeme) *List {
 	return &List{index: index, grammemes: grammemes}
 }
 
@@ -40,7 +43,7 @@ func (g List) Len() int {
 
 // Add добавляет граммему в список.
 // Возвращает ошибку, если граммема уже в списке.
-func (g *List) Add(grammeme *Grammeme) error {
+func (g *List) Add(grammeme *grammeme.Grammeme) error {
 	for _, existedGrammeme := range g.grammemes {
 		if grammeme.Name == existedGrammeme.Name {
 			return NewErrorf("grammeme `%v` already in set", existedGrammeme.Name)
@@ -53,7 +56,7 @@ func (g *List) Add(grammeme *Grammeme) error {
 }
 
 // Slice возвращает список граммем.
-func (g List) Slice() []*Grammeme {
+func (g List) Slice() []*grammeme.Grammeme {
 	return g.grammemes
 }
 
@@ -108,14 +111,14 @@ func (g List) MarshalBinary() (data []byte, err error) {
 
 	// write grammeme list len one. One byte enough
 	if _, err = buf.WriteUint8(uint8(len(g.grammemes))); err != nil {
-		return buf.Bytes(), WrapErrorf(err, "cant write length byte")
+		return buf.Bytes(), fmt.Errorf("%w: cant write length byte: %v", common.ErrMarshal, err)
 	}
 
-	for _, grammeme := range g.grammemes {
-		if grammemeIdx, err := g.index.Idx(grammeme.Name); err != nil {
-			return []byte{}, NewErrorf("cant detect idx for %v", grammeme.Name)
+	for _, gInstance := range g.grammemes {
+		if grammemeIdx, err := g.index.Idx(gInstance.Name); err != nil {
+			return []byte{}, fmt.Errorf("%w: cant detect idx for %v", common.ErrMarshal, gInstance.Name)
 		} else if _, err = buf.WriteUint8(grammemeIdx); err != nil {
-			return []byte{}, WrapErrorf(err, "cant write grammeme %v idx", grammeme.Name)
+			return []byte{}, fmt.Errorf("%w: cant write grammeme %v idx", common.ErrMarshal, gInstance.Name)
 		}
 	}
 
@@ -128,20 +131,20 @@ func (g List) MarshalBinary() (data []byte, err error) {
 // При загрузке списка из буфера список граммем вычитывает необходимое количество байт, оставляя лишние данные в буфере.
 func (g *List) UnmarshalFromBuffer(buffer *binutils.Buffer) error {
 	if buffer.Len() < binutils.Uint8size {
-		return NewErrorf("Expected at least %d byte", binutils.Uint8size)
+		return fmt.Errorf("%w: Expected at least %d byte", common.ErrUnmarshal, binutils.Uint8size)
 	}
 
 	var listLen, grammemeIdx uint8
 
 	if err := buffer.ReadUint8(&listLen); err != nil {
-		return WrapErrorf(err, "cant read list size")
+		return fmt.Errorf("%w: cant read list size", common.ErrUnmarshal)
 	}
 
 	for idx := 0; uint8(idx) < listLen; idx++ {
 		if err := buffer.ReadUint8(&grammemeIdx); err != nil {
-			return WrapErrorf(err, "cant read grammeme %v idx", idx)
+			return fmt.Errorf("%w: cant read grammeme %v idx: %v", common.ErrUnmarshal, idx, err)
 		} else if grammeme, err := g.index.ByIdx(grammemeIdx); err != nil {
-			return WrapErrorf(err, "cant take grammeme %v from dict", grammemeIdx)
+			return fmt.Errorf("%w: cant take grammeme %v from dict: %v", common.ErrUnmarshal, grammemeIdx, err)
 		} else {
 			g.grammemes = append(g.grammemes, grammeme)
 		}

@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/amarin/binutils"
+	"github.com/amarin/gomorphy/internal/grammeme"
 	"github.com/amarin/libxml"
 	"github.com/sirupsen/logrus"
 
-	"github.com/amarin/gomorphy/internal/grammemes"
 	"github.com/amarin/gomorphy/internal/text"
 	"github.com/amarin/gomorphy/pkg/common"
 	"github.com/amarin/gomorphy/pkg/words"
@@ -55,7 +55,7 @@ func (loader Loader) filePath(fileName string) string {
 	return path.Join(loader.DataPath(), fileName)
 }
 
-func lemmaToForms(index *grammemes.Index, lemma *Lemma) ([]*words.Word, error) {
+func lemmaToForms(index *grammeme.Index, lemma *Lemma) ([]*words.Word, error) {
 	res := make([]*words.Word, len(lemma.F)+1)
 
 	mainForm, err := lemma.L.Word(index)
@@ -78,7 +78,7 @@ func lemmaToForms(index *grammemes.Index, lemma *Lemma) ([]*words.Word, error) {
 }
 
 // Скомпилировать данные Lemmata из словаря XML в двоичный файл.
-func (loader Loader) CompileLemmata(grammemesIndex *grammemes.Index, fromFile string, toFile string) error {
+func (loader Loader) CompileLemmata(grammemesIndex *grammeme.Index, fromFile string, toFile string) error {
 	loader.logger.Info("compile lemmata")
 	// make tokens channel
 	tokensChanBuffer := 50
@@ -136,8 +136,8 @@ func (loader Loader) CompileLemmata(grammemesIndex *grammemes.Index, fromFile st
 }
 
 // translateToIndexGrammeme translates opencorpora_update grammeme to index grammeme.
-func (loader Loader) translateToIndexGrammeme(grammeme Grammeme) grammemes.Grammeme {
-	return grammemes.Grammeme{
+func (loader Loader) translateToIndexGrammeme(grammeme Grammeme) grammeme.Grammeme {
+	return grammeme.Grammeme{
 		ParentAttr:  grammeme.ParentAttr,
 		Name:        grammeme.Name,
 		Alias:       text.RussianText(grammeme.Alias),
@@ -175,7 +175,7 @@ func (loader Loader) CompileGrammemes() error {
 
 	loader.logger.Info("append root grammemes")
 	// init empty index
-	grammemeIndex := grammemes.NewIndex()
+	grammemeIndex := grammeme.NewIndex()
 	// add root grammemes first and depended of that roots
 	for _, grammeme := range ocGrammemes.Grammeme {
 		if grammeme.ParentAttr == "" {
@@ -215,10 +215,10 @@ func (loader Loader) CompileGrammemes() error {
 }
 
 // LoadGrammemes загружает индекс граммем.
-func (loader Loader) LoadGrammemes() (*grammemes.Index, error) {
+func (loader Loader) LoadGrammemes() (*grammeme.Index, error) {
 	loader.logger.Info("loading grammemes index")
 
-	grammemesIndex := grammemes.NewIndex()
+	grammemesIndex := grammeme.NewIndex()
 
 	if err := binutils.LoadBinary(loader.GrammemesIndexFilePath(), grammemesIndex); err != nil {
 		return nil, err
@@ -228,7 +228,7 @@ func (loader Loader) LoadGrammemes() (*grammemes.Index, error) {
 }
 
 // LoadLemmata загружает компилированный словарь.
-func (loader Loader) LoadLemmata(grammemesIndex *grammemes.Index) (*words.Index, error) {
+func (loader Loader) LoadLemmata(grammemesIndex *grammeme.Index) (*words.Index, error) {
 	loader.logger.Info("loading lemmata using grammemes index")
 
 	loader.logger.Debug("setup words index")
@@ -248,7 +248,7 @@ func (loader Loader) LoadLemmata(grammemesIndex *grammemes.Index) (*words.Index,
 func (loader Loader) Lemmata() (lemmata *words.Index, err error) {
 	loader.logger.Info("take lemmata")
 
-	var grammemesIndex *grammemes.Index
+	var grammemesIndex *grammeme.Index
 	grammemesIndex, err = loader.LoadGrammemes()
 
 	if err != nil {
@@ -390,7 +390,7 @@ func (loader Loader) UnpackUpdate() (err error) {
 func (loader Loader) Update(forceRecompile bool) (err error) {
 	var updated, updateRequired bool
 
-	var grammemesIndex *grammemes.Index
+	var grammemesIndex *grammeme.Index
 
 	loader.logger.Info("check OpenCorpora updates")
 

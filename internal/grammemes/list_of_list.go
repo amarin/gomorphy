@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/amarin/binutils"
+	"github.com/amarin/gomorphy/pkg/common"
 )
 
 // ListList implements list of grammemes lists container.
@@ -43,24 +44,24 @@ func (listOfList *ListList) MarshalBinaryWithIndex(listIndex *ListIndex) ([]byte
 	listIndexUsingBytes, err := binutils.CalculateUseBitsPerIndex(listIndex.Len(), true)
 
 	if err != nil {
-		return []byte{}, WrapErrorf(err, "cant calculate bits width of list index")
+		return []byte{}, fmt.Errorf("%w: cant calculate bits width of list index: %v", common.ErrMarshal, err)
 	}
 
 	if _, err = buffer.WriteObject(listIndexUsingBytes); err != nil {
-		return []byte{}, WrapErrorf(err, "cant write bits width of list index")
+		return []byte{}, fmt.Errorf("%w: cant write bits width of list index: %v", common.ErrMarshal, err)
 	}
 
 	ownUsingBytes, err := binutils.CalculateUseBitsPerIndex(listOfList.Len(), false)
 	if err != nil {
-		return []byte{}, WrapErrorf(err, "cant calculate bits width of list ")
+		return []byte{}, fmt.Errorf("%w: cant calculate bits width of list: %v", common.ErrMarshal, err)
 	}
 
 	if _, err = buffer.WriteObject(ownUsingBytes); err != nil {
-		return []byte{}, WrapErrorf(err, "cant write bits width of list")
+		return []byte{}, fmt.Errorf("%w: cant write bits width of list: %v", common.ErrMarshal, err)
 	}
 
 	if _, err = binutils.WriteUint64ToBufferUsingBits(uint64(listOfList.Len()), buffer, ownUsingBytes); err != nil {
-		return []byte{}, WrapErrorf(err, "cant write length of list")
+		return []byte{}, fmt.Errorf("%w: cant write length of list: %v", err)
 	}
 
 	maxListSize := 0
@@ -74,7 +75,7 @@ func (listOfList *ListList) MarshalBinaryWithIndex(listIndex *ListIndex) ([]byte
 	for listIdx, grammemesList := range *listOfList {
 		idx := listIndex.GetOrCreateIdx(grammemesList)
 		if _, err = binutils.WriteUint64ToBufferUsingBits(idx, buffer, listIndexUsingBytes); err != nil {
-			return []byte{}, WrapErrorf(err, "cant write list %d", listIdx)
+			return []byte{}, fmt.Errorf("%w: cant write list %d: %v", common.ErrMarshal, listIdx, err)
 		}
 	}
 

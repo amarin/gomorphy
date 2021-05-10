@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/amarin/binutils"
+	"github.com/amarin/gomorphy/internal/grammeme"
 
-	"github.com/amarin/gomorphy/internal/grammemes"
 	"github.com/amarin/gomorphy/pkg/words"
 )
 
@@ -21,9 +21,9 @@ type marshalUnmarshalTestStruct struct {
 
 // nolint:gochecknoglobals
 var (
-	POST                  = &grammemes.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
-	NOUN                  = &grammemes.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
-	indexA                = grammemes.NewIndex(*POST, *NOUN)
+	POST                  = &grammeme.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
+	NOUN                  = &grammeme.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
+	indexA                = grammeme.NewIndex(*POST, *NOUN)
 	word1                 = words.NewWord(indexA, "я", POST, NOUN)
 	word2                 = words.NewWord(indexA, "як", POST, NOUN)
 	word3                 = words.NewWord(indexA, "яма", POST, NOUN)

@@ -23,7 +23,7 @@ func TestLinkType_MarshalBinary(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := LinkType{IdAttr: tt.IdAttr}
+			l := LinkType{IDAttr: tt.IdAttr}
 			gotData, err := l.MarshalBinary()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("MarshalBinary() error = %v, wantErr %v", err, tt.wantErr)
@@ -52,12 +52,12 @@ func TestLinkType_UnmarshalBinary(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := LinkType{IdAttr: tt.IdAttr}
+			l := LinkType{IDAttr: tt.IdAttr}
 			if err := l.UnmarshalBinary(tt.wantData); (err != nil) != tt.wantErr {
 				t.Errorf("UnmarshalBinary() error = %v, wantErr %v", err, tt.wantErr)
 				return
-			} else if err == nil && l.IdAttr != tt.IdAttr {
-				t.Errorf("UnmarshalBinary() gotData = %v, want %v", l.IdAttr, tt.IdAttr)
+			} else if err == nil && l.IDAttr != tt.IdAttr {
+				t.Errorf("UnmarshalBinary() gotData = %v, want %v", l.IDAttr, tt.IdAttr)
 			}
 		})
 	}

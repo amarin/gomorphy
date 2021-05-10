@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/amarin/binutils"
+	"github.com/amarin/gomorphy/internal/grammeme"
 
 	"github.com/amarin/gomorphy/internal/grammemes"
 	"github.com/amarin/gomorphy/pkg/words"
@@ -311,9 +312,9 @@ func TestNodeList_MakeReverseIndex(t *testing.T) {
 // TestNodeList_MarshalBinary checks NodeList binary marshalling works as expected in different situaltions.
 // nolint:funlen
 func TestNodeList_MarshalBinary(t *testing.T) {
-	POST := &grammemes.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
-	NOUN := &grammemes.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
-	indexA := grammemes.NewIndex(*POST, *NOUN)
+	POST := &grammeme.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
+	NOUN := &grammeme.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
+	indexA := grammeme.NewIndex(*POST, *NOUN)
 
 	cyrillicA := words.NewMappingNode(nil, 'а')
 	latinF := words.NewMappingNode(nil, 'f')
@@ -376,9 +377,9 @@ func TestNodeList_MarshalBinary(t *testing.T) {
 // TestNodeList_UnmarshalFromBufferWithIndex checks NodeList.UnmarshalFromBufferWithIndex works as expected.
 // nolint:funlen
 func TestNodeList_UnmarshalFromBufferWithIndex(t *testing.T) {
-	POST := &grammemes.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
-	NOUN := &grammemes.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
-	indexA := grammemes.NewIndex(*POST, *NOUN)
+	POST := &grammeme.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
+	NOUN := &grammeme.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
+	indexA := grammeme.NewIndex(*POST, *NOUN)
 
 	cyrillicA := words.NewMappingNode(nil, 'а')
 	latinF := words.NewMappingNode(nil, 'f')

@@ -1,16 +1,16 @@
-package grammemes_test
+package grammeme_test
 
 import (
 	"reflect"
 	"testing"
 
-	"gitlab.com/go-grammar-rus/grammemes"
+	"github.com/amarin/gomorphy/internal/grammeme"
 )
 
-func TestGrammemeName_MarshalBinary(t *testing.T) {
+func TestGrammemeName_MarshalBinary(t *testing.T) { //nolint:paralleltest
 	tests := []struct {
 		name     string
-		g        grammemes.GrammemeName
+		g        grammeme.Name
 		wantData []byte
 		wantErr  bool
 	}{
@@ -20,7 +20,8 @@ func TestGrammemeName_MarshalBinary(t *testing.T) {
 		{"nok_5_bytes", "bytes", []byte{}, true},
 		{"nok_non_ascii", "байт", []byte{}, true},
 	}
-	for _, tt := range tests {
+
+	for _, tt := range tests { //nolint:paralleltest
 		tt := tt // pin variable
 		t.Run(tt.name, func(t *testing.T) {
 			gotData, err := tt.g.MarshalBinary()
@@ -35,10 +36,10 @@ func TestGrammemeName_MarshalBinary(t *testing.T) {
 	}
 }
 
-func TestGrammemeName_UnmarshalBinary(t *testing.T) {
+func TestGrammemeName_UnmarshalBinary(t *testing.T) { //nolint:paralleltest
 	tests := []struct {
 		name    string
-		g       grammemes.GrammemeName
+		g       grammeme.Name
 		args    []byte
 		wantErr bool
 	}{
@@ -47,10 +48,11 @@ func TestGrammemeName_UnmarshalBinary(t *testing.T) {
 		{"nok_5_bytes", "aaaaa", []byte{97, 97, 97, 98, 99}, true},
 		{"ok_empty", "", []byte{32, 32, 32, 32}, false},
 	}
-	for _, tt := range tests {
+
+	for _, tt := range tests { //nolint:paralleltest
 		tt := tt // pin variable
 		t.Run(tt.name, func(t *testing.T) {
-			target := new(grammemes.GrammemeName)
+			target := new(grammeme.Name)
 			if err := target.UnmarshalBinary(tt.args); (err != nil) != tt.wantErr {
 				t.Errorf("UnmarshalBinary() error = %v, wantErr %v", err, tt.wantErr)
 			} else if err == nil && *target != tt.g {

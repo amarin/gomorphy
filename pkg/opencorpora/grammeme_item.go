@@ -2,16 +2,15 @@ package opencorpora
 
 import (
 	"github.com/amarin/binutils"
-
-	"github.com/amarin/gomorphy/internal/grammemes"
+	"github.com/amarin/gomorphy/internal/grammeme"
 )
 
 // Граммема OpenCorpora является описанием грамматической категории.
 type Grammeme struct {
 	// Ссылка принадлежности к обобщающей категории
-	ParentAttr grammemes.GrammemeName `xml:"parent,attr"`
+	ParentAttr grammeme.Name `xml:"parent,attr"`
 	// Наименование категории. Аббревиатура от латинского или англоязычного наименования. Всегда 4 символа
-	Name grammemes.GrammemeName `xml:"name"`
+	Name grammeme.Name `xml:"name"`
 	// Кириллическая аббревиатура наименования.
 	Alias string `xml:"alias"`
 	// Полное наименование на русском языке

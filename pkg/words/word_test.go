@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/amarin/binutils"
+	"github.com/amarin/gomorphy/internal/grammeme"
 
 	"github.com/amarin/gomorphy/internal/grammemes"
 	"github.com/amarin/gomorphy/internal/text"
@@ -14,13 +15,13 @@ import (
 
 func TestEnding_EqualsTo(t *testing.T) {
 	// define some grammemes
-	POST := &grammemes.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
-	NOUN := &grammemes.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
+	POST := &grammeme.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
+	NOUN := &grammeme.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
 	// common grammeme set in indexes
-	common := []grammemes.Grammeme{*POST, *NOUN}
+	common := []grammeme.Grammeme{*POST, *NOUN}
 	// two separate indexes with same grammemes set
-	indexA := grammemes.NewIndex(common...)
-	indexB := grammemes.NewIndex(common...)
+	indexA := grammeme.NewIndex(common...)
+	indexB := grammeme.NewIndex(common...)
 	textA := text.RussianText("a")
 	textB := text.RussianText("б")
 
@@ -61,9 +62,9 @@ func TestEnding_EqualsTo(t *testing.T) {
 }
 
 func TestEnding_MarshalBinary(t *testing.T) {
-	POST := &grammemes.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
-	NOUN := &grammemes.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
-	indexA := grammemes.NewIndex(*POST, *NOUN)
+	POST := &grammeme.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
+	NOUN := &grammeme.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
+	indexA := grammeme.NewIndex(*POST, *NOUN)
 
 	for _, tt := range []struct {
 		name       string
@@ -93,9 +94,9 @@ func TestEnding_MarshalBinary(t *testing.T) {
 }
 
 func TestEnding_UnmarshalFromBuffer(t *testing.T) {
-	POST := &grammemes.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
-	NOUN := &grammemes.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
-	indexA := grammemes.NewIndex(*POST, *NOUN)
+	POST := &grammeme.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
+	NOUN := &grammeme.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
+	indexA := grammeme.NewIndex(*POST, *NOUN)
 
 	for _, tt := range []struct {
 		name       string

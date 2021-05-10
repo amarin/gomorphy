@@ -1,10 +1,13 @@
-package grammemes
+package grammeme
 
 import (
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"math"
 
 	"github.com/amarin/binutils"
+	"github.com/amarin/gomorphy/pkg/common"
 )
 
 const (
@@ -14,6 +17,10 @@ const (
 var (
 	binaryPrefixBytesCount = len([]byte(binaryPrefix)) // nolint:gochecknoglobals
 	indexBinaryPrefixBytes = []byte(binaryPrefix)      // nolint:gochecknoglobals
+
+	ErrAlreadyExists = errors.New("already exists")
+	ErrNotFound      = errors.New("not found")
+	ErrIndexOverflow = errors.New("idx overflow")
 )
 
 // Index реализует индекс известных граммем и предоставляет уникальные идентификаторы граммем в индексе.
@@ -38,14 +45,14 @@ func (x Index) Len() int {
 
 // Idx позволяет получить уникальный идентификатор граммемы в индексе.
 // Возвращает ошибку, если граммема в индексе не найдена.
-func (x Index) Idx(name GrammemeName) (uint8, error) {
+func (x Index) Idx(name Name) (uint8, error) {
 	for idx, grammeme := range x.knownGrammemes {
 		if grammeme.Name == name {
 			return uint8(idx), nil
 		}
 	}
 
-	return 0, NewErrorf("grammeme name `%v` not found", name)
+	return 0, fmt.Errorf("%w: grammeme name `%v`", ErrNotFound, name)
 }
 
 // ByIdx позволяет получить граммему из индекса по известному идентификатору.
@@ -57,7 +64,7 @@ func (x Index) ByIdx(requiredIdx uint8) (*Grammeme, error) {
 		}
 	}
 
-	return nil, NewErrorf("grammeme %v not found", requiredIdx)
+	return nil, fmt.Errorf("%w: grammeme idx %v", ErrNotFound, requiredIdx)
 }
 
 // MarshalBinary упаковывает индекс граммем в двоичную последовательность.
@@ -68,12 +75,12 @@ func (x Index) MarshalBinary() (data []byte, err error) {
 	buf := binutils.NewEmptyBuffer()
 	// write grammeme list len first. One byte enough
 	if _, err = buf.WriteUint8(uint8(len(x.knownGrammemes))); err != nil {
-		return buf.Bytes(), WrapErrorf(err, "cant write length byte")
+		return buf.Bytes(), fmt.Errorf("%w: cant write length byte: %v", common.ErrMarshal, err)
 	}
 
 	for idx, grammeme := range x.knownGrammemes {
 		if _, err = buf.WriteObject(grammeme); err != nil {
-			return buf.Bytes(), WrapErrorf(err, "cant write grammeme %d", idx)
+			return buf.Bytes(), fmt.Errorf("%w: cant write grammeme %d", common.ErrMarshal, idx)
 		}
 	}
 
@@ -95,28 +102,28 @@ func (x *Index) UnmarshalFromBuffer(buffer *binutils.Buffer) error {
 	minBytes := binutils.Uint8size + binaryPrefixBytesCount
 	// error if no expected lines len
 	if buffer.Len() < minBytes {
-		return NewErrorf("Expected at least %d byte", minBytes)
+		return fmt.Errorf("%w: expected at least %d byte", common.ErrUnmarshal, minBytes)
 	}
 	// read prefix from buffer
 	if err := buffer.ReadBytes(&prefix, binaryPrefixBytesCount); err != nil {
-		return WrapErrorf(err, "expected prefix %v", binaryPrefix)
+		return fmt.Errorf("%w: expected prefix %v", common.ErrUnmarshal, binaryPrefix)
 	} else if string(prefix) != binaryPrefix {
-		return NewErrorf(
-			"expected prefix %v not %v",
+		return fmt.Errorf("%w: expected prefix %v not %v",
+			common.ErrUnmarshal,
 			hex.EncodeToString(indexBinaryPrefixBytes),
 			hex.EncodeToString(prefix),
 		)
 	}
 
 	if err := buffer.ReadUint8(&listLen); err != nil {
-		return WrapErrorf(err, "cant take buffer len")
+		return fmt.Errorf("%w: cant take buffer len: %v", common.ErrUnmarshal, err)
 	}
 
 	grammemesInFile := make([]Grammeme, listLen)
 	for idx := 0; uint8(idx) < listLen; idx++ {
 		grammeme := new(Grammeme)
 		if err := grammeme.UnmarshalFromBuffer(buffer); err != nil {
-			return WrapErrorf(err, "cant unmarshal grammeme")
+			return fmt.Errorf("%w: cant unmarshal grammeme: %v", common.ErrUnmarshal, err)
 		}
 		grammemesInFile[idx] = *grammeme
 	}
@@ -132,9 +139,9 @@ func (x *Index) UnmarshalFromBuffer(buffer *binutils.Buffer) error {
 func (x *Index) UnmarshalBinary(data []byte) error {
 	buffer := binutils.NewBuffer(data)
 	if err := x.UnmarshalFromBuffer(buffer); err != nil {
-		return WrapErrorf(err, "cant unmarshal from buffer")
+		return fmt.Errorf("%w: cant unmarshal from buffer: %v", common.ErrUnmarshal, err)
 	} else if buffer.Len() > 0 {
-		return NewErrorf("extra %d bytes in bytes array", buffer.Len())
+		return fmt.Errorf("%w: extra %d bytes in bytes array", common.ErrUnmarshal, buffer.Len())
 	}
 
 	return nil // no errors
@@ -147,9 +154,9 @@ func (x *Index) UnmarshalBinary(data []byte) error {
 func (x *Index) Add(grammeme Grammeme) error {
 	for _, existedGrammeme := range x.knownGrammemes {
 		if existedGrammeme.Name == grammeme.Name {
-			return NewErrorf("grammeme `%v` already exists", existedGrammeme.Name)
+			return fmt.Errorf("%w: grammeme name `%v`", ErrAlreadyExists, existedGrammeme.Name)
 		} else if existedGrammeme.Alias == grammeme.Alias {
-			return NewErrorf("grammeme alias `%v` already exists", existedGrammeme.Alias)
+			return fmt.Errorf("%w: grammeme alias `%v`", ErrAlreadyExists, existedGrammeme.Alias)
 		}
 	}
 
@@ -164,12 +171,12 @@ func (x *Index) Add(grammeme Grammeme) error {
 		}
 
 		if !parentFound {
-			return NewErrorf("parent `%v`not found", grammeme.ParentAttr)
+			return fmt.Errorf("%w: parent `%v` not found", ErrNotFound, grammeme.ParentAttr)
 		}
 	}
 	// prevent grammemes numbering overflow
 	if len(x.knownGrammemes) == math.MaxUint8 {
-		return NewErrorf("too many grammemes, max expected %v", math.MaxUint8)
+		return fmt.Errorf("%w: too many grammemes, max expected %v", ErrIndexOverflow, math.MaxUint8)
 	}
 
 	x.knownGrammemes = append(x.knownGrammemes, grammeme)
@@ -181,17 +188,12 @@ func (x *Index) Add(grammeme Grammeme) error {
 // Имя граммемы не должно совпадать с именем уже существующей граммемы.
 // Группа (родительская граммема) должна быть уже добавлена (за исключением граммем не имеющих группы).
 // Кириллическая аббревиатура наименования не должна совпадать с аббревиатурой уже существующей граммемы.
-func (x *Index) ByName(name GrammemeName) (*Grammeme, error) {
+func (x *Index) ByName(name Name) (*Grammeme, error) {
 	for _, existedGrammeme := range x.knownGrammemes {
 		if existedGrammeme.Name == name {
 			return &existedGrammeme, nil
 		}
 	}
 
-	return nil, NewErrorf("grammeme `%v` not found", name) // no such name
-}
-
-// NewList создаёт новый список граммем привязанных к индексу.
-func (x *Index) NewList(grammemes ...*Grammeme) *List {
-	return NewList(x, grammemes...)
+	return nil, fmt.Errorf("%w: grammeme `%v` not found", ErrNotFound, name) // no such name
 }

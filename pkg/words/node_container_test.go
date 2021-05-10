@@ -5,15 +5,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/amarin/gomorphy/internal/grammemes"
+	"github.com/amarin/gomorphy/internal/grammeme"
 	"github.com/amarin/gomorphy/internal/text"
 	"github.com/amarin/gomorphy/pkg/words"
 )
 
 func TestNodesContainer_String(t *testing.T) {
-	POST := &grammemes.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
-	NOUN := &grammemes.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
-	indexA := grammemes.NewIndex(*POST, *NOUN)
+	POST := &grammeme.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
+	NOUN := &grammeme.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
+	indexA := grammeme.NewIndex(*POST, *NOUN)
 
 	for _, tt := range []struct {
 		name   string
@@ -59,9 +59,9 @@ func TestNodesContainer_String(t *testing.T) {
 }
 
 func TestNodesContainer_Len(t *testing.T) {
-	POST := &grammemes.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
-	NOUN := &grammemes.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
-	indexA := grammemes.NewIndex(*POST, *NOUN)
+	POST := &grammeme.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
+	NOUN := &grammeme.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
+	indexA := grammeme.NewIndex(*POST, *NOUN)
 
 	for _, tt := range []struct {
 		name     string
@@ -147,9 +147,9 @@ func TestNodesContainer_Child(t *testing.T) {
 
 func TestNodesContainer_SearchForms(t *testing.T) {
 	var (
-		POST        = &grammemes.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
-		NOUN        = &grammemes.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
-		indexA      = grammemes.NewIndex(*POST, *NOUN)
+		POST        = &grammeme.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
+		NOUN        = &grammeme.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
+		indexA      = grammeme.NewIndex(*POST, *NOUN)
 		indexedWord = words.NewWord(indexA, "кот", POST, NOUN)
 		missedWord  = words.NewWord(indexA, "котлета", POST, NOUN)
 	)
@@ -189,9 +189,9 @@ func TestNodesContainer_SearchForms(t *testing.T) {
 }
 
 func BenchmarkNodesContainer_SearchForms(b *testing.B) {
-	POST := &grammemes.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
-	NOUN := &grammemes.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
-	indexA := grammemes.NewIndex(*POST, *NOUN)
+	POST := &grammeme.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
+	NOUN := &grammeme.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
+	indexA := grammeme.NewIndex(*POST, *NOUN)
 	container := words.NewNodeContainer(nil)
 
 	var benchmarkSearchFormsWith = []text.RussianText{
@@ -230,9 +230,9 @@ func BenchmarkNodesContainer_SearchForms(b *testing.B) {
 }
 
 func TestNodesContainer_Slice(t *testing.T) {
-	POST := &grammemes.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
-	NOUN := &grammemes.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
-	indexA := grammemes.NewIndex(*POST, *NOUN)
+	POST := &grammeme.Grammeme{ParentAttr: "", Name: "POST", Alias: "", Description: ""}
+	NOUN := &grammeme.Grammeme{ParentAttr: "POST", Name: "NOUN", Alias: "", Description: ""}
+	indexA := grammeme.NewIndex(*POST, *NOUN)
 
 	testWord := text.RussianText("квалификация")
 	container := words.NewNodeContainer(nil)

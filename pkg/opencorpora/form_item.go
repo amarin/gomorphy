@@ -4,8 +4,8 @@ import (
 	"strings"
 
 	"github.com/amarin/binutils"
+	"github.com/amarin/gomorphy/internal/grammeme"
 
-	"github.com/amarin/gomorphy/internal/grammemes"
 	"github.com/amarin/gomorphy/internal/text"
 	"github.com/amarin/gomorphy/pkg/categories"
 	"github.com/amarin/gomorphy/pkg/words"
@@ -95,9 +95,9 @@ func (x WordForm) GetCase() (categories.Case, error) {
 // Установить падеж
 func (x *WordForm) SetCase(c categories.Case) {
 	if caseTag := x.getCaseG(); caseTag != nil {
-		caseTag.VAttr = grammemes.GrammemeName(c)
+		caseTag.VAttr = grammeme.Name(c)
 	} else {
-		x.G = append(x.G, &Category{VAttr: grammemes.GrammemeName(c)})
+		x.G = append(x.G, &Category{VAttr: grammeme.Name(c)})
 	}
 }
 
@@ -128,13 +128,13 @@ func (x WordForm) GetNumber() (categories.Number, error) {
 // Установить число
 func (x *WordForm) SetNumber(c categories.Number) {
 	if caseTag := x.getNumberG(); caseTag != nil {
-		caseTag.VAttr = grammemes.GrammemeName(c)
+		caseTag.VAttr = grammeme.Name(c)
 	} else {
-		x.G = append(x.G, &Category{VAttr: grammemes.GrammemeName(c)})
+		x.G = append(x.G, &Category{VAttr: grammeme.Name(c)})
 	}
 }
 
-func (x *WordForm) Word(index *grammemes.Index) (*words.Word, error) {
+func (x *WordForm) Word(index *grammeme.Index) (*words.Word, error) {
 	word := words.NewWord(index, x.Form)
 	for _, category := range x.G {
 		if grammeme, err := index.ByName(category.VAttr); err != nil {

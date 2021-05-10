@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/amarin/binutils"
+	"github.com/amarin/gomorphy/internal/grammeme"
 
 	"github.com/amarin/gomorphy/internal/grammemes"
 	"github.com/amarin/gomorphy/internal/text"
@@ -25,7 +26,7 @@ func (e *Word) Text() text.RussianText {
 
 // GrammemesIndex returns used grammemes index.
 // Implements GrammemeIndexer.
-func (e Word) GrammemesIndex() *grammemes.Index {
+func (e Word) GrammemesIndex() *grammeme.Index {
 	return e.grammemes.GrammemeIndex()
 }
 
@@ -36,7 +37,7 @@ func (e Word) Grammemes() *grammemes.List {
 
 // NewWord creates new instance of Word.
 // Takes grammemes index, word text and variable length list of grammemes to append to instance.
-func NewWord(index *grammemes.Index, wordText text.RussianText, grammemes ...*grammemes.Grammeme) *Word {
+func NewWord(index *grammeme.Index, wordText text.RussianText, grammemes ...*grammeme.Grammeme) *Word {
 	return &Word{text: wordText, grammemes: index.NewList(grammemes...)}
 }
 

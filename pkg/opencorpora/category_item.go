@@ -2,14 +2,13 @@ package opencorpora
 
 import (
 	"github.com/amarin/binutils"
-
-	"github.com/amarin/gomorphy/internal/grammemes"
+	"github.com/amarin/gomorphy/internal/grammeme"
 )
 
 // Контейнер для представления грамматической категории OpenCorpora.
 // Содержит граммему грамматической категории.
 type Category struct {
-	VAttr grammemes.GrammemeName `xml:"v,attr"`
+	VAttr grammeme.Name `xml:"v,attr"`
 }
 
 // Строковое представление грамматической категории.

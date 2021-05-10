@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/amarin/gomorphy/internal/grammeme"
 	"github.com/sirupsen/logrus"
 
-	"github.com/amarin/gomorphy/internal/grammemes"
 	"github.com/amarin/gomorphy/internal/text"
 	. "github.com/amarin/gomorphy/pkg/opencorpora"
 )
@@ -49,7 +49,7 @@ func TestOpenCorporaLoader_Lemmata_SearchWord(t *testing.T) {
 func Test_CompileGrammemes(t *testing.T) {
 	logrus.SetFormatter(SimpleFormatter{})
 
-	grammemesToSearch := []grammemes.GrammemeName{"POST", "NOUN", "ANim"}
+	grammemesToSearch := []grammeme.Name{"POST", "NOUN", "ANim"}
 	loader := new(Loader)
 
 	if err := loader.CompileGrammemes(); err != nil {

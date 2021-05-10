@@ -5,6 +5,7 @@ import (
 	"math"
 
 	bin "github.com/amarin/binutils"
+	"github.com/amarin/gomorphy/internal/grammeme"
 
 	"github.com/amarin/gomorphy/internal/grammemes"
 	"github.com/amarin/gomorphy/internal/text"
@@ -263,7 +264,7 @@ func (list *NodeList) MarshalBinary() (data []byte, err error) {
 }
 
 // MakeListIndex creates used grammemes lists index.
-func (list *NodeList) MakeListIndex(grammemesIndex *grammemes.Index) (*grammemes.ListIndex, error) {
+func (list *NodeList) MakeListIndex(grammemesIndex *grammeme.Index) (*grammemes.ListIndex, error) {
 	listIndex := grammemes.NewListIndex(grammemesIndex)
 	// build grammemes lists index
 	for _, node := range *list {
@@ -321,7 +322,7 @@ func (list *NodeList) MarshalBinaryWith(listIndex *grammemes.ListIndex) (data []
 }
 
 // UnmarshalFromBufferWithIndex takes from buffer required.
-func (list *NodeList) UnmarshalFromBufferWithIndex(buffer *bin.Buffer, index *grammemes.Index) error {
+func (list *NodeList) UnmarshalFromBufferWithIndex(buffer *bin.Buffer, index *grammeme.Index) error {
 	var (
 		parentIdx, listLen           uint64
 		grammemesCount, nodeCharByte uint8

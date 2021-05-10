@@ -1,25 +1,28 @@
-package grammemes
+package grammeme
 
 // Grammeme is a structured definition of grammatical category.
 // It combines base grammeme name with relation from child to parent.
 // Also adds alias for national lang abbreviation and description string.
 
 import (
+	"fmt"
+
 	"github.com/amarin/binutils"
+	"github.com/amarin/gomorphy/pkg/common"
 
 	"github.com/amarin/gomorphy/internal/text"
 )
 
 // Grammeme implements storage for grammatical category structure data..
 type Grammeme struct {
-	ParentAttr  GrammemeName     // Parent grammeme name.
-	Name        GrammemeName     // Grammeme name.
+	ParentAttr  Name             // Parent grammeme name.
+	Name        Name             // Grammeme name.
 	Alias       text.RussianText // Localized grammeme name.
 	Description text.RussianText // Grammeme description.
 }
 
 // NewGrammeme makes new grammeme with required parent, name, alias and description.
-func NewGrammeme(parent GrammemeName, name GrammemeName, alias text.RussianText, desc text.RussianText) *Grammeme {
+func NewGrammeme(parent Name, name Name, alias text.RussianText, desc text.RussianText) *Grammeme {
 	return &Grammeme{ParentAttr: parent, Name: name, Alias: alias, Description: desc}
 }
 
@@ -34,13 +37,13 @@ func (g *Grammeme) UnmarshalFromBuffer(buffer *binutils.Buffer) error {
 	var err error
 
 	if err = buffer.ReadObjectBytes(&g.Name, 4); err != nil {
-		return WrapErrorf(err, "cant read name 4 bytes")
+		return fmt.Errorf("%w: cant read name 4 bytes: %v", common.ErrUnmarshal, err)
 	} else if err = buffer.ReadObjectBytes(&g.ParentAttr, 4); err != nil {
-		return WrapErrorf(err, "cant read parent 4 bytes")
+		return fmt.Errorf("%w: cant read parent 4 bytes: %v", common.ErrUnmarshal, err)
 	} else if err = buffer.ReadObject(&g.Alias); err != nil {
-		return WrapErrorf(err, "cant read alias")
+		return fmt.Errorf("%w:cant read alias: %v", common.ErrUnmarshal, err)
 	} else if err = buffer.ReadObject(&g.Description); err != nil {
-		return WrapErrorf(err, "cant read description")
+		return fmt.Errorf("%w:cant read description: %v", common.ErrUnmarshal, err)
 	}
 
 	return nil
@@ -53,13 +56,13 @@ func (g Grammeme) MarshalBinary() ([]byte, error) {
 
 	buffer := binutils.NewEmptyBuffer()
 	if _, err = buffer.WriteObject(&g.Name); err != nil {
-		return buffer.Bytes(), WrapErrorf(err, "cant write name")
+		return buffer.Bytes(), fmt.Errorf("%w:cant write name: %v", common.ErrMarshal, err)
 	} else if _, err = buffer.WriteObject(&g.ParentAttr); err != nil {
-		return buffer.Bytes(), WrapErrorf(err, "cant write parent")
+		return buffer.Bytes(), fmt.Errorf("%w:cant write parent: %v", common.ErrMarshal, err)
 	} else if _, err = buffer.WriteObject(g.Alias); err != nil {
-		return buffer.Bytes(), WrapErrorf(err, "cant write alias")
+		return buffer.Bytes(), fmt.Errorf("%w:cant write alias: %v", common.ErrMarshal, err)
 	} else if _, err = buffer.WriteObject(g.Description); err != nil {
-		return buffer.Bytes(), WrapErrorf(err, "cant write description")
+		return buffer.Bytes(), fmt.Errorf("%w:cant write description: %v", common.ErrMarshal, err)
 	}
 
 	return buffer.Bytes(), nil

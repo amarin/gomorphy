@@ -5,8 +5,7 @@ import (
 	"testing"
 
 	"github.com/amarin/binutils"
-
-	"github.com/amarin/gomorphy/internal/grammemes"
+	"github.com/amarin/gomorphy/internal/grammeme"
 
 	. "github.com/amarin/gomorphy/pkg/opencorpora"
 )
@@ -14,7 +13,7 @@ import (
 func TestCategory_MarshalBinary(t *testing.T) {
 	for _, tt := range []struct {
 		name     string
-		g        grammemes.GrammemeName
+		g        grammeme.Name
 		wantData []byte
 		wantErr  bool
 	}{
@@ -43,7 +42,7 @@ func TestCategory_MarshalBinary(t *testing.T) {
 func TestCategory_UnmarshalBinary(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
-		g       grammemes.GrammemeName
+		g       grammeme.Name
 		args    []byte
 		wantErr bool
 	}{
@@ -68,7 +67,7 @@ func TestCategory_UnmarshalBinary(t *testing.T) {
 func TestCategory_String(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
-		g       grammemes.GrammemeName
+		g       grammeme.Name
 		args    []byte
 		wantErr bool
 	}{
@@ -91,7 +90,7 @@ func TestCategory_String(t *testing.T) {
 func TestCategory_UnmarshalFromBuffer(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
-		g       grammemes.GrammemeName
+		g       grammeme.Name
 		args    []byte
 		wantErr bool
 	}{

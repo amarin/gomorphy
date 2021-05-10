@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/amarin/gomorphy/internal/grammemes"
+	"github.com/amarin/gomorphy/internal/grammeme"
 	"github.com/amarin/gomorphy/pkg/categories"
 
 	. "github.com/amarin/gomorphy/pkg/opencorpora"
@@ -56,7 +56,7 @@ func TestF_getTagsFromSet(t *testing.T) {
 			tt := tt // pin tt
 			x := &WordForm{Form: "", G: make([]*Category, 0)}
 			for _, g := range strings.Split(tt.grammarList, ",") {
-				x.G = append(x.G, &Category{VAttr: grammemes.GrammemeName(g)})
+				x.G = append(x.G, &Category{VAttr: grammeme.Name(g)})
 			}
 			if got := x.GetTagsFromSet(tt.searchList); len(got) != tt.expectedCount {
 				t.Errorf(

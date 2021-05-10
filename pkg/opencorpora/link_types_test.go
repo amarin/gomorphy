@@ -51,8 +51,8 @@ func TestLinkTypes_UnmarshalBinary(t *testing.T) {
 				t.Errorf("UnmarshalBinary(%v) error = nil, got %d elements, expected %d", tt.wantData, len(l.Type), len(tt.Type))
 			} else {
 				for idx, linkType := range l.Type {
-					if tt.Type[idx].IdAttr != linkType.IdAttr {
-						t.Errorf("UnmarshalBinary(%v) error = nil, %d elem id=%v, expected %v", tt.wantData, idx, linkType.IdAttr, tt.Type[idx].IdAttr)
+					if tt.Type[idx].IDAttr != linkType.IDAttr {
+						t.Errorf("UnmarshalBinary(%v) error = nil, %d elem id=%v, expected %v", tt.wantData, idx, linkType.IDAttr, tt.Type[idx].IDAttr)
 					}
 				}
 			}

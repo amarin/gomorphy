@@ -5,7 +5,8 @@ import (
 )
 
 var (
-	ErrUnmarshal      = errors.New("unpack error")
+	ErrUnmarshal      = errors.New("unmarshal")
+	ErrMarshal        = errors.New("marshal")
 	ErrUnknownNode    = errors.New("unknown node")
 	ErrEmptyValue     = errors.New("empty value")
 	ErrChildrenError  = errors.New("node children")
