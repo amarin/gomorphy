@@ -1,67 +1,106 @@
 package text
 
 import (
-	"github.com/amarin/binutils"
+	"bytes"
+	"errors"
+	"fmt"
+	"io"
+
 	"golang.org/x/text/encoding/charmap"
 )
 
-// RussianText содержит слово или текст на русском языке.
+// ErrText indicates any errors with RussianText processing happened.
+var ErrText = errors.New("text")
+
+// RussianText stores word or phrase in russian language.
+// It stores data as ordinal string in memory and uses 1-byte per character encoding to store dame data in file.
 type RussianText string
 
-// NewRussianText создаёт слово или текст из строки.
-func NewRussianText(text string) RussianText {
-	return RussianText(text)
-}
-
-// String возвращает представление текста в строковом типе.
+// String returns string representation of russian text.
+// Implements fmt.Stringer.
 func (w RussianText) String() string {
 	return string(w)
 }
 
-// Len возвращает длину строки в символах.
+// Len returns RussianText string length in characters(runes). To detect internal length use len().
 func (w RussianText) Len() int {
 	return len([]rune(w))
 }
 
-// MarshalBinary кодирует русский текст в байтовую строку в кодировке KOI8R.
-func (w RussianText) MarshalBinary() (data []byte, err error) {
-	data, err = EncodeString(string(w), charmap.KOI8R)
+// ReadFrom loads text data from specified io.Reader instance.
+// Returns taken bytes count and any error if occurs. Implements io.ReaderFrom.
+func (w *RussianText) ReadFrom(r io.Reader) (n int64, err error) {
+	currentByte := make([]byte, 1)
+	encodedBytes := make([]byte, 0)
+
+	for {
+		if _, err = r.Read(currentByte); err != nil {
+			return n, fmt.Errorf("%v: read next byte: %w", ErrText, err)
+		}
+		n++
+
+		if currentByte[0] == 0 {
+			break
+		}
+
+		encodedBytes = append(encodedBytes, currentByte[0])
+	}
+
+	decodedString, err := DecodeBytes(encodedBytes, charmap.KOI8R)
 	if err != nil {
-		return nil, WrapErrorf(err, "cant encode string")
+		return n, fmt.Errorf("%v: translate: %w", ErrText, err)
+	}
+
+	*w = RussianText(decodedString)
+
+	return n, nil
+}
+
+// EncodeTo makes byte string using specified encoding.
+func (w RussianText) EncodeTo(charMap *charmap.Charmap) (data []byte, err error) {
+	if data, err = EncodeString(string(w), charMap); err != nil {
+		return nil, fmt.Errorf("%v: encode %v: %w", ErrText, charMap.String(), err)
 	}
 
 	return append(data, 0), nil
 }
 
-// UnmarshalFromBuffer позволяет загрузить текст в байтовой строке в кодировке KOI8R из буфера.
-func (w *RussianText) UnmarshalFromBuffer(buffer *binutils.Buffer) error {
-	var currentByte uint8
-
-	encodedBytes := make([]byte, 0)
-
-	for {
-		if err := buffer.ReadUint8(&currentByte); err != nil {
-			return WrapErrorf(err, "cant read next byte")
-		}
-
-		if currentByte == 0 {
-			break
-		}
-
-		encodedBytes = append(encodedBytes, currentByte)
+// MarshalBinary makes 1-byte encoded string using KOI8R.
+// To
+// Implements encoding.BinaryMarshaler.
+func (w RussianText) MarshalBinary() (data []byte, err error) {
+	if data, err = w.EncodeTo(charmap.KOI8R); err != nil {
+		return nil, err
 	}
 
-	decodedString, err := DecodeBytes(encodedBytes, charmap.KOI8R)
-	if err != nil {
-		return WrapErrorf(err, "character map")
-	}
-
-	*w = RussianText(decodedString)
-
-	return nil
+	return append(data, 0), nil
 }
 
-// UnmarshalBinary распаковывает значение из байтовой строки в кодировке KOI8R.
-func (w *RussianText) UnmarshalBinary(data []byte) error {
-	return w.UnmarshalFromBuffer(binutils.NewBuffer(data))
+// WriteTo writes text bytes into specified writer.
+// Returns written bytes count and any error if occurs.
+// Implements io.WriterTo.
+func (w *RussianText) WriteTo(writer io.Writer) (n int64, err error) {
+	var (
+		textBytes    []byte
+		bytesWritten int
+	)
+
+	if textBytes, err = w.MarshalBinary(); err != nil {
+		return 0, err
+	}
+
+	if bytesWritten, err = writer.Write(textBytes); err != nil {
+		return int64(bytesWritten), fmt.Errorf("%v: write: %w", ErrText, err)
+	}
+
+	return int64(bytesWritten), nil
+}
+
+// UnmarshalBinary reads text data from bytes string.
+// As expected it will used rare it uses w.ReadFrom with intermediate bytes buffer as reader instance.
+// Implements encoding.BinaryUnmarshaler.
+func (w *RussianText) UnmarshalBinary(data []byte) (err error) {
+	_, err = w.ReadFrom(bytes.NewReader(data))
+
+	return err
 }
