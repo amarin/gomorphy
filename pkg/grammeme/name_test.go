@@ -4,13 +4,13 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/amarin/gomorphy/internal/grammeme"
+	grammeme2 "github.com/amarin/gomorphy/pkg/grammeme"
 )
 
 func TestGrammemeName_MarshalBinary(t *testing.T) { //nolint:paralleltest
 	tests := []struct {
 		name     string
-		g        grammeme.Name
+		g        grammeme2.Name
 		wantData []byte
 		wantErr  bool
 	}{
@@ -39,7 +39,7 @@ func TestGrammemeName_MarshalBinary(t *testing.T) { //nolint:paralleltest
 func TestGrammemeName_UnmarshalBinary(t *testing.T) { //nolint:paralleltest
 	tests := []struct {
 		name    string
-		g       grammeme.Name
+		g       grammeme2.Name
 		args    []byte
 		wantErr bool
 	}{
@@ -52,11 +52,11 @@ func TestGrammemeName_UnmarshalBinary(t *testing.T) { //nolint:paralleltest
 	for _, tt := range tests { //nolint:paralleltest
 		tt := tt // pin variable
 		t.Run(tt.name, func(t *testing.T) {
-			target := new(grammeme.Name)
+			target := new(grammeme2.Name)
 			if err := target.UnmarshalBinary(tt.args); (err != nil) != tt.wantErr {
 				t.Errorf("UnmarshalBinary() error = %v, wantErr %v", err, tt.wantErr)
 			} else if err == nil && *target != tt.g {
-				t.Errorf("UnmarshalBinary(%v)= %v, expected %v", tt.args, *target, tt.g)
+				t.Errorf("UnmarshalBinary(%v)= `%v`, expected `%v`", tt.args, *target, tt.g)
 			}
 		})
 	}
