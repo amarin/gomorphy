@@ -22,7 +22,7 @@ func (reader IndexReaderImpl) SetNodeReader(nodeReader NodeReader) {
 
 // writeNode writes node itself. As index writes nodes ordered no node index required but parent should written.
 // Child nodes will reference to its parent by its index.
-func (reader IndexReaderImpl) readNodeToIndex(r io.Reader, index Index) (n int, node Node, err error) {
+func (reader IndexReaderImpl) readNodeToIndex(index Index, r io.Reader) (n int, node Node, err error) {
 	var (
 		nodeRune  rune
 		parentIdx uint32
@@ -71,14 +71,10 @@ func (reader IndexReaderImpl) readNodeToIndex(r io.Reader, index Index) (n int, 
 
 // writeNode writes node data. Takes node idx in parent index and node itself.
 // No node relations required to be written in node data writer.
-func (reader IndexReaderImpl) readNodeData(idx uint32, node Node) (n int, err error) {
-	var nodeData interface{}
-
-	if n, nodeData, err = reader.nodeReader.Read(idx); err != nil {
+func (reader IndexReaderImpl) readNodeData(node Node, nodeReader io.Reader) (n int, err error) {
+	if n, err = reader.nodeReader.Read(node, nodeReader); err != nil {
 		return n, fmt.Errorf("%w: `%v`: %v", ErrWriter, node.Rune(), err)
 	}
-
-	node.SetData(nodeData)
 
 	return n, nil
 }
@@ -86,19 +82,19 @@ func (reader IndexReaderImpl) readNodeData(idx uint32, node Node) (n int, err er
 // writeNode writes node relation into index writer as well as writes node data using node writer.
 // Takes index writer, node index, node parent index and node itself.
 // Returns written bytes count or error if happened.
-func (reader IndexReaderImpl) readNode(r io.Reader, nodeIdx uint32, index Index) (n int, node Node, err error) {
+func (reader IndexReaderImpl) readNode(index Index, indexReader, nodeReader io.Reader) (n int, node Node, err error) {
 	var (
 		takenBytes  int
 		currentNode Node
 	)
 
-	if takenBytes, currentNode, err = reader.readNodeToIndex(r, index); err != nil {
+	if takenBytes, currentNode, err = reader.readNodeToIndex(index, indexReader); err != nil {
 		return 0, nil, err
 	}
 
 	n += takenBytes
 
-	if takenBytes, err = reader.readNodeData(nodeIdx, currentNode); err != nil {
+	if takenBytes, err = reader.readNodeData(currentNode, nodeReader); err != nil {
 		return n, currentNode, err
 	}
 
@@ -107,8 +103,8 @@ func (reader IndexReaderImpl) readNode(r io.Reader, nodeIdx uint32, index Index)
 	return n, currentNode, nil
 }
 
-// ReadFrom reads index data from specified reader.
-func (reader IndexReaderImpl) ReadFrom(idx Index, r io.Reader) (n int, err error) {
+// Read reads index data from specified reader.
+func (reader IndexReaderImpl) Read(index Index, indexReader, nodeReader io.Reader) (n int, err error) {
 	var (
 		bytes   int
 		nodeIdx uint32
@@ -119,7 +115,7 @@ func (reader IndexReaderImpl) ReadFrom(idx Index, r io.Reader) (n int, err error
 	}
 
 	for {
-		bytes, _, err = reader.readNode(r, nodeIdx, idx)
+		bytes, _, err = reader.readNode(index, indexReader, nodeReader)
 
 		switch {
 		case err == nil:

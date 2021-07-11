@@ -55,28 +55,28 @@ type Index interface {
 
 // NodeWriter specifies node writer interface. It required to use with IndexWriter.
 type NodeWriter interface {
-	// Write writes node with specified index into specified writer.
-	Write(node Node) (n int, err error)
+	// Write writes node data into specified io.Writer.
+	Write(node Node, w io.Writer) (n int, err error)
 }
 
 // IndexWriter specifies index writer interface.
 // It writes only nodes relations requiring separate NodeWriter to write nodes data.
 type IndexWriter interface {
 	SetNodeWriter(nodeWriter NodeWriter)
-	// WriteInto writes index into specified writer.
-	WriteInto(idx Index, writer io.Writer) (n int, err error)
+	// Write writes index into specified writer.
+	Write(idx Index, indexWriter, dataWriter io.Writer) (n int, err error)
 }
 
 // NodeReader specifies node reader interface. It required to use with IndexReader.
 type NodeReader interface {
-	// Read reads node data with specified index. Returns taken bytes, node data or read error.
-	Read(idx uint32) (n int, nodeData interface{}, err error)
+	// Read reads specified node data from io.Reader.
+	Read(node Node, reader io.Reader) (n int, err error)
 }
 
 // IndexReader specifies index reader interface.
 // It reads only nodes relations itself requiring separate NodeReader to load nodes data.
 type IndexReader interface {
 	SetNodeReader(nodeWriter NodeReader)
-	// ReadFrom reads index from specified reader. Returns taken bytes, index
-	ReadFrom(index Index, reader io.Reader) (n int, err error)
+	// Read reads index and nodes data from readers into index. Returns taken bytes or error if happened.
+	Read(index Index, indexReader, dataReader io.Reader) (n int, err error)
 }

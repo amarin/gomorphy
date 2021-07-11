@@ -59,8 +59,8 @@ func (writer IndexWriterImpl) writeNodeToIndex(w io.Writer, node Node) (n int, e
 
 // writeNode writes node data. Takes node idx in parent index and node itself.
 // No node relations required to be written in node data writer.
-func (writer IndexWriterImpl) writeNodeData(node Node) (n int, err error) {
-	if n, err = writer.nodeWriter.Write(node); err != nil {
+func (writer IndexWriterImpl) writeNodeData(dataWriter io.Writer, node Node) (n int, err error) {
+	if n, err = writer.nodeWriter.Write(node, dataWriter); err != nil {
 		return n, fmt.Errorf("%w: `%v`: %v", ErrWriter, node.Rune(), err)
 	}
 
@@ -70,16 +70,16 @@ func (writer IndexWriterImpl) writeNodeData(node Node) (n int, err error) {
 // writeNode writes node relation into index writer as well as writes node data using node writer.
 // Takes index writer, node index, node parent index and node itself.
 // Returns written bytes count or error if happened.
-func (writer IndexWriterImpl) writeNode(w io.Writer, node Node) (n int, err error) {
+func (writer IndexWriterImpl) writeNode(node Node, indexWriter, dataWriter io.Writer) (n int, err error) {
 	var written int
 
-	if written, err = writer.writeNodeToIndex(w, node); err != nil {
+	if written, err = writer.writeNodeToIndex(indexWriter, node); err != nil {
 		return 0, err
 	}
 
 	n += written
 
-	if written, err = writer.writeNodeData(node); err != nil {
+	if written, err = writer.writeNodeData(dataWriter, node); err != nil {
 		return n, err
 	}
 
@@ -91,7 +91,7 @@ func (writer IndexWriterImpl) writeNode(w io.Writer, node Node) (n int, err erro
 // recurseWriteNode writes nodes recursive into specified writer.
 // Takes writer instance, starting index and node to write itself.
 // Returns last used node index after all children, written bytes sum or error if happened.
-func (writer IndexWriterImpl) recurseWriteNode(w io.Writer, node Node) (n int, err error) {
+func (writer IndexWriterImpl) recurseWriteNode(node Node, indexWriter, dataWriter io.Writer) (n int, err error) {
 	bytes := 0
 	n = 0
 
@@ -99,14 +99,14 @@ func (writer IndexWriterImpl) recurseWriteNode(w io.Writer, node Node) (n int, e
 		return 0, fmt.Errorf("%w: no nodes writer", ErrWriter)
 	}
 
-	if bytes, err = writer.writeNode(w, node); err != nil {
+	if bytes, err = writer.writeNode(node, indexWriter, dataWriter); err != nil {
 		return n, err
 	}
 
 	n += bytes
 
 	for childRune, child := range node.Children() {
-		if bytes, err = writer.recurseWriteNode(w, child); err != nil {
+		if bytes, err = writer.recurseWriteNode(child, indexWriter, dataWriter); err != nil {
 			return n, fmt.Errorf("%w: `%v`: %v", ErrWriter, childRune, err)
 		}
 
@@ -117,7 +117,7 @@ func (writer IndexWriterImpl) recurseWriteNode(w io.Writer, node Node) (n int, e
 }
 
 // WriteInto writes index data into specified writer.
-func (writer IndexWriterImpl) WriteInto(idx Index, targetWriter io.Writer) (n int, err error) {
+func (writer IndexWriterImpl) Write(idx Index, indexWriter, dataWriter io.Writer) (n int, err error) {
 	var (
 		totalBytes int
 		bytes      int
@@ -128,7 +128,7 @@ func (writer IndexWriterImpl) WriteInto(idx Index, targetWriter io.Writer) (n in
 	}
 
 	for rootRune, rootNode := range idx.Children() {
-		if bytes, err = writer.recurseWriteNode(targetWriter, rootNode); err != nil {
+		if bytes, err = writer.recurseWriteNode(rootNode, indexWriter, dataWriter); err != nil {
 			return totalBytes, fmt.Errorf("%w: `%v`: %v", ErrWriter, rootRune, err)
 		}
 
