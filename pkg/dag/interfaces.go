@@ -17,7 +17,7 @@ type Container interface {
 // Node implements container methods as well as node specific rune fetcher and parent resolver.
 type Node interface {
 	Container
-	// ID returns node ID
+	// ID returns node ID.
 	ID() uint32
 	// SetID sets new node ID.
 	SetID(newID uint32)
@@ -25,10 +25,12 @@ type Node interface {
 	Rune() rune
 	// Parent returns parent node. If node is 1st level node parent returns nil.
 	Parent() Node
+	// SetParent sets new node parent.
+	SetParent(Node)
 	// Data returns node related data.
 	Data() interface{}
-	// Set directly adds child node..
-	Set(node Node) (err error)
+	// Set directly adds child node.
+	Set(node Node)
 	// SetData sets new node data.
 	SetData(data interface{})
 }

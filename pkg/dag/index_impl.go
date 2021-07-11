@@ -133,9 +133,9 @@ func (idx *IndexImpl) Set(node Node) (err error) {
 
 	if node.Parent() != nil {
 		// add to parent children and return
-		if err = node.Parent().Set(node); err != nil {
-			return fmt.Errorf("%w: parent: set: %v", ErrIndex, err)
-		}
+		node.Parent().Set(node)
+
+		return
 	}
 	// top node, add to index children
 	idx.children[node.Rune()] = node

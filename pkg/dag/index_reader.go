@@ -124,6 +124,7 @@ func (reader IndexReaderImpl) ReadFrom(idx Index, r io.Reader) (n int, err error
 		switch {
 		case err == nil:
 			nodeIdx++
+
 			n += bytes
 
 			continue
