@@ -29,7 +29,10 @@ func (idx *IndexImpl) SetNodeConstructor(constructor NodeConstructor) {
 	idx.nodeConstructor = constructor
 }
 
-func (idx IndexImpl) Children() map[rune]Node {
+// Children returns index children mapping.
+func (idx *IndexImpl) Children() map[rune]Node {
+	idx.prepareInternals()
+
 	return idx.children
 }
 

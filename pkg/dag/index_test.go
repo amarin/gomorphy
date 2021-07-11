@@ -38,3 +38,8 @@ func TestIndexImpl_SetNodeConstructor(t *testing.T) {
 		})
 	}
 }
+
+func TestIndexImpl_ChildrenInitedInternally(t *testing.T) { //nolint:paralleltest
+	idx := dag.NewIndex()
+	require.NotNilf(t, idx.Children(), "expected not nil children")
+}
