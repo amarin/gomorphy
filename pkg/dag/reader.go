@@ -15,6 +15,11 @@ type IndexReaderImpl struct {
 	nodeReader NodeReader
 }
 
+// DefaultIndexReader provides default index reader implementation.
+func DefaultIndexReader() IndexReader {
+	return new(IndexReaderImpl)
+}
+
 // SetNodeReader sets new node reader.
 func (reader IndexReaderImpl) SetNodeReader(nodeReader NodeReader) {
 	reader.nodeReader = nodeReader

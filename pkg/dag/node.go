@@ -45,6 +45,11 @@ func (node NodeImpl) Rune() rune {
 	return node.rune
 }
 
+// SetRune sets new node rune. Use before adding to index, rune changes is not propagated onto parent and index.
+func (node *NodeImpl) SetRune(nodeRune rune) {
+	node.rune = nodeRune
+}
+
 // Parent returns parent node. If node is 1st level node parent returns nil.
 func (node NodeImpl) Parent() Node {
 	return node.parent

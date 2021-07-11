@@ -15,7 +15,17 @@ type IndexImpl struct {
 	nodeConstructor NodeConstructor
 }
 
-func (idx IndexImpl) SetNodeConstructor(constructor NodeConstructor) {
+// NewIndex creates new DAG words index.
+func NewIndex() Index {
+	return new(IndexImpl)
+}
+
+// NodeConstructor return attached node constructor.
+func (idx IndexImpl) NodeConstructor() NodeConstructor {
+	return idx.nodeConstructor
+}
+
+func (idx *IndexImpl) SetNodeConstructor(constructor NodeConstructor) {
 	idx.nodeConstructor = constructor
 }
 

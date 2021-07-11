@@ -23,6 +23,8 @@ type Node interface {
 	SetID(newID uint32)
 	// Rune returns node rune.
 	Rune() rune
+	// SetRune sets new node rune. Use before adding to index, rune changes is not propagated onto parent and index.
+	SetRune(nodeRune rune)
 	// Parent returns parent node. If node is 1st level node parent returns nil.
 	Parent() Node
 	// SetParent sets new node parent.
@@ -42,6 +44,7 @@ type NodeConstructor func(parent Node, nodeRune rune, data interface{}) Node
 // Index defines nodes index interface.
 type Index interface {
 	Container
+	NodeConstructor() NodeConstructor
 	// SetNodeConstructor sets new node constructor.
 	SetNodeConstructor(constructor NodeConstructor)
 	// Get returns node by its index or error if no such node found.

@@ -19,6 +19,11 @@ type IndexWriterImpl struct {
 	nodeWriter NodeWriter
 }
 
+// DefaultIndexWriter provides default index writer implementation.
+func DefaultIndexWriter() IndexWriter {
+	return new(IndexWriterImpl)
+}
+
 // SetNodeWriter sets new node writer.
 func (writer IndexWriterImpl) SetNodeWriter(nodeWriter NodeWriter) {
 	writer.nodeWriter = nodeWriter
