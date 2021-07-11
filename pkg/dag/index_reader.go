@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 )
 
 // ErrReader indicates reader related errors.
@@ -14,7 +13,6 @@ var ErrReader = errors.New("read")
 // IndexReaderImpl implements IndexReader.
 type IndexReaderImpl struct {
 	nodeReader NodeReader
-	readIndex  []Node
 }
 
 // SetNodeReader sets new node reader.
@@ -24,15 +22,21 @@ func (reader IndexReaderImpl) SetNodeReader(nodeReader NodeReader) {
 
 // writeNode writes node itself. As index writes nodes ordered no node index required but parent should written.
 // Child nodes will reference to its parent by its index.
-func (reader IndexReaderImpl) readNodeToIndex(r io.Reader, idx uint32, index Index) (n int, node Node, err error) {
+func (reader IndexReaderImpl) readNodeToIndex(r io.Reader, index Index) (n int, node Node, err error) {
 	var (
-		nodeRune   rune
-		parentIdx  uint32
-		parentNode Node
-		container  Container
+		nodeRune  rune
+		parentIdx uint32
+		parent    Node
+		nodeIdx   uint32
 	)
 
 	n = 0
+
+	if err = binary.Read(r, binary.LittleEndian, nodeIdx); err != nil {
+		return n, nil, fmt.Errorf("%w: %v", ErrReader, err)
+	}
+
+	n += 4 // taken node ID 4 bytes
 
 	if err = binary.Read(r, binary.LittleEndian, nodeRune); err != nil {
 		return n, nil, fmt.Errorf("%w: %v", ErrReader, err)
@@ -46,24 +50,21 @@ func (reader IndexReaderImpl) readNodeToIndex(r io.Reader, idx uint32, index Ind
 
 	n += 4 // taken uint32 4 bytes
 
-	switch {
-	case parentIdx == math.MaxUint32:
-		parentNode = nil
-		container = index
-
-	case int(parentIdx) < len(reader.readIndex):
-		parentNode = reader.readIndex[parentIdx]
-		container = parentNode
-
-	default:
-		return n, nil, fmt.Errorf("%w: parent %v unexpected", ErrReader, parentIdx)
+	if parentIdx != topNodesParent {
+		if parent, err = index.Get(parentIdx); err != nil {
+			return n, nil, fmt.Errorf("%w: parent %v of %v not loaded yet", ErrReader, parentIdx, nodeIdx)
+		}
 	}
 
-	if node, err = container.Add([]rune{nodeRune}, nil); err != nil {
-		return n, node, fmt.Errorf("%w: %v", ErrReader, err)
+	if node, err = index.BuildNode(parent, nodeRune, nil); err != nil {
+		return n, nil, fmt.Errorf("%w: build %v: %v", ErrReader, nodeIdx, err)
 	}
 
-	reader.readIndex[idx] = node
+	node.SetID(nodeIdx)
+
+	if err = index.Set(node); err != nil {
+		return n, node, fmt.Errorf("%w: set: %v", ErrReader, err)
+	}
 
 	return n, node, nil
 }
@@ -91,7 +92,7 @@ func (reader IndexReaderImpl) readNode(r io.Reader, nodeIdx uint32, index Index)
 		currentNode Node
 	)
 
-	if takenBytes, currentNode, err = reader.readNodeToIndex(r, nodeIdx, index); err != nil {
+	if takenBytes, currentNode, err = reader.readNodeToIndex(r, index); err != nil {
 		return 0, nil, err
 	}
 
@@ -117,16 +118,14 @@ func (reader IndexReaderImpl) ReadFrom(idx Index, r io.Reader) (n int, err error
 		return n, fmt.Errorf("%w: no nodes writer", ErrWriter)
 	}
 
-	if reader.readIndex == nil { // init reader index
-		reader.readIndex = make([]Node, 0)
-	}
-
 	for {
 		bytes, _, err = reader.readNode(r, nodeIdx, idx)
+
 		switch {
 		case err == nil:
 			nodeIdx++
 			n += bytes
+
 			continue
 		case errors.Is(err, io.EOF):
 			return n, nil

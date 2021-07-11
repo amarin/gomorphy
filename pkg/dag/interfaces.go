@@ -17,12 +17,18 @@ type Container interface {
 // Node implements container methods as well as node specific rune fetcher and parent resolver.
 type Node interface {
 	Container
+	// ID returns node ID
+	ID() uint32
+	// SetID sets new node ID.
+	SetID(newID uint32)
 	// Rune returns node rune.
 	Rune() rune
 	// Parent returns parent node. If node is 1st level node parent returns nil.
 	Parent() Node
 	// Data returns node related data.
 	Data() interface{}
+	// Set directly adds child node..
+	Set(node Node) (err error)
 	// SetData sets new node data.
 	SetData(data interface{})
 }
@@ -36,12 +42,19 @@ type Index interface {
 	Container
 	// SetNodeConstructor sets new node constructor.
 	SetNodeConstructor(constructor NodeConstructor)
+	// Get returns node by its index or error if no such node found.
+	Get(nodeIdx uint32) (node Node, err error)
+	// Set directly adds node to index.
+	// Silently extends index if specified node ID is greater then index size.
+	Set(node Node) (err error)
+	// BuildNode returns new node using specified parameters or returns error.
+	BuildNode(parent Node, nodeRune rune, data interface{}) (Node, error)
 }
 
 // NodeWriter specifies node writer interface. It required to use with IndexWriter.
 type NodeWriter interface {
 	// Write writes node with specified index into specified writer.
-	Write(idx uint32, node Node) (n int, err error)
+	Write(node Node) (n int, err error)
 }
 
 // IndexWriter specifies index writer interface.
