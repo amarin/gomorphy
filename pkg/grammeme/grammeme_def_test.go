@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/amarin/gomorphy/internal/grammeme"
 	"github.com/amarin/gomorphy/internal/text"
+	"github.com/amarin/gomorphy/pkg/grammeme"
 )
 
 type grammemeTestFields struct {
