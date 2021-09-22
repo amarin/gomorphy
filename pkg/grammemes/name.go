@@ -1,4 +1,4 @@
-package grammeme
+package grammemes
 
 // Grammeme name represents name of grammatical category. It uses exactly 4 ASCII characters to name categories.
 
