@@ -1,4 +1,4 @@
-package indexing
+package ids
 
 const (
 	maxUint16inUint32 = 0x0000ffff

@@ -1,17 +1,17 @@
-package indexing_test
+package ids_test
 
 import (
 	"fmt"
 	"testing"
 
-	"github.com/amarin/gomorphy/pkg/indexing"
+	"github.com/amarin/gomorphy/pkg/ids"
 	"github.com/stretchr/testify/require"
 )
 
 var uint16tests = []struct {
-	id16 indexing.ID16
-	hi   indexing.ID8
-	lo   indexing.ID8
+	id16 ids.ID16
+	hi   ids.ID8
+	lo   ids.ID8
 }{
 	{0x0000, 0x00, 0x00},
 	{0x1234, 0x12, 0x34},
@@ -28,7 +28,7 @@ func TestCombine8(t *testing.T) {
 		t.Run(fmt.Sprintf("uint16_%v_hi_%v_lo_%v", tt.id16, tt.hi, tt.lo), func(t *testing.T) {
 			t.Parallel()
 			tt := tt
-			require.Equal(t, tt.id16, indexing.Combine8(tt.hi, tt.lo))
+			require.Equal(t, tt.id16, ids.Combine8(tt.hi, tt.lo))
 		})
 	}
 }
