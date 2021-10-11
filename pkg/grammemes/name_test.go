@@ -46,7 +46,7 @@ func TestGrammemeName_UnmarshalBinary(t *testing.T) { //nolint:paralleltest
 		{"ok_4_bytes", "aaaa", []byte{97, 97, 97, 97}, false},
 		{"nok_3_bytes", "aaa", []byte{97, 97, 97}, true},
 		{"nok_5_bytes", "aaaaa", []byte{97, 97, 97, 98, 99}, true},
-		{"ok_empty", "", []byte{32, 32, 32, 32}, false},
+		{"ok_empty", grammemes.Empty, []byte{32, 32, 32, 32}, false},
 	}
 
 	for _, tt := range tests { //nolint:paralleltest

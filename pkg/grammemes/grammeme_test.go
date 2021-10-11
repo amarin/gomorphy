@@ -23,7 +23,7 @@ var grammemeTests = []struct { // nolint:gochecknoglobals
 	{
 		"with_empty_parent_and_alias_and_description",
 		grammemeTestFields{"", "POST"},
-		string("Grammeme{" + grammemes.EmptyParent + ",POST}"),
+		string("Grammeme{" + grammemes.Empty + ",POST}"),
 	},
 	{
 		"with_empty_alias_and_description",

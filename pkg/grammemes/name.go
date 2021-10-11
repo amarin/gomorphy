@@ -18,7 +18,7 @@ var (
 	emptyName = []byte{0x20, 0x20, 0x20, 0x20}
 )
 
-// Name represents name of grammatical category. Always 4 ASCII characters.
+// Name represents name of grammatical category. It always consists of 4 ASCII characters.
 type Name string
 
 // WriteTo writes name data which is always 4-bytes into specified writer.
@@ -70,8 +70,8 @@ func (g *Name) ReadFrom(r io.Reader) (n int64, err error) {
 		}
 	}
 
-	if isEmpty {
-		*g = ""
+	if isEmpty || string(nameBytes) == "    " {
+		*g = Empty
 	} else {
 		*g = Name(nameBytes)
 	}
@@ -85,9 +85,9 @@ func (g Name) String() string {
 }
 
 // MarshalBinary makes name bytes string representation.
-// Always 4 bytes. Empty grammeme name represents as 4 spaces.
+// Always produces 4 bytes. Empty grammeme name represents as 4 spaces.
 func (g Name) MarshalBinary() (data []byte, err error) {
-	if len(g) == 0 {
+	if len(g) == 0 || g == Empty {
 		return []byte("    "), nil
 	}
 
@@ -102,7 +102,7 @@ func (g Name) MarshalBinary() (data []byte, err error) {
 
 // UnmarshalBinary loads grammeme name from bytes slice.
 // Expects 4-bytes len byte string.
-// If takes 0x20202020 replaces spaces into empty grammeme name.
+// If it takes 0x20202020 (4 spaces) it replaces spaces into empty grammeme name.
 // Returns error if data slice len mismatch.
 func (g *Name) UnmarshalBinary(data []byte) (err error) {
 	if len(data) != grammemeNameLength {

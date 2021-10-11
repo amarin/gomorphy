@@ -18,10 +18,10 @@ type testIndexStruct struct {
 
 var testCategoryListData = []testIndexStruct{ // nolint:gochecknoglobals
 	{"empty_grammemes_list", []grammemes.Grammeme{}, "00", false},
-	{"single_empty_grammeme", []grammemes.Grammeme{{"", ""}}, "012020202020202020", false},
-	{"single_filled_grammeme", []grammemes.Grammeme{{"", "POST"}},
+	{"single_empty_grammeme", []grammemes.Grammeme{{grammemes.Empty, grammemes.Empty}}, "012020202020202020", false},
+	{"single_filled_grammeme", []grammemes.Grammeme{{grammemes.Empty, "POST"}},
 		"01504f535420202020", false},
-	{"couple_of_filled_grammemes", []grammemes.Grammeme{{"", "POST"}, {"POST", "NOUN"}},
+	{"couple_of_filled_grammemes", []grammemes.Grammeme{{grammemes.Empty, "POST"}, {"POST", "NOUN"}},
 		"02504f5354202020204e4f554e504f5354", false},
 }
 
@@ -31,18 +31,18 @@ func TestIndex_Idx(t *testing.T) {
 		testName string
 		name     grammemes.Name
 		parent   grammemes.Name
-		indexed  grammemes.GrammemeIdx
+		indexed  grammemes.Idx
 		want     uint8
 	}{
-		{"in_empty", "1111", "", grammemes.GrammemeIdx{}, 0},
+		{"in_empty", "1111", "", grammemes.Idx{}, 0},
 		{"new_wo_parent", "2222", "",
-			grammemes.GrammemeIdx{{"", "1111"}}, 1},
+			grammemes.Idx{{"", "1111"}}, 1},
 		{"new_to_parent", "2222", "1111",
-			grammemes.GrammemeIdx{{"", "1111"}}, 1},
+			grammemes.Idx{{"", "1111"}}, 1},
 		{"existed_to_root", "2222", "",
-			grammemes.GrammemeIdx{{"", "1111"}, {"", "2222"}}, 1},
+			grammemes.Idx{{grammemes.Empty, "1111"}, {grammemes.Empty, "2222"}}, 1},
 		{"existed_to_parent", "3333", "1111",
-			grammemes.GrammemeIdx{{"", "1111"}, {"1111", "2222"}}, 2},
+			grammemes.Idx{{grammemes.Empty, "1111"}, {"1111", "2222"}}, 2},
 	} {
 		tt := tt
 		t.Run(tt.testName, func(t *testing.T) {
@@ -60,7 +60,7 @@ func TestIndex_ReadFrom(t *testing.T) {
 	tests = append(tests, []testIndexStruct{
 		{ // extra data in buffer is not taken and not an error
 			"extra_data_after_error",
-			[]grammemes.Grammeme{{"", "POST"}},
+			[]grammemes.Grammeme{{grammemes.Empty, "POST"}},
 			"01504f535420202020FF", false,
 		},
 		{ // no data len byte should raise

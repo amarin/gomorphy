@@ -12,7 +12,8 @@ import (
 // Error indicates grammeme-related errors.
 var Error = errors.New("grammeme")
 
-const EmptyParent Name = "----"
+// Empty defines constant grammeme name to replace empty strings and distinct unfilled and empty cases.
+const Empty Name = "----"
 
 // Grammeme implements storage for russian grammatical category structure data.
 type Grammeme struct {
@@ -25,7 +26,7 @@ type Grammeme struct {
 // NewGrammeme makes new grammeme with required parent, name, alias and description.
 func NewGrammeme(parent Name, name Name) *Grammeme {
 	if parent == "" {
-		parent = EmptyParent
+		parent = Empty
 	}
 
 	return &Grammeme{

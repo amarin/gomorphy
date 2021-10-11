@@ -11,7 +11,8 @@ import (
 // ErrSet identifies grammemes Set related errors.
 var ErrSet = fmt.Errorf("%w: set", Error)
 
-// Set stores grammemes unique sorted IDs sets. It used as grammeme ses to define word grammemes.
+// Set stores grammemes unique sorted IDs sets. Used as grammeme Set's to define word grammemes.
+// Requires external management to provide grammemes-to-set and vise-versa transitions.
 type Set []uint8
 
 // Len returns length of grammemes GrammemesSet. Implements sort.Interface.

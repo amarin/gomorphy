@@ -1,7 +1,7 @@
 package grammemes
 
 /*
-GrammemeIdx implements Grammeme indexing, providing simple indexed ID in index.
+Idx implements Grammeme indexing, providing simple indexed ID in index.
 */
 
 import (
@@ -12,19 +12,19 @@ import (
 	"github.com/amarin/gomorphy/pkg/common"
 )
 
-// GrammemeIdx implements grammemes index routines.
-type GrammemeIdx []Grammeme
+// Idx implements grammemes index routines.
+type Idx []Grammeme
 
 // Len returns index length.
-func (grammemesIdx GrammemeIdx) Len() int {
+func (grammemesIdx Idx) Len() int {
 	return len(grammemesIdx)
 }
 
-// Find returns indexed indexed id by known name and parent.
+// Find returns indexed ID by known name and parent.
 // Returns false found indicator if no such indexed found.
-func (grammemesIdx GrammemeIdx) Find(name Name, parent Name) (id uint8, found bool) {
+func (grammemesIdx Idx) Find(name Name, parent Name) (id uint8, found bool) {
 	if parent == "" {
-		parent = EmptyParent
+		parent = Empty
 	}
 
 	for idx, grammeme := range grammemesIdx {
@@ -36,13 +36,13 @@ func (grammemesIdx GrammemeIdx) Find(name Name, parent Name) (id uint8, found bo
 	return 0, false
 }
 
-// Index returns indexed indexed ID.
+// Index returns indexed ID.
 // Adds indexed to index if not indexed before.
-func (grammemesIdx *GrammemeIdx) Index(name Name, parent Name) (id uint8) {
+func (grammemesIdx *Idx) Index(name Name, parent Name) (id uint8) {
 	var found bool
 
 	if parent == "" {
-		parent = EmptyParent
+		parent = Empty
 	}
 
 	if id, found = grammemesIdx.Find(name, parent); found {
@@ -57,7 +57,7 @@ func (grammemesIdx *GrammemeIdx) Index(name Name, parent Name) (id uint8) {
 
 // Get returns indexed from index using its indexed ID.
 // Returns found indexed or found indicator will false.
-func (grammemesIdx GrammemeIdx) Get(requiredIdx uint8) (foundItem Grammeme, found bool) {
+func (grammemesIdx Idx) Get(requiredIdx uint8) (foundItem Grammeme, found bool) {
 	if int(requiredIdx) >= len(grammemesIdx) {
 		return Grammeme{}, false //nolint:exhaustivestruct
 	}
@@ -65,10 +65,10 @@ func (grammemesIdx GrammemeIdx) Get(requiredIdx uint8) (foundItem Grammeme, foun
 	return grammemesIdx[int(requiredIdx)], true
 }
 
-// WriteTo writes indexed index binary representation into supplied io.Writer instance.
+// WriteTo writes index binary representation into supplied io.Writer instance.
 // Binary representation always contains index length in first byte and following grammemes list.
 // Returns written bytes count or error if happened.
-func (grammemesIdx GrammemeIdx) WriteTo(w io.Writer) (n int64, err error) {
+func (grammemesIdx Idx) WriteTo(w io.Writer) (n int64, err error) {
 	var grammemeBytes int64
 	// write indexed list len first. One byte enough
 	buf := binutils.NewBinaryWriter(w)
@@ -91,9 +91,9 @@ func (grammemesIdx GrammemeIdx) WriteTo(w io.Writer) (n int64, err error) {
 	return n, nil
 }
 
-// ReadFrom loads indexed index from supplied io.Reader instance.
+// ReadFrom loads index from supplied io.Reader instance.
 // Returns taken bytes count or error if happened.
-func (grammemesIdx *GrammemeIdx) ReadFrom(r io.Reader) (n int64, err error) {
+func (grammemesIdx *Idx) ReadFrom(r io.Reader) (n int64, err error) {
 	var (
 		grammemeBytes int64
 		listLen       uint8
@@ -121,13 +121,13 @@ func (grammemesIdx *GrammemeIdx) ReadFrom(r io.Reader) (n int64, err error) {
 	return n, nil
 }
 
-// NewIndex creates new GrammemeIdx.
-func NewIndex(knownGrammemes ...Grammeme) GrammemeIdx {
-	grammemesIdx := make(GrammemeIdx, len(knownGrammemes))
+// NewIndex creates new Idx.
+func NewIndex(knownGrammemes ...Grammeme) Idx {
+	grammemesIdx := make(Idx, len(knownGrammemes))
 
 	for idx, grammeme := range knownGrammemes {
 		if grammeme.Parent == "" {
-			grammeme.Parent = EmptyParent
+			grammeme.Parent = Empty
 		}
 
 		grammemesIdx[idx] = grammeme
