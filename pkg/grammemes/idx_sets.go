@@ -12,7 +12,7 @@ type SetID uint16
 // NOTE: result is int32 to represent -1 in not found case but actual index is uint16
 // which occupies positive part of int32 range.
 func (idx SetIdx) Find(setItem Set) (foundIdx SetID, found bool) {
-	var itemIdx uint8
+	var itemIdx SetID
 
 	columnIdx := len(setItem) - 1
 
@@ -24,7 +24,7 @@ func (idx SetIdx) Find(setItem Set) (foundIdx SetID, found bool) {
 		return 0, false
 	}
 
-	return SetID(columnIdx)<<8 | SetID(itemIdx), true
+	return SetID(columnIdx)<<8 | itemIdx, true
 }
 
 // Index returns 0-based index of set in SetIdx array.
@@ -44,7 +44,7 @@ func (idx *SetIdx) Index(setItem Set) (indexedIdx SetID) {
 
 	itemIdx := (*idx)[columnIdx].Index(setItem)
 
-	return SetID(columnIdx)<<8 | SetID(itemIdx)
+	return SetID(columnIdx)<<8 | itemIdx
 }
 
 // Get returns set by index.
@@ -54,5 +54,5 @@ func (idx SetIdx) Get(itemIdx SetID) (Set, bool) {
 		return nil, false
 	}
 
-	return idx[columnIdx].Get(uint8(itemIdx & 0xff)) //nolint:gomnd
+	return idx[columnIdx].Get(itemIdx & 0x00ff) //nolint:gomnd
 }

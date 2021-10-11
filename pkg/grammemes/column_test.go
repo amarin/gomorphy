@@ -12,7 +12,7 @@ func TestSetColumn_Find(t *testing.T) { //nolint:paralleltest
 		name  string
 		idx   grammemes.Column
 		find  grammemes.Set
-		want  uint8
+		want  grammemes.SetID
 		found bool
 	}{
 		{
@@ -62,7 +62,7 @@ func TestSetColumn_Index(t *testing.T) { //nolint:paralleltest
 		name string
 		idx  grammemes.Column
 		find grammemes.Set
-		want uint8
+		want grammemes.SetID
 	}{
 		{
 			"indexed_first",
