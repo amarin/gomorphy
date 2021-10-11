@@ -15,6 +15,9 @@ import (
 // Idx implements grammemes index routines.
 type Idx []Grammeme
 
+// GrammemeID represent Grammeme ID in Idx. Wraps uint8.
+type GrammemeID uint8
+
 // Len returns index length.
 func (grammemesIdx Idx) Len() int {
 	return len(grammemesIdx)
@@ -22,14 +25,14 @@ func (grammemesIdx Idx) Len() int {
 
 // Find returns indexed ID by known name and parent.
 // Returns false found indicator if no such indexed found.
-func (grammemesIdx Idx) Find(name Name, parent Name) (id uint8, found bool) {
+func (grammemesIdx Idx) Find(name Name, parent Name) (id GrammemeID, found bool) {
 	if parent == "" {
 		parent = Empty
 	}
 
 	for idx, grammeme := range grammemesIdx {
 		if grammeme.Name == name && grammeme.Parent == parent {
-			return uint8(idx), true
+			return GrammemeID(idx), true
 		}
 	}
 
@@ -38,7 +41,7 @@ func (grammemesIdx Idx) Find(name Name, parent Name) (id uint8, found bool) {
 
 // Index returns indexed ID.
 // Adds indexed to index if not indexed before.
-func (grammemesIdx *Idx) Index(name Name, parent Name) (id uint8) {
+func (grammemesIdx *Idx) Index(name Name, parent Name) (id GrammemeID) {
 	var found bool
 
 	if parent == "" {
@@ -49,7 +52,7 @@ func (grammemesIdx *Idx) Index(name Name, parent Name) (id uint8) {
 		return id
 	}
 
-	id = uint8(len(*grammemesIdx))
+	id = GrammemeID(len(*grammemesIdx))
 	*grammemesIdx = append(*grammemesIdx, *NewGrammeme(parent, name))
 
 	return id
@@ -57,7 +60,7 @@ func (grammemesIdx *Idx) Index(name Name, parent Name) (id uint8) {
 
 // Get returns indexed from index using its indexed ID.
 // Returns found indexed or found indicator will false.
-func (grammemesIdx Idx) Get(requiredIdx uint8) (foundItem Grammeme, found bool) {
+func (grammemesIdx Idx) Get(requiredIdx GrammemeID) (foundItem Grammeme, found bool) {
 	if int(requiredIdx) >= len(grammemesIdx) {
 		return Grammeme{}, false //nolint:exhaustivestruct
 	}

@@ -27,15 +27,16 @@ var testCategoryListData = []testIndexStruct{ // nolint:gochecknoglobals
 
 func TestIndex_Idx(t *testing.T) {
 	t.Parallel()
+
 	for _, tt := range []struct {
 		testName string
 		name     grammemes.Name
 		parent   grammemes.Name
 		indexed  grammemes.Idx
-		want     uint8
+		want     grammemes.GrammemeID
 	}{
 		{"in_empty", "1111", "", grammemes.Idx{}, 0},
-		{"new_wo_parent", "2222", "",
+		{"new_wo_parent", "2222", grammemes.Empty,
 			grammemes.Idx{{"", "1111"}}, 1},
 		{"new_to_parent", "2222", "1111",
 			grammemes.Idx{{"", "1111"}}, 1},
@@ -104,7 +105,7 @@ func TestIndex_ReadFrom(t *testing.T) {
 
 			for idx := range tt.known {
 				testItem := tt.known[idx]
-				indexItem, found := index.Get(uint8(idx))
+				indexItem, found := index.Get(grammemes.GrammemeID(idx))
 				require.True(t, found)
 				require.Equalf(t, testItem.Name.String(), indexItem.Name.String(),
 					"UnmarshalBinary() item %d name mismatch: received %v != %v expected",
@@ -118,16 +119,20 @@ func TestIndex_ReadFrom(t *testing.T) {
 }
 
 func TestIndex_Add(t *testing.T) {
+	t.Parallel()
+
 	index := grammemes.NewIndex()
 	post := grammemes.NewGrammeme("", "POST")
 	pos1 := grammemes.NewGrammeme("", "POS1")
 
-	require.Equal(t, uint8(0), index.Index(post.Name, post.Parent))
-	require.Equal(t, uint8(0), index.Index(post.Name, post.Parent)) // duplicated add returns same index
-	require.Equal(t, uint8(1), index.Index(pos1.Name, pos1.Parent))
+	require.Equal(t, grammemes.GrammemeID(0), index.Index(post.Name, post.Parent))
+	require.Equal(t, grammemes.GrammemeID(0), index.Index(post.Name, post.Parent)) // duplicated add returns same index
+	require.Equal(t, grammemes.GrammemeID(1), index.Index(pos1.Name, pos1.Parent))
 }
 
 func TestIndex_Get(t *testing.T) {
+	t.Parallel()
+
 	testIndex := grammemes.NewIndex(
 		*grammemes.NewGrammeme("", "POST"),
 		*grammemes.NewGrammeme("POST", "NOUN"),
@@ -135,7 +140,7 @@ func TestIndex_Get(t *testing.T) {
 
 	for _, tt := range []struct {
 		name  string
-		idx   uint8
+		idx   grammemes.GrammemeID
 		found bool
 	}{
 		{"ok_existed_1", 0, true},
@@ -145,8 +150,9 @@ func TestIndex_Get(t *testing.T) {
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			tt := tt
-			got, found := testIndex.Get(tt.idx)
+			got, found := testIndex.Get(grammemes.GrammemeID(tt.idx))
 			require.Equal(t, tt.found, found)
 			if found {
 				require.Equal(t, got.Name, testIndex[tt.idx].Name)
@@ -190,10 +196,10 @@ func TestGrammemeIdx_Find(t *testing.T) { //nolint:paralleltest
 		grammemesIdx []grammemes.Grammeme
 		name         grammemes.Name
 		parent       grammemes.Name
-		wantID       uint8
+		wantID       grammemes.GrammemeID
 		wantFound    bool
 	}{
-		{"find_in_empty", make([]grammemes.Grammeme, 0),
+		{"find_in_empty", make([]grammemes.Grammeme, 0), //nolint:gofumpt
 			"", "", 0, false},
 		{"find_not_existed_name", []grammemes.Grammeme{{"", "1111"}},
 			"2222", "", 0, false},
