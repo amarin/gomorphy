@@ -5,10 +5,13 @@ package grammemes
 // uint8 column ID of uint8 type and uint8 Set ID in specified column.
 type SetIdx []Column
 
+// SetID represents Grammeme Set ID.
+type SetID uint16
+
 // Find returns 0-based index of set in SetIdx array. If no such set found returns -1.
 // NOTE: result is int32 to represent -1 in not found case but actual index is uint16
 // which occupies positive part of int32 range.
-func (idx SetIdx) Find(setItem Set) (foundIdx uint16, found bool) {
+func (idx SetIdx) Find(setItem Set) (foundIdx SetID, found bool) {
 	var itemIdx uint8
 
 	columnIdx := len(setItem) - 1
@@ -21,11 +24,11 @@ func (idx SetIdx) Find(setItem Set) (foundIdx uint16, found bool) {
 		return 0, false
 	}
 
-	return uint16(columnIdx)<<8 | uint16(itemIdx), true
+	return SetID(columnIdx)<<8 | SetID(itemIdx), true
 }
 
 // Index returns 0-based index of set in SetIdx array.
-func (idx *SetIdx) Index(setItem Set) (indexedIdx uint16) {
+func (idx *SetIdx) Index(setItem Set) (indexedIdx SetID) {
 	if len(setItem) == 0 {
 		panic("empty set")
 	}
@@ -41,11 +44,11 @@ func (idx *SetIdx) Index(setItem Set) (indexedIdx uint16) {
 
 	itemIdx := (*idx)[columnIdx].Index(setItem)
 
-	return uint16(columnIdx)<<8 | uint16(itemIdx)
+	return SetID(columnIdx)<<8 | SetID(itemIdx)
 }
 
 // Get returns set by index.
-func (idx SetIdx) Get(itemIdx uint16) (Set, bool) {
+func (idx SetIdx) Get(itemIdx SetID) (Set, bool) {
 	columnIdx := itemIdx >> 8 //nolint:gomnd
 	if int(columnIdx) >= len(idx) {
 		return nil, false

@@ -19,7 +19,7 @@ func TestSetIdx_Find(t *testing.T) { //nolint:paralleltest
 	for _, tt := range []struct { //nolint:paralleltest
 		name  string
 		find  grammemes.Set
-		want  uint16
+		want  grammemes.SetID
 		found bool
 	}{
 		{"not_found_in_empty_column", []uint8{1, 2, 3, 4, 5}, 0, false},
@@ -46,7 +46,7 @@ func TestSetIdx_Index(t *testing.T) { //nolint:paralleltest
 	for _, tt := range []struct { //nolint:paralleltest
 		name string
 		find grammemes.Set
-		want uint16
+		want grammemes.SetID
 	}{
 		{"index_to_column0", []uint8{0}, 0},
 		{"index_to_column1", []uint8{1, 2}, 256},
@@ -74,7 +74,7 @@ func TestSetIdx_Get(t *testing.T) { //nolint:paralleltest
 	for _, tt := range []struct { //nolint:paralleltest
 		name  string
 		find  grammemes.Set
-		want  uint16
+		want  grammemes.SetID
 		found bool
 	}{
 		{"not_found_in_empty_column", nil, 4*256 + 1, false},
