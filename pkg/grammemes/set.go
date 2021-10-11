@@ -13,7 +13,7 @@ var ErrSet = fmt.Errorf("%w: set", Error)
 
 // Set stores grammemes unique sorted IDs sets. Used as grammeme Set's to define word grammemes.
 // Requires external management to provide grammemes-to-set and vise-versa transitions.
-type Set []uint8
+type Set []GrammemeID
 
 // Len returns length of grammemes GrammemesSet. Implements sort.Interface.
 func (grammemesSet Set) Len() int {
@@ -51,6 +51,17 @@ func (grammemesSet Set) EqualTo(another Set) bool {
 	return true
 }
 
+// bytes returns copy of grammemes set converted to bytes array.
+func (grammemesSet Set) bytes() (res []byte) {
+	res = make([]byte, len(grammemesSet))
+
+	for idx, id := range grammemesSet {
+		res[idx] = byte(id)
+	}
+
+	return res
+}
+
 // WriteTo writes GrammemesSet data into supplied io.Writer instance.
 // Returns written bytes count and error if occurs.
 func (grammemesSet Set) WriteTo(w io.Writer) (n int64, err error) {
@@ -60,7 +71,7 @@ func (grammemesSet Set) WriteTo(w io.Writer) (n int64, err error) {
 		return 0, fmt.Errorf("%w: writeTo: len: %v", ErrSet, err)
 	}
 
-	if written, err = w.Write(grammemesSet); err != nil {
+	if written, err = w.Write(grammemesSet.bytes()); err != nil {
 		return 1 + int64(written), fmt.Errorf("%v: writeTo: data: %w", ErrSet, err)
 	}
 
@@ -97,7 +108,10 @@ func (grammemesSet *Set) ReadFrom(r io.Reader) (totalBytesTaken int64, err error
 
 	bytesTaken += n
 	*grammemesSet = make(Set, expectedLen)
-	copy(*grammemesSet, data[0:expectedLen])
+
+	for idx, byteValue := range data[0:expectedLen] {
+		(*grammemesSet)[idx] = GrammemeID(byteValue)
+	}
 
 	return int64(bytesTaken), err
 }

@@ -9,10 +9,10 @@ import (
 
 func TestSetIdx_Find(t *testing.T) { //nolint:paralleltest
 	setIdxToTest := grammemes.SetIdx{
-		grammemes.Column{[]uint8{0}, []uint8{5}, []uint8{11}},
-		grammemes.Column{[]uint8{0, 1}, []uint8{1, 2}, []uint8{2, 3}},
-		grammemes.Column{[]uint8{1, 2, 3}, []uint8{1, 3, 4}, []uint8{2, 7, 10}},
-		grammemes.Column{[]uint8{1, 2, 3, 4}, []uint8{1, 3, 4, 5}, []uint8{6, 7, 9, 11}},
+		grammemes.Column{grammemes.Set{0}, grammemes.Set{5}, grammemes.Set{11}},
+		grammemes.Column{grammemes.Set{0, 1}, grammemes.Set{1, 2}, grammemes.Set{2, 3}},
+		grammemes.Column{grammemes.Set{1, 2, 3}, grammemes.Set{1, 3, 4}, grammemes.Set{2, 7, 10}},
+		grammemes.Column{grammemes.Set{1, 2, 3, 4}, grammemes.Set{1, 3, 4, 5}, grammemes.Set{6, 7, 9, 11}},
 		grammemes.Column{},
 	}
 
@@ -22,12 +22,12 @@ func TestSetIdx_Find(t *testing.T) { //nolint:paralleltest
 		want  grammemes.SetID
 		found bool
 	}{
-		{"not_found_in_empty_column", []uint8{1, 2, 3, 4, 5}, 0, false},
-		{"not_found_in_filled_column", []uint8{1, 2, 5}, 0, false},
-		{"found_among_other_in_column0", []uint8{0}, 0, true},
-		{"found_among_other_in_column1", []uint8{1, 2}, 257, true},
-		{"found_among_other_in_column2", []uint8{1, 3, 4}, 513, true},
-		{"found_among_other_in_column3", []uint8{1, 3, 4, 5}, 769, true},
+		{"not_found_in_empty_column", grammemes.Set{1, 2, 3, 4, 5}, 0, false},
+		{"not_found_in_filled_column", grammemes.Set{1, 2, 5}, 0, false},
+		{"found_among_other_in_column0", grammemes.Set{0}, 0, true},
+		{"found_among_other_in_column1", grammemes.Set{1, 2}, 257, true},
+		{"found_among_other_in_column2", grammemes.Set{1, 3, 4}, 513, true},
+		{"found_among_other_in_column3", grammemes.Set{1, 3, 4, 5}, 769, true},
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
@@ -48,10 +48,10 @@ func TestSetIdx_Index(t *testing.T) { //nolint:paralleltest
 		find grammemes.Set
 		want grammemes.SetID
 	}{
-		{"index_to_column0", []uint8{0}, 0},
-		{"index_to_column1", []uint8{1, 2}, 256},
-		{"index_to_column2", []uint8{1, 2, 5}, 512},
-		{"index_to_column3", []uint8{1, 2, 3, 4}, 768},
+		{"index_to_column0", grammemes.Set{0}, 0},
+		{"index_to_column1", grammemes.Set{1, 2}, 256},
+		{"index_to_column2", grammemes.Set{1, 2, 5}, 512},
+		{"index_to_column3", grammemes.Set{1, 2, 3, 4}, 768},
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
@@ -64,10 +64,10 @@ func TestSetIdx_Index(t *testing.T) { //nolint:paralleltest
 
 func TestSetIdx_Get(t *testing.T) { //nolint:paralleltest
 	setIdxToTest := grammemes.SetIdx{
-		grammemes.Column{[]uint8{0}, []uint8{5}, []uint8{11}},
-		grammemes.Column{[]uint8{0, 1}, []uint8{1, 2}, []uint8{2, 3}},
-		grammemes.Column{[]uint8{1, 2, 3}, []uint8{1, 3, 4}, []uint8{2, 7, 10}},
-		grammemes.Column{[]uint8{1, 2, 3, 4}, []uint8{1, 3, 4, 5}, []uint8{6, 7, 9, 11}},
+		grammemes.Column{grammemes.Set{0}, grammemes.Set{5}, grammemes.Set{11}},
+		grammemes.Column{grammemes.Set{0, 1}, grammemes.Set{1, 2}, grammemes.Set{2, 3}},
+		grammemes.Column{grammemes.Set{1, 2, 3}, grammemes.Set{1, 3, 4}, grammemes.Set{2, 7, 10}},
+		grammemes.Column{grammemes.Set{1, 2, 3, 4}, grammemes.Set{1, 3, 4, 5}, grammemes.Set{6, 7, 9, 11}},
 		grammemes.Column{},
 	}
 
@@ -79,10 +79,10 @@ func TestSetIdx_Get(t *testing.T) { //nolint:paralleltest
 	}{
 		{"not_found_in_empty_column", nil, 4*256 + 1, false},
 		{"not_found_in_filled_column", nil, 3, false},
-		{"found_in_column0", []uint8{0}, 0, true},
-		{"found_in_column1", []uint8{1, 2}, 257, true},
-		{"found_in_column2", []uint8{1, 3, 4}, 513, true},
-		{"found_in_column3", []uint8{1, 3, 4, 5}, 769, true},
+		{"found_in_column0", grammemes.Set{0}, 0, true},
+		{"found_in_column1", grammemes.Set{1, 2}, 257, true},
+		{"found_in_column2", grammemes.Set{1, 3, 4}, 513, true},
+		{"found_in_column3", grammemes.Set{1, 3, 4, 5}, 769, true},
 		{"missed_in_not_existed_column", nil, 2560, false},
 	} {
 		tt := tt
