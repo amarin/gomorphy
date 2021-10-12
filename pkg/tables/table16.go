@@ -6,6 +6,7 @@ import (
 )
 
 // Table16 stores unique ids.Set16 lists having equal length.
+// It Uses its own ID16 index to address target sets.set16 stack in addition to address element in stack.
 // Used in Collection16 to store different sized sets organized into stacks of equal-sized sets.
 type Table16 []sets.Set16
 

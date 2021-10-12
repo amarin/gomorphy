@@ -9,39 +9,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTable8_Find(t *testing.T) { //nolint:paralleltest
+func TestTable16_Find(t *testing.T) { //nolint:paralleltest
 	for _, tt := range []struct { //nolint:paralleltest
 		name  string
-		idx   tables.Table8
-		find  sets.Set8
-		want  ids.ID8
+		idx   tables.Table16
+		find  sets.Set16
+		want  ids.ID16
 		found bool
 	}{
 		{
 			"not_found_in_empty_column",
 			nil,
-			sets.Set8{1, 2, 3},
+			sets.Set16{1, 2, 3},
 			0,
 			false,
 		},
 		{
 			"not_found_in_filled_column",
-			tables.Table8{sets.Set8{1, 2, 4}, sets.Set8{2, 3, 4}, sets.Set8{0, 2}},
-			sets.Set8{1, 2, 3},
+			tables.Table16{sets.Set16{1, 2, 4}, sets.Set16{2, 3, 4}, sets.Set16{0, 2}},
+			sets.Set16{1, 2, 3},
 			0,
 			false,
 		},
 		{
 			"found_among_other",
-			tables.Table8{sets.Set8{2, 3, 4}, sets.Set8{0, 2}, sets.Set8{1, 2, 3}},
-			sets.Set8{1, 2, 3},
+			tables.Table16{sets.Set16{2, 3, 4}, sets.Set16{0, 2}, sets.Set16{1, 2, 3}},
+			sets.Set16{1, 2, 3},
 			2,
 			true,
 		},
 		{
 			"found_alone",
-			tables.Table8{sets.Set8{1, 2, 3}},
-			sets.Set8{1, 2, 3},
+			tables.Table16{sets.Set16{1, 2, 3}},
+			sets.Set16{1, 2, 3},
 			0,
 			true,
 		},
@@ -59,41 +59,41 @@ func TestTable8_Find(t *testing.T) { //nolint:paralleltest
 	}
 }
 
-func TestTable8_Index(t *testing.T) { //nolint:paralleltest
+func TestTable16_Index(t *testing.T) { //nolint:paralleltest
 	for _, tt := range []struct { //nolint:paralleltest
 		name string
-		idx  tables.Table8
-		find sets.Set8
-		want ids.ID8
+		idx  tables.Table16
+		find sets.Set16
+		want ids.ID16
 	}{
 		{
 			"indexed_first",
 			nil,
-			sets.Set8{1, 2, 3},
+			sets.Set16{1, 2, 3},
 			0,
 		},
 		{
 			"indexed_end",
-			tables.Table8{sets.Set8{1, 2, 4}, sets.Set8{2, 3, 4}, sets.Set8{0, 2}},
-			sets.Set8{1, 2, 3},
+			tables.Table16{sets.Set16{1, 2, 4}, sets.Set16{2, 3, 4}, sets.Set16{0, 2}},
+			sets.Set16{1, 2, 3},
 			3,
 		},
 		{
 			"found_bottom",
-			tables.Table8{sets.Set8{2, 3, 4}, sets.Set8{0, 2}, sets.Set8{1, 2, 3}},
-			sets.Set8{1, 2, 3},
+			tables.Table16{sets.Set16{2, 3, 4}, sets.Set16{0, 2}, sets.Set16{1, 2, 3}},
+			sets.Set16{1, 2, 3},
 			2,
 		},
 		{
 			"found_middle",
-			tables.Table8{sets.Set8{2, 3, 4}, sets.Set8{1, 2, 3}, sets.Set8{0, 2}},
-			sets.Set8{1, 2, 3},
+			tables.Table16{sets.Set16{2, 3, 4}, sets.Set16{1, 2, 3}, sets.Set16{0, 2}},
+			sets.Set16{1, 2, 3},
 			1,
 		},
 		{
 			"found_top",
-			tables.Table8{sets.Set8{1, 2, 3}},
-			sets.Set8{1, 2, 3},
+			tables.Table16{sets.Set16{1, 2, 3}},
+			sets.Set16{1, 2, 3},
 			0,
 		},
 	} {
