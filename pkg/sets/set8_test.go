@@ -9,10 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSet_Swap(t *testing.T) {
-	t.Parallel()
-
-	for _, tt := range []struct {
+func TestSet8_Swap(t *testing.T) { //nolint:paralleltest
+	for _, tt := range []struct { //nolint:paralleltest
 		name         string
 		grammemesSet sets.Set8
 		i            int
@@ -24,7 +22,6 @@ func TestSet_Swap(t *testing.T) {
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			tt := tt
 			wantI := tt.grammemesSet[tt.i]
 			wantJ := tt.grammemesSet[tt.j]
@@ -35,10 +32,8 @@ func TestSet_Swap(t *testing.T) {
 	}
 }
 
-func TestSet_Less(t *testing.T) {
-	t.Parallel()
-
-	for _, tt := range []struct {
+func TestSet8_Less(t *testing.T) { //nolint:paralleltest
+	for _, tt := range []struct { //nolint:paralleltest
 		name         string
 		grammemesSet sets.Set8
 		i            int
@@ -70,10 +65,8 @@ func TestSet_Less(t *testing.T) {
 	}
 }
 
-func TestSet_Sort(t *testing.T) {
-	t.Parallel()
-
-	for _, tt := range []struct {
+func TestSet8_Sort(t *testing.T) { //nolint:paralleltest
+	for _, tt := range []struct { //nolint:paralleltest
 		name      string
 		origin    sets.Set8
 		sortedSet sets.Set8
@@ -87,7 +80,6 @@ func TestSet_Sort(t *testing.T) {
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			tt := tt
 			tt.origin.Sort()
 			require.Equal(t, tt.sortedSet.Len(), tt.origin.Len())
@@ -96,10 +88,8 @@ func TestSet_Sort(t *testing.T) {
 	}
 }
 
-func TestSet_EqualTo(t *testing.T) {
-	t.Parallel()
-
-	for _, tt := range []struct {
+func TestSet8_EqualTo(t *testing.T) { //nolint:paralleltest
+	for _, tt := range []struct { //nolint:paralleltest
 		name         string
 		grammemesSet sets.Set8
 		another      sets.Set8
@@ -113,7 +103,6 @@ func TestSet_EqualTo(t *testing.T) {
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			tt := tt
 			require.Equal(t, tt.want, tt.grammemesSet.EqualTo(tt.another))
 			require.Equal(t, tt.want, tt.another.EqualTo(tt.grammemesSet))
@@ -121,10 +110,8 @@ func TestSet_EqualTo(t *testing.T) {
 	}
 }
 
-func TestSet_WriteTo(t *testing.T) {
-	t.Parallel()
-
-	for _, tt := range []struct {
+func TestSet8_WriteTo(t *testing.T) { //nolint:paralleltest
+	for _, tt := range []struct { //nolint:paralleltest
 		name         string
 		grammemesSet sets.Set8
 		wantW        string
@@ -139,7 +126,6 @@ func TestSet_WriteTo(t *testing.T) {
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			tt := tt
 			wantData, err := hex.DecodeString(tt.wantW)
 			require.NoError(t, err)
@@ -155,10 +141,8 @@ func TestSet_WriteTo(t *testing.T) {
 	}
 }
 
-func TestSet_ReadFrom(t *testing.T) {
-	t.Parallel()
-
-	for _, tt := range []struct {
+func TestSet8_ReadFrom(t *testing.T) { //nolint:paralleltest
+	for _, tt := range []struct { //nolint:paralleltest
 		name         string
 		grammemesSet sets.Set8
 		wantW        string
@@ -178,7 +162,6 @@ func TestSet_ReadFrom(t *testing.T) {
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			tt := tt
 			wantData, err := hex.DecodeString(tt.wantW)
 			require.NoError(t, err)

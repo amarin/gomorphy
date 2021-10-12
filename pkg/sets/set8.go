@@ -95,7 +95,7 @@ func (set8 *Set8) ReadFrom(r io.Reader) (totalBytesTaken int64, err error) {
 	bytesTaken += binutils.Uint8size
 	*set8 = make(Set8, expectedLen)
 
-	for i := 0; uint8(i) <= expectedLen; i++ {
+	for i := 0; uint8(i) < expectedLen; i++ {
 		if nextUint8, err = reader.ReadUint8(); err != nil {
 			return int64(bytesTaken), fmt.Errorf("%v: readFrom: data[%v]: %w", ErrSet8, i, err)
 		}

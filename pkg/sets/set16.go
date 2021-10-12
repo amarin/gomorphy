@@ -1,4 +1,4 @@
-package sets // nolint:godupl
+package sets //nolint:godupl
 
 import (
 	"fmt"
@@ -95,7 +95,7 @@ func (set16 *Set16) ReadFrom(r io.Reader) (totalBytesTaken int64, err error) {
 	bytesTaken += binutils.Uint16size
 	*set16 = make(Set16, expectedLen)
 
-	for i := 0; uint16(i) <= expectedLen; i++ {
+	for i := 0; uint16(i) < expectedLen; i++ {
 		if nextUint16, err = reader.ReadUint16(); err != nil {
 			return int64(bytesTaken), fmt.Errorf("%v: readFrom: data[%v]: %w", ErrSet16, i, err)
 		}
