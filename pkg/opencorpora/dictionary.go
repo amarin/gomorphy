@@ -1,27 +1,46 @@
 package opencorpora
 
-// Словарь OpenCorpora является корневым контейнером XML-представления словаря.
-// Словарь доступен для загрузки по адресу http://opencorpora.org/?page=downloads
-// Описание формата http://opencorpora.org/?page=export
-// Словарь представляет собой файл XML в кодировке utf-8.
-// Сам словарь доступен по одной из ссылок:
-// - Упакованный архив BZip2: http://opencorpora.org/files/export/dict/dict.opcorpora.xml.bz2
-// - Упакованный архив Zip: http://opencorpora.org/files/export/dict/dict.opcorpora.xml.zip
+import (
+	"encoding/xml"
+	"fmt"
+	"strconv"
+)
 
-// Dictionary реализует структуру словаря.
+// Dictionary represents OpenCorpora dictionary utf-8 XML root.
+// Source file available by link http://opencorpora.org/?page=downloads,
+// file format described by http://opencorpora.org/?page=export.
+// Latest packed dictionary available in BZip2 at http://opencorpora.org/files/export/dict/dict.opcorpora.xml.bz2
+// or as Zip at http://opencorpora.org/files/export/dict/dict.opcorpora.xml.zip.
 type Dictionary struct {
-	// Версия словаря
+	// VersionAttr contains dictionary version.
 	VersionAttr float64 `xml:"version,attr"`
-	// Номер ревизии на момент импорта
+	// RevisionAttr provides revision number.
 	RevisionAttr int `xml:"revision,attr"`
-	// Граммемы (грамматические категории)
+	// Grammemes provides grammar categories definitions.
 	Grammemes *Grammemes `xml:"grammemes"`
-	// Ограничения и требования на применение категорий
+	// Restrictions provides categories application restrictions.
 	Restrictions *Restrictions `xml:"restrictions"`
-	// Список лемм
+	// Lemmata provides main dictionary lemma set.
 	Lemmata *Lemmata `xml:"lemmata"`
-	// Типы связей между леммами
+	// Linktypes provides lemma link types.
 	Linktypes *LinkTypes `xml:"link_types"`
-	// Связи между леммами
+	// Links provides lemma links.
 	Links *Links `xml:"links"`
+}
+
+func (dictionary *Dictionary) processElem(parser *Parser, element xml.StartElement) (err error) {
+	for _, attr := range element.Attr {
+		switch attr.Name.Local {
+		case "version":
+			if dictionary.VersionAttr, err = strconv.ParseFloat(attr.Value, 32); err != nil {
+				return fmt.Errorf("%w: parse: dictionary.version: `%v`: %v", Error, attr.Value, err)
+			}
+		case "revision":
+			if parser.dictionary.RevisionAttr, err = strconv.Atoi(attr.Value); err != nil {
+				return fmt.Errorf("%w: parse: dictionary.revision: `%v`: %v", Error, attr.Value, err)
+			}
+		}
+	}
+
+	return nil
 }

@@ -1,10 +1,10 @@
 package grammemes
 
 import (
-	"github.com/amarin/gomorphy/internal/grammeme"
+	grammeme2 "github.com/amarin/gomorphy/pkg/dag"
 )
 
 // GrammemeIndexer задаёт интерфейс для типов, возвращающих индекс граммем
 type GrammemeIndexer interface {
-	GrammemeIndex() *grammeme.Index
+	GrammemeIndex() *grammeme2.Idx
 }

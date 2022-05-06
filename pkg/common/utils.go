@@ -1,10 +1,14 @@
 package common
 
 import (
+	"errors"
 	"os"
 	"path"
 	"path/filepath"
 )
+
+// ErrPath represents filepath related errors.
+var ErrPath = errors.New("path")
 
 func GetDataPath() string {
 	return ".data"

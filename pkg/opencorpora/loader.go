@@ -8,35 +8,32 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"strconv"
 	"time"
 
+	"git.media-tel.ru/railgo/logging"
 	"github.com/amarin/binutils"
-	"github.com/amarin/gomorphy/internal/grammeme"
 	"github.com/amarin/libxml"
-	"github.com/sirupsen/logrus"
 
-	"github.com/amarin/gomorphy/internal/text"
+	"github.com/amarin/gomorphy/internal/index"
 	"github.com/amarin/gomorphy/pkg/common"
-	"github.com/amarin/gomorphy/pkg/words"
 )
 
-// OpenCorporaLoader обрабатывает леммы, полученные из словаря.
+// Loader provides OpenCorpora dictionary parsing utilities.
 type Loader struct {
-	logger   *logrus.Logger
-	dataPath string
+	logging.Logger
+	dataPath   string
+	stringData string
 }
 
-func NewLoader(logger *logrus.Logger, dataPath string) *Loader {
-	if logger == nil {
-		logger = logrus.StandardLogger()
-	}
-
+func NewLoader(dataPath string) *Loader {
 	if dataPath == "" {
 		dataPath = common.DomainDataPath(DomainName)
 	}
 
-	return &Loader{logger: logger, dataPath: dataPath}
+	return &Loader{
+		Logger:   logging.NewNamedLogger("loader").WithLevel(logging.LevelDebug),
+		dataPath: dataPath,
+	}
 }
 
 func (loader Loader) DataPath() string {
@@ -55,214 +52,6 @@ func (loader Loader) filePath(fileName string) string {
 	return path.Join(loader.DataPath(), fileName)
 }
 
-func lemmaToForms(index *grammeme.Index, lemma *Lemma) ([]*words.Word, error) {
-	res := make([]*words.Word, len(lemma.F)+1)
-
-	mainForm, err := lemma.L.Word(index)
-	if err != nil {
-		return nil, WrapOpenCorporaErrorf(err, "cant take main form word")
-	}
-
-	res[0] = mainForm
-
-	for idx, form := range lemma.F {
-		word, err := form.Word(index)
-		if err != nil {
-			return nil, WrapOpenCorporaErrorf(err, "cant take form word")
-		}
-
-		res[idx+1] = word
-	}
-
-	return res, nil
-}
-
-// Скомпилировать данные Lemmata из словаря XML в двоичный файл.
-func (loader Loader) CompileLemmata(grammemesIndex *grammeme.Index, fromFile string, toFile string) error {
-	loader.logger.Info("compile lemmata")
-	// make tokens channel
-	tokensChanBuffer := 50
-	calculateAvgEvery := 5000
-	tokensChan := make(chan Lemma, tokensChanBuffer)
-	// and dont forget to close it
-	defer close(tokensChan)
-
-	loader.logger.Debug("create grammemes index")
-	// setup words index
-	wordsIndex := words.NewIndex(grammemesIndex)
-
-	loader.logger.Debug("define grabber")
-	// define grabber
-	idx := 0
-	started := time.Now()
-	grabber := libxml.NewXmlTargetGrabber("lemma", "", Lemma{}, func(i interface{}) error {
-		token, ok := i.(*Lemma)
-		if !ok {
-			return fmt.Errorf("%w: %T", common.ErrUnexpectedItem, i)
-		}
-		idx++
-		if idx%calculateAvgEvery == 0 {
-			avg := float64(idx) / float64(time.Since(started)/time.Second)
-			loader.logger.Infof("Process lemma %v avg %.0f tps", idx, avg)
-		}
-		forms, err := lemmaToForms(grammemesIndex, token)
-		if err != nil {
-			return fmt.Errorf("lemma to forms: %w", err)
-		}
-		for _, form := range forms {
-			if err := wordsIndex.AddWord(form); err != nil {
-				return fmt.Errorf("add word: %w", err)
-			}
-		}
-		return nil
-	})
-
-	loader.logger.Debug("grab lemmata data")
-	// start stream parse
-	err := libxml.ParseXMLFile(fromFile, grabber)
-	if err != nil {
-		return fmt.Errorf("parse: %w", err)
-	}
-
-	loader.logger.Info("save lemmata index")
-	// save lemmata to file
-	if err = binutils.SaveBinary(toFile, wordsIndex); err != nil {
-		return fmt.Errorf("save: %w", err)
-	}
-
-	loader.logger.Info("compile lemmata")
-
-	return nil
-}
-
-// translateToIndexGrammeme translates opencorpora_update grammeme to index grammeme.
-func (loader Loader) translateToIndexGrammeme(grammeme Grammeme) grammeme.Grammeme {
-	return grammeme.Grammeme{
-		ParentAttr:  grammeme.ParentAttr,
-		Name:        grammeme.Name,
-		Alias:       text.RussianText(grammeme.Alias),
-		Description: text.RussianText(grammeme.Description),
-	}
-}
-
-// CompileGrammemes компилирует индекс граммем из словаря OpenCorpora XML в двоичный файл.
-func (loader Loader) CompileGrammemes() error {
-	var (
-		ocGrammemes             Grammemes
-		secondStage, thirdStage []Grammeme
-		fromFile, toFile        = loader.unpackedFilePath(), loader.GrammemesIndexFilePath()
-	)
-	loader.logger.Info("compile grammemes index")
-
-	// define grabber
-	grammemesIdx := 0
-	grabber := libxml.NewXmlTargetGrabber("grammeme", "", Grammeme{}, func(i interface{}) error {
-		grammemesIdx++
-		loader.logger.Debug("got grammeme ", strconv.Itoa(grammemesIdx))
-		if grammeme, ok := i.(*Grammeme); ok {
-			ocGrammemes.Grammeme = append(ocGrammemes.Grammeme, grammeme)
-		} else {
-			return fmt.Errorf("%w: %T", common.ErrUnexpectedItem, i)
-		}
-		return nil
-	})
-
-	loader.logger.Info("load lemmata data")
-	// start stream parser
-	if err := libxml.ParseXMLFile(fromFile, grabber); err != nil {
-		return err
-	}
-
-	loader.logger.Info("append root grammemes")
-	// init empty index
-	grammemeIndex := grammeme.NewIndex()
-	// add root grammemes first and depended of that roots
-	for _, grammeme := range ocGrammemes.Grammeme {
-		if grammeme.ParentAttr == "" {
-			if err := grammemeIndex.Add(loader.translateToIndexGrammeme(*grammeme)); err != nil {
-				return err
-			}
-		} else if err, _ := grammemeIndex.ByName(grammeme.ParentAttr); err != nil {
-			secondStage = append(secondStage, *grammeme)
-		} else if err := grammemeIndex.Add(loader.translateToIndexGrammeme(*grammeme)); err != nil {
-			secondStage = append(secondStage, *grammeme)
-		}
-	}
-
-	loader.logger.Infof("append %d secondary grammemes", len(secondStage))
-	// add second stage grammemes. Some may depend of it, so store third stage list
-	for _, grammeme := range secondStage {
-		if err := grammemeIndex.Add(loader.translateToIndexGrammeme(grammeme)); err != nil {
-			thirdStage = append(thirdStage, grammeme)
-		}
-	}
-
-	loader.logger.Infof("append %d rest of grammemes", len(thirdStage))
-	// add rest of grammemes.
-	for _, grammeme := range thirdStage {
-		if err := grammemeIndex.Add(loader.translateToIndexGrammeme(grammeme)); err != nil {
-			return err
-		}
-	}
-
-	loader.logger.Info("write grammemes index")
-	// write grammemes index to file.
-	if err := binutils.SaveBinary(toFile, grammemeIndex); err != nil {
-		return err
-	} else {
-		return nil
-	}
-}
-
-// LoadGrammemes загружает индекс граммем.
-func (loader Loader) LoadGrammemes() (*grammeme.Index, error) {
-	loader.logger.Info("loading grammemes index")
-
-	grammemesIndex := grammeme.NewIndex()
-
-	if err := binutils.LoadBinary(loader.GrammemesIndexFilePath(), grammemesIndex); err != nil {
-		return nil, err
-	} else {
-		return grammemesIndex, nil
-	}
-}
-
-// LoadLemmata загружает компилированный словарь.
-func (loader Loader) LoadLemmata(grammemesIndex *grammeme.Index) (*words.Index, error) {
-	loader.logger.Info("loading lemmata using grammemes index")
-
-	loader.logger.Debug("setup words index")
-
-	lemmata := words.NewIndex(grammemesIndex)
-
-	loader.logger.Debug("load binary index")
-
-	if err := binutils.LoadBinary(loader.compiledFilePath(), lemmata); err != nil {
-		return nil, err
-	}
-
-	return lemmata, nil
-}
-
-// LoadLemmata загружает компилированный словарь.
-func (loader Loader) Lemmata() (lemmata *words.Index, err error) {
-	loader.logger.Info("take lemmata")
-
-	var grammemesIndex *grammeme.Index
-	grammemesIndex, err = loader.LoadGrammemes()
-
-	if err != nil {
-		return nil, err
-	}
-
-	lemmata, err = loader.LoadLemmata(grammemesIndex)
-	if err := binutils.LoadBinary(loader.compiledFilePath(), lemmata); err != nil {
-		return nil, err
-	}
-
-	return lemmata, nil
-}
-
 // unpackedFilePath returns path to unpacked lemmata file.
 func (loader Loader) downloadedFilePath() string {
 	return loader.filePath(LocalSourceFilename)
@@ -278,26 +67,82 @@ func (loader Loader) compiledFilePath() string {
 	return loader.filePath(LocalCompiledFilename)
 }
 
-// grammemesIndexFilePath returns path to compiled grammemes index file.
-func (loader Loader) GrammemesIndexFilePath() string {
-	return loader.filePath(GrammemesIndexFilename)
+// IsDownloadExists returns true if downloaded file exists at expected path.
+func (loader Loader) IsDownloadExists() bool {
+	loader.Info("check if downloaded file exists")
+	expectedFile := loader.downloadedFilePath()
+	loader.Debugf("check file %v", expectedFile)
+	fileStat, err := os.Stat(expectedFile)
+	switch {
+	case err != nil && errors.Is(err, os.ErrNotExist):
+		loader.Debugf("file not exists at %v", expectedFile)
+
+		return false // no file
+	case err != nil:
+		loader.Debugf("file access: %v: %v", expectedFile, err)
+
+		return false // no file
+	default:
+		modTimeFormat := "2006-01-02T15:04:05Z07:00"
+		loader.Debugf(
+			"exists: %s: modified %s: size %d",
+			expectedFile, fileStat.ModTime().Format(modTimeFormat), fileStat.Size())
+
+		return true
+	}
+}
+
+// IsUnpackedExists returns true if downloaded and unpacked file exists at expected path.
+func (loader Loader) IsUnpackedExists() bool {
+	loader.Info("check if unpacked file exists")
+	expectedFile := loader.unpackedFilePath()
+	loader.Debugf("check file %v", expectedFile)
+	fileStat, err := os.Stat(expectedFile)
+	switch {
+	case err != nil && errors.Is(err, os.ErrNotExist):
+		loader.Debugf("file not exists at %v", expectedFile)
+
+		return false // no file
+	case err != nil:
+		loader.Debugf("file access: %v: %v", expectedFile, err)
+
+		return false // no file
+	default:
+		modTimeFormat := "2006-01-02T15:04:05Z07:00"
+		loader.Debugf(
+			"exists: %s: modified %s: size %d",
+			expectedFile, fileStat.ModTime().Format(modTimeFormat), fileStat.Size())
+
+		return true
+	}
 }
 
 func (loader Loader) IsUpdateRequired() (bool, error) {
-	fileStat, err := os.Stat(loader.downloadedFilePath())
+	loader.Info("check if update required")
+	expectedFile := loader.downloadedFilePath()
+	loader.Debugf("check file %v", expectedFile)
+	fileStat, err := os.Stat(expectedFile)
 	if err != nil && errors.Is(err, os.ErrNotExist) {
+		loader.Debugf("file not exists, update required: %v", expectedFile)
+
 		return true, nil // no file, update required
 	}
-	// Get the response bytes from the url
+
+	loader.Debugf("check remote %v", RemoteURL)
 	response, err := http.Head(RemoteURL)
 	if err != nil {
+		loader.Warnf("remote %v: error: %v", RemoteURL, err)
 		return false, err
 	}
+
 	if response.StatusCode != 200 {
+		loader.Warnf("remote %v: status: %v", RemoteURL, response.StatusCode)
 		return false, fmt.Errorf("unexpected response code %v", response.StatusCode)
 	}
+
 	lastModifiedString, ok := response.Header[common.HTTPHeaderLastModified]
 	if ok && len(lastModifiedString) > 0 {
+		loader.Debugf("remote %v: %v", common.HTTPHeaderLastModified, lastModifiedString)
 		lastModified, err := time.Parse(time.RFC1123, lastModifiedString[0])
 		if err != nil {
 			return true, nil // cant compare lastModified, do update
@@ -305,6 +150,8 @@ func (loader Loader) IsUpdateRequired() (bool, error) {
 		if lastModified.After(fileStat.ModTime()) {
 			return true, nil // site version is older then local
 		}
+	} else {
+		loader.Debugf("remote %v: missed, assume no update required", common.HTTPHeaderLastModified)
 	}
 
 	return false, nil // site version is older then local
@@ -387,68 +234,141 @@ func (loader Loader) UnpackUpdate() (err error) {
 	return nil
 }
 
+func (loader *Loader) LoadIndex() (mainIndex *index.Index, err error) {
+	var reader *binutils.BinaryReader
+
+	fromFile := loader.compiledFilePath()
+
+	loader.Debugf("opening %v", fromFile)
+	if reader, err = binutils.OpenFile(fromFile); err != nil {
+		return nil, fmt.Errorf("%w: open index: %v", Error, err)
+	}
+
+	defer func() {
+		loader.Debugf("loading finished %v", fromFile)
+		if closeErr := reader.Close(); err != nil {
+			loader.Warnf("close index: %v", closeErr)
+		}
+
+		if err != nil {
+			loader.Error(err.Error())
+		} else {
+			loader.Infof("compiled index loaded from %v", fromFile)
+		}
+	}()
+
+	loader.Debug("create index instance")
+	mainIndex = index.New()
+
+	loader.Debug("load index data")
+	if _, err = mainIndex.BinaryReadFrom(reader); err != nil {
+		return nil, fmt.Errorf("%w: read index: %v", Error, err)
+	}
+
+	return mainIndex, nil
+}
+
+func (loader *Loader) SaveIndex(mainIndex *index.Index, toFile string) (err error) {
+	var writer *binutils.BinaryWriter
+
+	if writer, err = binutils.CreateFile(toFile); err != nil {
+		return fmt.Errorf("%w: create index: %v", Error, err)
+	}
+
+	defer func() {
+		loader.Debugf("finishing %v", toFile)
+		if closeErr := writer.Close(); err != nil {
+			loader.Warnf("close index: %v", closeErr)
+		}
+
+		if err != nil {
+			loader.Error(err.Error())
+
+			if removeErr := os.Remove(toFile); removeErr != nil {
+				loader.Warnf("remove incomplete index: %v", removeErr)
+			}
+		} else {
+			loader.Infof("compiled index saved at %v", toFile)
+		}
+	}()
+
+	if err = mainIndex.BinaryWriteTo(writer); err != nil {
+		return fmt.Errorf("%w: save index: %v", Error, err)
+	}
+
+	return nil
+}
+
+func (loader *Loader) ParseUpdate(fromFile string, toFile string) (err error) {
+	loader.Info("start parse")
+	mainIndex := index.New()
+	parser := newParser(mainIndex)
+	if err = libxml.ParseXMLFile(fromFile, parser); err != nil {
+		return fmt.Errorf("parse: %w", err)
+	}
+
+	return loader.SaveIndex(mainIndex, toFile)
+}
+
 func (loader Loader) Update(forceRecompile bool) (err error) {
-	var updated, updateRequired bool
+	var updated, updateRequired, downloadedExists, unpackedExists bool
 
-	var grammemesIndex *grammeme.Index
-
-	loader.logger.Info("check OpenCorpora updates")
+	loader.Info("check OpenCorpora updates")
 
 	updateRequired, err = loader.IsUpdateRequired()
+	downloadedExists = loader.IsDownloadExists()
+	unpackedExists = loader.IsUnpackedExists()
 
 	switch {
+	case err != nil && forceRecompile && unpackedExists:
+		loader.Errorf("check update: %v, force recompile using previous unpacked file", err)
+		goto compile
+	case err != nil && forceRecompile && downloadedExists:
+		loader.Errorf("check update: %v, force recompile using previous downloaded file", err)
+		goto unpack
 	case err != nil:
-		loader.logger.Errorf("check update: %v", err)
+		loader.Errorf("check update: %v", err)
 		return err
 	case !updateRequired:
-		loader.logger.Info("lemmata up to date")
+		loader.Info("lemmata up to date")
 
 		if forceRecompile {
+			loader.Info("do recompile as force update required")
 			goto compile
 		}
 
 		return nil
 
 	default:
-		loader.logger.Info("update required, downloading")
+		loader.Info("update required, downloading")
 	}
 
 	updated, err = loader.DownloadUpdate()
 
 	switch {
 	case err != nil:
-		loader.logger.Errorf("download: %v", err)
+		loader.Errorf("download: %v", err)
 		return err
 	case !updated:
-		loader.logger.Warn("files not updated, no errors")
+		loader.Warn("files not updated, no errors")
 		return nil
 	default:
-		loader.logger.Info("downloaded, unpacking")
+		loader.Info("downloaded, unpacking")
 	}
-
+unpack:
 	err = loader.UnpackUpdate()
 
 	switch {
 	case err != nil:
-		loader.logger.Errorf("unpack: %v", err)
+		loader.Errorf("unpack: %v", err)
 		return err
 	default:
-		loader.logger.Info("lemmata updated, compile")
+		loader.Info("lemmata updated, compile")
 	}
 
 compile:
-	if err = loader.CompileGrammemes(); err != nil {
-		loader.logger.Errorf("compile: %v", err)
-		return err
-	}
-
-	if grammemesIndex, err = loader.LoadGrammemes(); err != nil {
-		loader.logger.Errorf("load grammemes index: %v", err)
-		return err
-	}
-
-	if err = loader.CompileLemmata(grammemesIndex, loader.unpackedFilePath(), loader.compiledFilePath()); err != nil {
-		loader.logger.Errorf("compile: %v", err)
+	if err = loader.ParseUpdate(loader.unpackedFilePath(), loader.compiledFilePath()); err != nil {
+		loader.Errorf("compile: %v", err)
 		return err
 	}
 

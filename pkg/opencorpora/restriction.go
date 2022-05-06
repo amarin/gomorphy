@@ -27,7 +27,7 @@ type Restriction struct {
 	Right *RestrictionItem `xml:"right"`
 }
 
-// Список ограничений задаёт все известные ограничения и требования совместного использования категорий.
+// Restrictions Список ограничений задаёт все известные ограничения и требования совместного использования категорий.
 type Restrictions struct {
 	// Список ограничений
 	Restr []*Restriction `xml:"restr"`

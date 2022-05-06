@@ -1,12 +1,11 @@
 package opencorpora
 
-// Lemmata содержит полный корпус слов OpenCorpora.
+// Lemmata provides OpenCorpora lemma corpus.
 type Lemmata struct {
 	Items LemmaList `xml:"lemma"`
 }
 
-// Search позволяет найти вхождения слова в корпус.
-// Возвращает список найденных вхождений или пустой список, если вхождений не найдено.
+// Search returns lemma list for specified word or empty list if nothing found.
 func (l Lemmata) Search(word string) (lemmaList []Lemma) {
 	return l.Items.Search(word)
 }
