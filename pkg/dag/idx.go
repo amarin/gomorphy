@@ -43,29 +43,22 @@ func NewIndex(knownTags ...Tag) Idx {
 // BinaryReadFrom reads Idx data using specified binutils.BinaryReader instance.
 // Returns error if happens or nil.
 // Implements binutils.BinaryReaderFrom.
-func (tagsIndex *Idx) BinaryReadFrom(reader *binutils.BinaryReader) (n int64, err error) {
-	var (
-		tagsBytes int64
-		listLen   uint8
-	)
+func (tagsIndex *Idx) BinaryReadFrom(reader *binutils.BinaryReader) (err error) {
+	var listLen uint8
 
 	if listLen, err = reader.ReadUint8(); err != nil {
-		return 0, fmt.Errorf("%w: read length byte: %v", common.ErrUnmarshal, err)
+		return fmt.Errorf("%w: read length byte: %v", common.ErrUnmarshal, err)
 	}
-
-	n++ // register length byte taken
 
 	*tagsIndex = make(Idx, listLen) // allocate space
 
 	for idx := 0; idx < int(listLen); idx++ {
-		if tagsBytes, err = (*tagsIndex)[idx].BinaryReadFrom(reader); err != nil {
-			return n, fmt.Errorf("%w: read %d indexed: %v", common.ErrUnmarshal, idx, err)
+		if err = (*tagsIndex)[idx].BinaryReadFrom(reader); err != nil {
+			return fmt.Errorf("%w: read %d indexed: %v", common.ErrUnmarshal, idx, err)
 		}
-
-		n += tagsBytes
 	}
 
-	return n, nil
+	return nil
 }
 
 // BinaryWriteTo writes Idx data using specified binutils.BinaryWriter instance.

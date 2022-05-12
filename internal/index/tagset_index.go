@@ -37,28 +37,21 @@ func (tagSetIndex TagSetIndex) BinaryWriteTo(writer *binutils.BinaryWriter) (err
 // BinaryReadFrom reads TagSetIndex data using specified binutils.BinaryReader instance.
 // Returns error if happens or nil.
 // Implements binutils.BinaryReaderFrom.
-func (tagSetIndex *TagSetIndex) BinaryReadFrom(reader *binutils.BinaryReader) (n int64, err error) {
-	var (
-		tagSetIndexLen    uint32
-		currentBytesTaken int64
-	)
-
-	bytesTaken := int64(0)
+func (tagSetIndex *TagSetIndex) BinaryReadFrom(reader *binutils.BinaryReader) (err error) {
+	var tagSetIndexLen uint32
 
 	if tagSetIndexLen, err = reader.ReadUint32(); err != nil {
-		return bytesTaken, fmt.Errorf("%w: read: tagset: %v", Error, err)
+		return fmt.Errorf("%w: read: tagset: %v", Error, err)
 	}
-	bytesTaken += binutils.Uint32size
 
 	*tagSetIndex = make(TagSetIndex, tagSetIndexLen)
 	for idx := 0; idx < int(tagSetIndexLen); idx++ {
-		if currentBytesTaken, err = (*tagSetIndex)[idx].BinaryReadFrom(reader); err != nil {
-			return bytesTaken, fmt.Errorf("%w: read: tagset: %v", Error, err)
+		if err = (*tagSetIndex)[idx].BinaryReadFrom(reader); err != nil {
+			return fmt.Errorf("%w: read: tagset: %v", Error, err)
 		}
-		bytesTaken += currentBytesTaken
 	}
 
-	return bytesTaken, nil
+	return nil
 }
 
 // Find returns 0-based index of ids.Set16 item in TagSetIndex array.

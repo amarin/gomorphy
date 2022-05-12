@@ -35,28 +35,21 @@ func (tagSetIndex TableIDCollectionIndex) BinaryWriteTo(writer *binutils.BinaryW
 // BinaryReadFrom reads CollectionTable data using specified binutils.BinaryReader instance.
 // Returns error if happens or nil.
 // Implements binutils.BinaryReaderFrom.
-func (tagSetIndex *TableIDCollectionIndex) BinaryReadFrom(reader *binutils.BinaryReader) (n int64, err error) {
-	var (
-		tagSetIndexLen uint8
-		currentBytes   int64
-	)
-
-	n = 0
+func (tagSetIndex *TableIDCollectionIndex) BinaryReadFrom(reader *binutils.BinaryReader) (err error) {
+	var tagSetIndexLen uint8
 
 	if tagSetIndexLen, err = reader.ReadUint8(); err != nil {
-		return n, fmt.Errorf("%w: read: tagset: %v", Error, err)
+		return fmt.Errorf("%w: read: tagset: %v", Error, err)
 	}
-	n += binutils.Uint8size
 
 	*tagSetIndex = make(TableIDCollectionIndex, tagSetIndexLen)
 	for idx := 0; idx < int(tagSetIndexLen); idx++ {
-		if currentBytes, err = (*tagSetIndex)[idx].BinaryReadFrom(reader); err != nil {
-			return n, fmt.Errorf("%w: read: tagset: %v", Error, err)
+		if err = (*tagSetIndex)[idx].BinaryReadFrom(reader); err != nil {
+			return fmt.Errorf("%w: read: tagset: %v", Error, err)
 		}
-		n += currentBytes
 	}
 
-	return n, nil
+	return nil
 }
 
 // Find returns 0-based index of ids.Set16 item in TagSetIndex array.

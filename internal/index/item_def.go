@@ -21,35 +21,31 @@ type Item struct {
 }
 
 // BinaryReadFrom reads item data using supplied binutils.BinaryReader.
-func (i *Item) BinaryReadFrom(reader *binutils.BinaryReader) (n int64, err error) {
+// Implements binutils.BinaryReaderFrom.
+func (i *Item) BinaryReadFrom(reader *binutils.BinaryReader) (err error) {
 	var readUint32 uint32
-	n = 0
 
 	if readUint32, err = reader.ReadUint32(); err != nil {
-		return n, err
+		return err
 	}
 	i.Parent = dag.ID(readUint32)
-	n += binutils.Uint32size
 
 	if readUint32, err = reader.ReadUint32(); err != nil {
-		return n, err
+		return err
 	}
 	i.ID = dag.ID(readUint32)
-	n += binutils.Uint32size
 
 	if readUint32, err = reader.ReadUint32(); err != nil {
-		return n, err
+		return err
 	}
 	i.Letter = rune(readUint32)
-	n += binutils.RuneSize
 
 	if readUint32, err = reader.ReadUint32(); err != nil {
-		return n, err
+		return err
 	}
 	i.Variants = CollectionID(readUint32)
-	n += binutils.Uint32size
 
-	return n, nil
+	return nil
 }
 
 // BinaryWriteTo writes item data using binutils.BinaryWriter.

@@ -2,8 +2,7 @@ package opencorpora_test
 
 import (
 	"testing"
-
-	. "github.com/amarin/gomorphy/pkg/opencorpora"
+	// . "github.com/amarin/gomorphy/pkg/opencorpora"
 )
 
 func TestF_getTagsFromSet(t *testing.T) {

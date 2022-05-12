@@ -9,6 +9,13 @@ import (
 	"github.com/amarin/gomorphy/pkg/dag"
 )
 
+const (
+	binaryTagsPrefix     = "TD"
+	binaryTagSetPrefix   = "TS"
+	binaryColIdxPrefix   = "CD"
+	binaryItemsIdxPrefix = "ID"
+)
+
 // Index implements main dictionary index.
 type Index struct {
 	mu            *sync.Mutex            // protect internals below
@@ -37,40 +44,120 @@ func (index *Index) BinaryWriteTo(writer *binutils.BinaryWriter) (err error) {
 	index.mu.Lock()
 	defer index.mu.Unlock()
 
-	if err = index.tags.BinaryWriteTo(writer); err != nil {
-		return fmt.Errorf("%w: write: tags index: %v", Error, err)
+	if err = index.writeTagsDefinitions(writer); err != nil {
+		return err
 	}
-	if err = index.tagSets.BinaryWriteTo(writer); err != nil {
-		return fmt.Errorf("%w: write: tags sets index: %v", Error, err)
+	if err = index.writeTagSetsDefinitions(writer); err != nil {
+		return err
+	}
+	if err = writer.WriteStringZ(binaryColIdxPrefix); err != nil {
+		return fmt.Errorf("%w: write: tags prefix: %v", Error, err)
 	}
 	if err = index.collectionIdx.BinaryWriteTo(writer); err != nil {
 		return fmt.Errorf("%w: write: tags set collections index: %v", Error, err)
 	}
+	if err = writer.WriteStringZ(binaryItemsIdxPrefix); err != nil {
+		return fmt.Errorf("%w: write: tags prefix: %v", Error, err)
+	}
 	if err = index.items.BinaryWriteTo(writer); err != nil {
 		return fmt.Errorf("%w: write: tags set collections index: %v", Error, err)
 	}
-	// if err = index.roots.BinaryWriteTo(writer); err != nil {
-	// 	return fmt.Errorf("%w: write: roots index: %v", Error, err)
-	// }
 
 	return nil
 }
 
-func (index *Index) BinaryReadFrom(reader *binutils.BinaryReader) (n int64, err error) {
+// writeTagsDefinitions writes tags index into specified binutils.BinaryWriter.
+// A companion of readTagsDefinitions.
+// Used from BinaryWriteTo.
+func (index *Index) writeTagsDefinitions(writer *binutils.BinaryWriter) (err error) {
 	index.mu.Lock()
 	defer index.mu.Unlock()
 
-	if _, err = index.tags.BinaryReadFrom(reader); err != nil {
-		return 0, fmt.Errorf("%w: write: tags index: %v", Error, err)
+	if err = writer.WriteStringZ(binaryTagsPrefix); err != nil {
+		return fmt.Errorf("%w: write: tags prefix: %v", Error, err)
 	}
-	if _, err = index.tagSets.BinaryReadFrom(reader); err != nil {
-		return 0, fmt.Errorf("%w: write: tags sets index: %v", Error, err)
+	if err = index.tags.BinaryWriteTo(writer); err != nil {
+		return fmt.Errorf("%w: write: tags index: %v", Error, err)
 	}
-	if _, err = index.collectionIdx.BinaryReadFrom(reader); err != nil {
-		return 0, fmt.Errorf("%w: write: tags set collections index: %v", Error, err)
+
+	return nil
+}
+
+// readTagsDefinitions reads tags index from specified binutils.BinaryReader.
+// A companion of writeTagsDefinitions.
+// Used from BinaryReadFrom.
+func (index *Index) readTagsDefinitions(reader *binutils.BinaryReader) (err error) {
+	var section string
+
+	if section, err = reader.ReadStringZ(); err != nil {
+		return fmt.Errorf("%w: read: tags prefix: %v", Error, err)
 	}
-	if _, err = index.items.BinaryReadFrom(reader); err != nil {
-		return 0, fmt.Errorf("%w: write: tags set collections index: %v", Error, err)
+	if section != binaryTagsPrefix {
+		return fmt.Errorf("%w: read: expected section %v ", Error, binaryTagsPrefix)
+	}
+
+	if err = index.tags.BinaryReadFrom(reader); err != nil {
+		return fmt.Errorf("%w: read: tags index: %v", Error, err)
+	}
+
+	return nil
+}
+
+// writeTagsDefinitions writes tags index into specified binutils.BinaryWriter.
+// A companion of readTagsDefinitions.
+// Used from BinaryWriteTo.
+func (index *Index) writeTagSetsDefinitions(writer *binutils.BinaryWriter) (err error) {
+	index.mu.Lock()
+	defer index.mu.Unlock()
+
+	if err = writer.WriteStringZ(binaryTagSetPrefix); err != nil {
+		return fmt.Errorf("%w: write: tags prefix: %v", Error, err)
+	}
+	if err = index.tagSets.BinaryWriteTo(writer); err != nil {
+		return fmt.Errorf("%w: write: tags sets index: %v", Error, err)
+	}
+
+	return nil
+}
+
+// readTagsDefinitions reads tags index from specified binutils.BinaryReader.
+// A companion of writeTagsDefinitions.
+// Used from BinaryReadFrom.
+func (index *Index) readTagSetsDefinitions(reader *binutils.BinaryReader) (err error) {
+	var section string
+
+	if section, err = reader.ReadStringZ(); err != nil {
+		return fmt.Errorf("%w: read: tags prefix: %v", Error, err)
+	}
+	if section != binaryTagSetPrefix {
+		return fmt.Errorf("%w: read: expected section %v ", Error, binaryTagSetPrefix)
+	}
+
+	if err = index.tagSets.BinaryReadFrom(reader); err != nil {
+		return fmt.Errorf("%w: write: tags sets index: %v", Error, err)
+	}
+
+	return nil
+}
+
+// BinaryReadFrom reads index data from specified binutils.BinaryReader.
+// Implements binutils.BinaryReaderFrom.
+func (index *Index) BinaryReadFrom(reader *binutils.BinaryReader) (err error) {
+	index.mu.Lock()
+	defer index.mu.Unlock()
+
+	if err = index.readTagsDefinitions(reader); err != nil {
+		return fmt.Errorf("%w: read: tags: %v", Error, err)
+	}
+
+	if err = index.tagSets.BinaryReadFrom(reader); err != nil {
+		return fmt.Errorf("%w: write: tags sets index: %v", Error, err)
+	}
+	if err = index.collectionIdx.BinaryReadFrom(reader); err != nil {
+		return fmt.Errorf("%w: write: tags set collections index: %v", Error, err)
+	}
+	if err = index.items.BinaryReadFrom(reader); err != nil {
+		return fmt.Errorf("%w: write: tags set collections index: %v", Error, err)
 	}
 
 	index.getChildrenIDMap(0)
@@ -89,7 +176,7 @@ func (index *Index) BinaryReadFrom(reader *binutils.BinaryReader) (n int64, err 
 
 	}
 
-	return 0, nil
+	return nil
 }
 
 // AddRunes adds runes sequence into container.

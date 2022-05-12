@@ -104,7 +104,7 @@ func TestIndex_ReadFrom(t *testing.T) {
 			data, err := hex.DecodeString(tt.wantData)
 			require.NoError(t, err)
 
-			_, err = index.BinaryReadFrom(binutils.NewBinaryReader(bytes.NewBuffer(data)))
+			err = index.BinaryReadFrom(binutils.NewBinaryReader(bytes.NewBuffer(data)))
 			require.Equalf(t, tt.wantErr, err != nil, "UnmarshalBinary() error = %v, wantErr %v", err, tt.wantErr)
 			if err != nil {
 				return

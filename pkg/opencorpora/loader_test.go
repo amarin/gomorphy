@@ -3,6 +3,9 @@ package opencorpora_test
 import (
 	"testing"
 
+	"git.media-tel.ru/railgo/logging"
+	"git.media-tel.ru/railgo/logging/zap"
+
 	. "github.com/amarin/gomorphy/pkg/opencorpora"
 )
 
@@ -53,14 +56,16 @@ func Test_CompileGrammemes(t *testing.T) {
 }
 
 func TestLoader_DownloadUpdate(t *testing.T) {
-	loader := Loader{}
+	logging.MustInit(*logging.CurrentConfig(), new(zap.Backend))
+	loader := NewLoader("")
 	if _, err := loader.DownloadUpdate(); err != nil {
 		t.Errorf("DownloadUpdate() error = %v", err)
 	}
 }
 
 func TestLoader_UnpackUpdate(t *testing.T) {
-	loader := Loader{}
+	logging.MustInit(*logging.CurrentConfig(), new(zap.Backend))
+	loader := NewLoader("")
 	if err := loader.UnpackUpdate(); (err != nil) != false {
 		t.Errorf("UnpackUpdate() error = %v, wantErr %v", err, false)
 	}

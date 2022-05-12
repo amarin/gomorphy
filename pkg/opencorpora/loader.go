@@ -261,7 +261,7 @@ func (loader *Loader) LoadIndex() (mainIndex *index.Index, err error) {
 	mainIndex = index.New()
 
 	loader.Debug("load index data")
-	if _, err = mainIndex.BinaryReadFrom(reader); err != nil {
+	if err = mainIndex.BinaryReadFrom(reader); err != nil {
 		return nil, fmt.Errorf("%w: read index: %v", Error, err)
 	}
 

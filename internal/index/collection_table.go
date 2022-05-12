@@ -41,28 +41,21 @@ func (tagSetTable CollectionTable) BinaryWriteTo(writer *binutils.BinaryWriter) 
 // BinaryReadFrom reads CollectionTable data using specified binutils.BinaryReader instance.
 // Returns error if happens or nil.
 // Implements binutils.BinaryReaderFrom.
-func (tagSetTable *CollectionTable) BinaryReadFrom(reader *binutils.BinaryReader) (n int64, err error) {
-	var (
-		tagSetIndexLen uint32
-		currentBytes   int64
-	)
-
-	n = 0
+func (tagSetTable *CollectionTable) BinaryReadFrom(reader *binutils.BinaryReader) (err error) {
+	var tagSetIndexLen uint32
 
 	if tagSetIndexLen, err = reader.ReadUint32(); err != nil {
-		return n, fmt.Errorf("%w: read: tagset: %v", Error, err)
+		return fmt.Errorf("%w: read: tagset: %v", Error, err)
 	}
-	n += binutils.Uint32size
 
 	*tagSetTable = make(CollectionTable, tagSetIndexLen)
 	for idx := 0; idx < int(tagSetIndexLen); idx++ {
-		if currentBytes, err = (*tagSetTable)[idx].BinaryReadFrom(reader); err != nil {
-			return n, fmt.Errorf("%w: read: tagset: %v", Error, err)
+		if err = (*tagSetTable)[idx].BinaryReadFrom(reader); err != nil {
+			return fmt.Errorf("%w: read: tagset: %v", Error, err)
 		}
-		n += currentBytes
 	}
 
-	return n, nil
+	return nil
 }
 
 // Find returns 0-based index of ids.Set16 in Table16 storage.

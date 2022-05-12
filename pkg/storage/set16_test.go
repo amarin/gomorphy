@@ -3,8 +3,9 @@ package storage_test
 import (
 	"bytes"
 	"encoding/hex"
-	"github.com/amarin/gomorphy/pkg/storage"
 	"testing"
+
+	"github.com/amarin/gomorphy/pkg/storage"
 
 	"github.com/amarin/binutils"
 	"github.com/stretchr/testify/require"
@@ -169,7 +170,7 @@ func TestSet16_ReadFrom(t *testing.T) { //nolint:paralleltest
 			require.Equalf(t, tt.wantErr, readErr != nil, "want error %v got %v", tt.wantErr, readErr)
 			if readErr == nil {
 				require.Equal(t, tt.wantN, gotN)
-				require.Equal(t, len(wantData)/binutils.BytesInUint16-1, newSet.Len())
+				require.Equal(t, len(wantData)/binutils.Uint16size-1, newSet.Len())
 				require.True(t, tt.grammemesSet.EqualTo(newSet))
 			}
 		})

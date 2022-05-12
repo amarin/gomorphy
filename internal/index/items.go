@@ -26,29 +26,22 @@ func NewItems() *Items {
 
 // BinaryReadFrom reads ItemIndex data from specified binutils.BinaryReader instance.
 // Implements binutils.BinaryReaderFrom.
-func (items *Items) BinaryReadFrom(reader *binutils.BinaryReader) (n int64, err error) {
-	var (
-		itemBytes   int64
-		itemListLen uint32
-	)
-
-	n = 0
+func (items *Items) BinaryReadFrom(reader *binutils.BinaryReader) (err error) {
+	var itemListLen uint32
 
 	if itemListLen, err = reader.ReadUint32(); err != nil {
-		return n, err
+		return err
 	}
 
 	items.nextID = dag.ID(itemListLen)
 	items.items = make([]Item, int(itemListLen))
 	for idx := 0; idx < int(itemListLen); idx++ {
-		itemBytes, err = items.items[idx].BinaryReadFrom(reader)
-		n += itemBytes
-		if err != nil {
-			return n, err
+		if err = items.items[idx].BinaryReadFrom(reader); err != nil {
+			return err
 		}
 	}
 
-	return n, nil
+	return nil
 }
 
 // BinaryWriteTo writes ItemIndex data using supplied binutils.BinaryWriter.

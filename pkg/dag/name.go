@@ -27,17 +27,17 @@ var (
 // If TagName is shorter than 4 character is filled upto 4 with spaces.
 type TagName string
 
-func (g *TagName) BinaryReadFrom(reader *binutils.BinaryReader) (n int64, err error) {
+func (g *TagName) BinaryReadFrom(reader *binutils.BinaryReader) (err error) {
 	var tagNameBytes []byte
 	if tagNameBytes, err = reader.ReadBytesCount(tagNameLen); err != nil {
-		return 0, fmt.Errorf("%w: tag name: read: %v", Error, err)
+		return fmt.Errorf("%w: tag name: read: %v", Error, err)
 	}
 
 	if err = g.UnmarshalBinary(tagNameBytes); err != nil {
-		return tagNameLen, err
+		return err
 	}
 
-	return tagNameLen, nil
+	return nil
 }
 
 // BinaryWriteTo writes TagName data using specified binutils.BinaryWriter instance.

@@ -31,29 +31,25 @@ func (t TableIDCollection) BinaryWriteTo(writer *binutils.BinaryWriter) (err err
 // BinaryReadFrom reads TagSetIndex data using specified binutils.BinaryReader instance.
 // Returns error if happens or nil.
 // Implements binutils.BinaryReaderFrom.
-func (t *TableIDCollection) BinaryReadFrom(reader *binutils.BinaryReader) (n int64, err error) {
+func (t *TableIDCollection) BinaryReadFrom(reader *binutils.BinaryReader) (err error) {
 	var (
 		tagSetIndexLen uint8
 		currentUint32  uint32
 	)
 
-	bytesTaken := int64(0)
-
 	if tagSetIndexLen, err = reader.ReadUint8(); err != nil {
-		return bytesTaken, fmt.Errorf("%w: read: tagset: %v", Error, err)
+		return fmt.Errorf("%w: read: tagset: %v", Error, err)
 	}
-	bytesTaken += binutils.Uint8size
 
 	*t = make(TableIDCollection, tagSetIndexLen)
 	for idx := 0; idx < int(tagSetIndexLen); idx++ {
 		if currentUint32, err = reader.ReadUint32(); err != nil {
-			return bytesTaken, fmt.Errorf("%w: read: tagset: %v", Error, err)
+			return fmt.Errorf("%w: read: tagset: %v", Error, err)
 		}
-		bytesTaken += binutils.Uint32size
 		(*t)[idx] = TableID(currentUint32)
 	}
 
-	return bytesTaken, nil
+	return nil
 }
 
 // Len returns length of TableIDCollection. Implements sort.Interface.

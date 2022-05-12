@@ -25,28 +25,21 @@ type TagSetTable []TagSet
 // BinaryReadFrom reads TagSetTable data using specified binutils.BinaryReader instance.
 // Returns error if happens or nil.
 // Implements binutils.BinaryReaderFrom.
-func (tagSetTable *TagSetTable) BinaryReadFrom(reader *binutils.BinaryReader) (n int64, err error) {
-	var (
-		tagSetLen         uint16
-		currentBytesTaken int64
-	)
-
-	bytesTaken := int64(0)
+func (tagSetTable *TagSetTable) BinaryReadFrom(reader *binutils.BinaryReader) (err error) {
+	var tagSetLen uint16
 
 	if tagSetLen, err = reader.ReadUint16(); err != nil {
-		return bytesTaken, fmt.Errorf("%w: read: tagset: %v", Error, err)
+		return fmt.Errorf("%w: read: tagset: %v", Error, err)
 	}
-	bytesTaken += binutils.Uint16size
 
 	*tagSetTable = make(TagSetTable, tagSetLen)
 	for idx := 0; idx < int(tagSetLen); idx++ {
-		if currentBytesTaken, err = (*tagSetTable)[idx].BinaryReadFrom(reader); err != nil {
-			return bytesTaken, fmt.Errorf("%w: read: tagset: %v", Error, err)
+		if err = (*tagSetTable)[idx].BinaryReadFrom(reader); err != nil {
+			return fmt.Errorf("%w: read: tagset: %v", Error, err)
 		}
-		bytesTaken += currentBytesTaken
 	}
 
-	return bytesTaken, nil
+	return nil
 }
 
 // BinaryWriteTo writes TagSetTable data using specified binutils.BinaryWriter instance.

@@ -33,22 +33,16 @@ func (g Tag) BinaryWriteTo(writer *binutils.BinaryWriter) (err error) {
 // BinaryReadFrom reads Tag data using specified binutils.BinaryReader instance.
 // Returns error if happens or nil.
 // Implements binutils.BinaryReaderFrom.
-func (g *Tag) BinaryReadFrom(reader *binutils.BinaryReader) (n int64, err error) {
-	var currentBytes int64
-
-	n = 0
-
-	if currentBytes, err = g.Parent.BinaryReadFrom(reader); err != nil {
-		return 0, fmt.Errorf("%w: tag: read: %v", Error, err)
+func (g *Tag) BinaryReadFrom(reader *binutils.BinaryReader) (err error) {
+	if err = g.Parent.BinaryReadFrom(reader); err != nil {
+		return fmt.Errorf("%w: tag: read: %v", Error, err)
 	}
-	n += currentBytes
 
-	if currentBytes, err = g.Name.BinaryReadFrom(reader); err != nil {
-		return 0, fmt.Errorf("%w: tag: read: %v", Error, err)
+	if err = g.Name.BinaryReadFrom(reader); err != nil {
+		return fmt.Errorf("%w: tag: read: %v", Error, err)
 	}
-	n += currentBytes
 
-	return n, nil
+	return nil
 }
 
 // NewTag makes new tag with required parent, name, alias and description.

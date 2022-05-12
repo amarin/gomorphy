@@ -17,29 +17,25 @@ type TagSet []dag.TagID
 // BinaryReadFrom reads TagSet data using specified binutils.BinaryReader instance.
 // Returns error if happens or nil.
 // Implements binutils.BinaryReaderFrom.
-func (tagSet *TagSet) BinaryReadFrom(reader *binutils.BinaryReader) (n int64, err error) {
+func (tagSet *TagSet) BinaryReadFrom(reader *binutils.BinaryReader) (err error) {
 	var (
 		tagSetLen    uint8
 		currentTagID uint8
 	)
 
-	bytesTaken := int64(0)
-
 	if tagSetLen, err = reader.ReadUint8(); err != nil {
-		return bytesTaken, fmt.Errorf("%w: read: tagset: %v", Error, err)
+		return fmt.Errorf("%w: read: tagset: %v", Error, err)
 	}
-	bytesTaken += binutils.Uint8size
 
 	*tagSet = make(TagSet, tagSetLen)
 	for idx := 0; idx < int(tagSetLen); idx++ {
 		if currentTagID, err = reader.ReadUint8(); err != nil {
-			return bytesTaken, fmt.Errorf("%w: read: tagset: %v", Error, err)
+			return fmt.Errorf("%w: read: tagset: %v", Error, err)
 		}
-		bytesTaken += binutils.Uint8size
 		(*tagSet)[idx] = dag.TagID(currentTagID)
 	}
 
-	return bytesTaken, nil
+	return nil
 }
 
 // BinaryWriteTo writes TagSet data using specified binutils.BinaryWriter instance.
