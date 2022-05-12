@@ -47,7 +47,7 @@ func (tagSet TagSet) BinaryWriteTo(writer *binutils.BinaryWriter) (err error) {
 	}
 
 	for _, tagID := range tagSet {
-		if err = writer.WriteObject(tagID); err != nil {
+		if err = writer.WriteUint8(uint8(tagID)); err != nil {
 			return fmt.Errorf("%w: %v", Error, err)
 		}
 	}

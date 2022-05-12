@@ -50,17 +50,11 @@ func (index *Index) BinaryWriteTo(writer *binutils.BinaryWriter) (err error) {
 	if err = index.writeTagSetsDefinitions(writer); err != nil {
 		return err
 	}
-	if err = writer.WriteStringZ(binaryColIdxPrefix); err != nil {
-		return fmt.Errorf("%w: write: tags prefix: %v", Error, err)
+	if err = index.writeCollectionsDefinitions(writer); err != nil {
+		return err
 	}
-	if err = index.collectionIdx.BinaryWriteTo(writer); err != nil {
-		return fmt.Errorf("%w: write: tags set collections index: %v", Error, err)
-	}
-	if err = writer.WriteStringZ(binaryItemsIdxPrefix); err != nil {
-		return fmt.Errorf("%w: write: tags prefix: %v", Error, err)
-	}
-	if err = index.items.BinaryWriteTo(writer); err != nil {
-		return fmt.Errorf("%w: write: tags set collections index: %v", Error, err)
+	if err = index.writeItemsDefinitions(writer); err != nil {
+		return err
 	}
 
 	return nil
@@ -70,9 +64,6 @@ func (index *Index) BinaryWriteTo(writer *binutils.BinaryWriter) (err error) {
 // A companion of readTagsDefinitions.
 // Used from BinaryWriteTo.
 func (index *Index) writeTagsDefinitions(writer *binutils.BinaryWriter) (err error) {
-	index.mu.Lock()
-	defer index.mu.Unlock()
-
 	if err = writer.WriteStringZ(binaryTagsPrefix); err != nil {
 		return fmt.Errorf("%w: write: tags prefix: %v", Error, err)
 	}
@@ -107,9 +98,6 @@ func (index *Index) readTagsDefinitions(reader *binutils.BinaryReader) (err erro
 // A companion of readTagsDefinitions.
 // Used from BinaryWriteTo.
 func (index *Index) writeTagSetsDefinitions(writer *binutils.BinaryWriter) (err error) {
-	index.mu.Lock()
-	defer index.mu.Unlock()
-
 	if err = writer.WriteStringZ(binaryTagSetPrefix); err != nil {
 		return fmt.Errorf("%w: write: tags prefix: %v", Error, err)
 	}
@@ -140,6 +128,87 @@ func (index *Index) readTagSetsDefinitions(reader *binutils.BinaryReader) (err e
 	return nil
 }
 
+// writeTagsDefinitions writes tags index into specified binutils.BinaryWriter.
+// A companion of readTagsDefinitions.
+// Used from BinaryWriteTo.
+func (index *Index) writeCollectionsDefinitions(writer *binutils.BinaryWriter) (err error) {
+	if err = writer.WriteStringZ(binaryColIdxPrefix); err != nil {
+		return fmt.Errorf("%w: write: tags prefix: %v", Error, err)
+	}
+	if err = index.collectionIdx.BinaryWriteTo(writer); err != nil {
+		return fmt.Errorf("%w: write: tags set collections index: %v", Error, err)
+	}
+
+	return nil
+}
+
+// readTagsDefinitions reads tags index from specified binutils.BinaryReader.
+// A companion of writeTagsDefinitions.
+// Used from BinaryReadFrom.
+func (index *Index) readCollectionsDefinitions(reader *binutils.BinaryReader) (err error) {
+	var section string
+
+	if section, err = reader.ReadStringZ(); err != nil {
+		return fmt.Errorf("%w: read: tags prefix: %v", Error, err)
+	}
+	if section != binaryColIdxPrefix {
+		return fmt.Errorf("%w: read: expected section %v ", Error, binaryColIdxPrefix)
+	}
+
+	if err = index.collectionIdx.BinaryReadFrom(reader); err != nil {
+		return fmt.Errorf("%w: write: tags set collections index: %v", Error, err)
+	}
+
+	return nil
+}
+
+// writeTagsDefinitions writes tags index into specified binutils.BinaryWriter.
+// A companion of readTagsDefinitions.
+// Used from BinaryWriteTo.
+func (index *Index) writeItemsDefinitions(writer *binutils.BinaryWriter) (err error) {
+	if err = writer.WriteStringZ(binaryItemsIdxPrefix); err != nil {
+		return fmt.Errorf("%w: write: tags prefix: %v", Error, err)
+	}
+	if err = index.items.BinaryWriteTo(writer); err != nil {
+		return fmt.Errorf("%w: write: tags set collections index: %v", Error, err)
+	}
+
+	return nil
+}
+
+// readTagsDefinitions reads tags index from specified binutils.BinaryReader.
+// A companion of writeTagsDefinitions.
+// Used from BinaryReadFrom.
+func (index *Index) readItemsDefinitions(reader *binutils.BinaryReader) (err error) {
+	var section string
+
+	if section, err = reader.ReadStringZ(); err != nil {
+		return fmt.Errorf("%w: read: tags prefix: %v", Error, err)
+	}
+	if section != binaryItemsIdxPrefix {
+		return fmt.Errorf("%w: read: expected section %v ", Error, binaryItemsIdxPrefix)
+	}
+
+	if err = index.items.BinaryReadFrom(reader); err != nil {
+		return fmt.Errorf("%w: read: node index: %v", Error, err)
+	}
+
+	return nil
+}
+
+func (index *Index) rebuildChildrenIndex() {
+	index.getChildrenIDMap(0)
+	for idx, item := range index.items.items {
+		nodeID := dag.ID(idx)
+		index.getChildrenIDMap(item.Parent)
+		index.getChildrenIDMap(nodeID)
+		index.childrenMap[item.Parent][item.Letter] = nodeID
+		if item.Variants != 0 {
+			index.wordsCount++
+		}
+	}
+}
+
 // BinaryReadFrom reads index data from specified binutils.BinaryReader.
 // Implements binutils.BinaryReaderFrom.
 func (index *Index) BinaryReadFrom(reader *binutils.BinaryReader) (err error) {
@@ -149,32 +218,17 @@ func (index *Index) BinaryReadFrom(reader *binutils.BinaryReader) (err error) {
 	if err = index.readTagsDefinitions(reader); err != nil {
 		return fmt.Errorf("%w: read: tags: %v", Error, err)
 	}
+	if err = index.readTagSetsDefinitions(reader); err != nil {
+		return fmt.Errorf("%w: read: tags: %v", Error, err)
+	}
+	if err = index.readCollectionsDefinitions(reader); err != nil {
+		return fmt.Errorf("%w: read: collections index: %v", Error, err)
+	}
+	if err = index.readItemsDefinitions(reader); err != nil {
+		return err
+	}
 
-	if err = index.tagSets.BinaryReadFrom(reader); err != nil {
-		return fmt.Errorf("%w: write: tags sets index: %v", Error, err)
-	}
-	if err = index.collectionIdx.BinaryReadFrom(reader); err != nil {
-		return fmt.Errorf("%w: write: tags set collections index: %v", Error, err)
-	}
-	if err = index.items.BinaryReadFrom(reader); err != nil {
-		return fmt.Errorf("%w: write: tags set collections index: %v", Error, err)
-	}
-
-	index.getChildrenIDMap(0)
-	for idx, item := range index.items.items {
-		nodeID := dag.ID(idx)
-		if _, ok := index.childrenMap[item.Parent]; !ok {
-			index.childrenMap[item.Parent] = make(dag.IdMap, 16)
-		}
-		if _, ok := index.childrenMap[nodeID]; !ok {
-			index.childrenMap[nodeID] = make(dag.IdMap, 16)
-		}
-		index.childrenMap[item.Parent][item.Letter] = nodeID
-		if item.Variants != 0 {
-			index.wordsCount++
-		}
-
-	}
+	index.rebuildChildrenIndex()
 
 	return nil
 }

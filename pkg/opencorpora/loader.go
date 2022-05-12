@@ -271,6 +271,8 @@ func (loader *Loader) LoadIndex() (mainIndex *index.Index, err error) {
 func (loader *Loader) SaveIndex(mainIndex *index.Index, toFile string) (err error) {
 	var writer *binutils.BinaryWriter
 
+	loader.Info("save compiled index")
+
 	if writer, err = binutils.CreateFile(toFile); err != nil {
 		return fmt.Errorf("%w: create index: %v", Error, err)
 	}
