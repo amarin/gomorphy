@@ -32,7 +32,7 @@ func (node *Node) TagSets() (res []dag.TagSet) {
 		}
 		res[idx] = make(dag.TagSet, tagSetIDs.Len())
 		for tagIdx, tagID := range tagSetIDs {
-			if tag, found = node.index.tags.Get(tagID); !found {
+			if tag, found = node.index.tags.Get(tagID); found {
 				res[idx][tagIdx] = tag
 			}
 		}
@@ -74,7 +74,7 @@ func (node *Node) Word() string {
 	}
 
 	if item.Parent != 0 {
-		prefix = node.index.getNode(item.Parent).Word()
+		prefix = node.index.GetItem(item.Parent).Word()
 	}
 
 	return prefix + string(item.Letter)

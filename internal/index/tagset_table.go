@@ -2,11 +2,15 @@ package index
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/amarin/binutils"
 
 	"github.com/amarin/gomorphy/pkg/storage"
 )
+
+const prefixTagSetTable = "TT"
 
 // TagSetID represents id of TagSet item in TagSetTable.
 // It's a simple wrapper over storage.ID16 type.
@@ -21,6 +25,17 @@ func (tagSetID TagSetID) ID16() storage.ID16 {
 // It Uses its own ID16 index to address target sets.set16 stack in addition to address element in stack.
 // Used in TagSetIndex to store different sized sets organized into stacks of equal-sized sets.
 type TagSetTable []TagSet
+
+// String returns string representation of TagSetTable.
+// Implements fmt.Stringer.
+func (tagSetTable TagSetTable) String() string {
+	tagSetStrings := make([]string, tagSetTable.Len())
+	for idx, ts := range tagSetTable {
+		tagSetStrings[idx] = strconv.Itoa(idx) + ": " + ts.String()
+	}
+
+	return prefixTagSetTable + "(" + strings.Join(tagSetStrings, ",") + ")"
+}
 
 // BinaryReadFrom reads TagSetTable data using specified binutils.BinaryReader instance.
 // Returns error if happens or nil.
@@ -102,4 +117,9 @@ func (tagSetTable TagSetTable) Get(storageIdx TagSetID) (targetSet TagSet, found
 	}
 
 	return tagSetTable[storageIdx], true
+}
+
+// Len returns length of TagSetTable in TagSet items.
+func (tagSetTable *TagSetTable) Len() int {
+	return len(*tagSetTable)
 }

@@ -294,9 +294,12 @@ func (loader *Loader) SaveIndex(mainIndex *index.Index, toFile string) (err erro
 		}
 	}()
 
+	loader.Debugf("indexed %d words %d nodes", mainIndex.WordsCount(), mainIndex.NodesCount())
 	if err = mainIndex.BinaryWriteTo(writer); err != nil {
 		return fmt.Errorf("%w: save index: %v", Error, err)
 	}
+
+	loader.Debugf("TagSetIndex: %v", mainIndex.TagSetIndex())
 
 	return nil
 }
@@ -305,7 +308,9 @@ func (loader *Loader) ParseUpdate(fromFile string, toFile string) (err error) {
 	loader.Info("start parse")
 	mainIndex := index.New()
 	parser := newParser(mainIndex)
-	if err = libxml.ParseXMLFile(fromFile, parser); err != nil {
+	parser.SetMaxLemmas(30)
+	err = libxml.ParseXMLFile(fromFile, parser)
+	if err != nil && !errors.Is(err, ErrControlledStop) {
 		return fmt.Errorf("parse: %w", err)
 	}
 

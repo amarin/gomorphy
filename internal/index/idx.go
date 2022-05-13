@@ -11,7 +11,6 @@ import (
 
 const (
 	binaryTagsPrefix     = "TD"
-	binaryTagSetPrefix   = "TS"
 	binaryColIdxPrefix   = "CD"
 	binaryItemsIdxPrefix = "ID"
 )
@@ -25,6 +24,11 @@ type Index struct {
 	items         Items                  // Items storage
 	childrenMap   map[dag.ID]dag.IdMap   // children maps
 	wordsCount    int
+}
+
+// Tags returns internal tags index.
+func (index Index) Tags() dag.Idx {
+	return index.tags
 }
 
 // New creates new empty list.
@@ -276,7 +280,7 @@ func (index *Index) Get(nodeIdx dag.ID) (node dag.Node, err error) {
 		return nil, fmt.Errorf("%w: no such node: %d", Error, nodeIdx)
 	}
 
-	return index.getNode(nodeIdx), nil
+	return index.GetItem(nodeIdx), nil
 }
 
 func (index *Index) rootNode(letter rune) (root dag.Node) {
@@ -293,7 +297,7 @@ func (index *Index) rootNode(letter rune) (root dag.Node) {
 		return nil
 	}
 
-	return index.getNode(rootID)
+	return index.GetItem(rootID)
 }
 
 // // AddChild returns new child of specified Node or error.
@@ -301,7 +305,7 @@ func (index *Index) rootNode(letter rune) (root dag.Node) {
 // 	newItem := index.items.NewChild(node.ID(), character)
 // 	log.Printf("idx %p: %v", index, index.Pretty(0, "-"))
 //
-// 	return index.getNode(newItem.ID), nil
+// 	return index.GetItem(newItem.ID), nil
 // }
 
 // getChildrenIDMap generates children nodes for Node specified by its ID.
@@ -330,7 +334,7 @@ func (index *Index) FetchFromItem(parentID dag.ID, runes []rune) (dag.Node, erro
 		firstRune := runes[currentIndex]
 		childrenIDMap := index.getChildrenIDMap(currentParentID)
 		if nextItemID, ok = childrenIDMap[firstRune]; !ok {
-			node := index.getNode(currentParentID)
+			node := index.GetItem(currentParentID)
 			if node == nil {
 				return nil, fmt.Errorf("%w: fetch: no node: `%s[%s]`", Error, string(runes[:currentIndex]), string(firstRune))
 			}
@@ -393,8 +397,8 @@ func (index *Index) NodesCount() int {
 	return int(index.items.NextID() - 1)
 }
 
-// getNode generates Node instance runtime.
-func (index *Index) getNode(id dag.ID) *Node {
+// GetItem generates Node instance runtime.
+func (index *Index) GetItem(id dag.ID) *Node {
 	return newNode(index, id)
 }
 
@@ -404,7 +408,7 @@ func (index *Index) getChildrenMap(id dag.ID) dag.NodeMap {
 
 	res := make(dag.NodeMap)
 	for letter, chidlID := range childrenItems {
-		res[letter] = index.getNode(chidlID)
+		res[letter] = index.GetItem(chidlID)
 	}
 
 	return res
@@ -418,10 +422,15 @@ func (index *Index) getChild(id dag.ID, letter rune) *Node {
 		return nil
 	}
 
-	return index.getNode(childrenItems[letter])
+	return index.GetItem(childrenItems[letter])
 }
 
 // TagID gets or creates tag in internal tag index and returns its ID.
 func (index *Index) TagID(name dag.TagName, parent dag.TagName) dag.TagID {
 	return index.tags.Index(name, parent)
+}
+
+// TagSetIndex returns internal TagSetIndex.
+func (index *Index) TagSetIndex() TagSetIndex {
+	return index.tagSets
 }

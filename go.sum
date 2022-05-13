@@ -3,8 +3,8 @@ git.media-tel.ru/railgo/logging v0.4.3/go.mod h1:1J8VbjSIuobjx87chSGUkDP8bI+FMdS
 github.com/amarin/binutils v0.2.1/go.mod h1:k7BBBrtM6DMC+wzvoJlds3Q0jzWOrK/pE3iiLvyJCNQ=
 github.com/amarin/binutils v0.6.0 h1:QM7LfjoUNYNX9j0ZgyH/gySxAlElK6WzAkrYEUWR1jM=
 github.com/amarin/binutils v0.6.0/go.mod h1:mmQIZ37FDTtP4yi98sMKkuOIseJ6zhzoc5BKJMd8UXE=
-github.com/amarin/libxml v0.1.0 h1:EYTNc+jEgvFVP2ULxcqFL41dWEjtujJGyoV0RB3BeDI=
-github.com/amarin/libxml v0.1.0/go.mod h1:2EBRFK/ZA2TubXaYGIHyvwbr25P3FJ/isw+M2/vVsro=
+github.com/amarin/libxml v0.1.2 h1:wqYNmXhlTazaCPJjbsmorwV/+jmUjmG10VBDciARn5I=
+github.com/amarin/libxml v0.1.2/go.mod h1:yX+HwmiojNoZZtBalJUi5tevLY57CcwDKE2BBmgwAhw=
 github.com/benbjohnson/clock v1.1.0 h1:Q92kusRqC1XV2MjkWETPvjJVqKetz1OzxZB7mHJLju8=
 github.com/benbjohnson/clock v1.1.0/go.mod h1:J11/hYXuz8f4ySSvYwY0FKfm+ezbsZBKZxNJlLklBHA=
 github.com/chzyer/logex v1.2.1 h1:XHDu3E6q+gdHgsdTPH6ImJMIp436vR6MPtH8gP05QzM=

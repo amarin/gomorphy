@@ -5,7 +5,7 @@ module github.com/amarin/gomorphy
 require (
 	git.media-tel.ru/railgo/logging v0.4.3
 	github.com/amarin/binutils v0.6.0
-	github.com/amarin/libxml v0.1.0
+	github.com/amarin/libxml v0.1.2
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
 	github.com/stretchr/testify v1.7.1
 	gitlab.com/go-grammar-rus/text v0.1.3

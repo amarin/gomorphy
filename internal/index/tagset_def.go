@@ -4,15 +4,29 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/amarin/binutils"
 
 	"github.com/amarin/gomorphy/pkg/dag"
 )
 
+const prefixTagSet = "TS"
+
 // TagSet stores unique sorted ID8's ids sets.
 // Requires external management to provide item-to-ID8 and vise-versa transitions.
 type TagSet []dag.TagID
+
+// String returns string representation of TagSet. Implements fmt.Stringer.
+func (tagSet TagSet) String() string {
+	stringIdx := make([]string, tagSet.Len())
+	for idx, tagID := range tagSet {
+		stringIdx[idx] = strconv.Itoa(int(tagID))
+	}
+
+	return prefixTagSet + "(" + strings.Join(stringIdx, ",") + ")"
+}
 
 // BinaryReadFrom reads TagSet data using specified binutils.BinaryReader instance.
 // Returns error if happens or nil.

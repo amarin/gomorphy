@@ -1,11 +1,22 @@
 package opencorpora
 
 import (
+	"strings"
+
 	"github.com/amarin/gomorphy/pkg/dag"
 )
 
 // CategoryList provides a category list.
 type CategoryList []*Category
+
+func (c CategoryList) String() string {
+	strList := make([]string, len(c))
+	for idx, cat := range c {
+		strList[idx] = cat.String()
+	}
+
+	return strings.Join(strList, ",")
+}
 
 // GrammemeNames возвращает список имён граммем, заданных в списке категорий.
 func (c CategoryList) GrammemeNames() []dag.TagName {
