@@ -51,6 +51,54 @@ type Parser struct {
 	maxLemmas int
 }
 
+func newParser(indexInstance dag.Index) *Parser {
+	dictionary := &Dictionary{
+		VersionAttr:  0,
+		RevisionAttr: 0,
+		Grammemes:    nil,
+		Restrictions: nil,
+		Lemmata:      nil,
+		Linktypes:    nil,
+		Links:        nil,
+	}
+
+	parser := &Parser{
+		Logger:          logging.NewNamedLogger("parser").WithLevel(logging.LevelDebug),
+		index:           indexInstance,
+		dictionary:      dictionary,
+		collectedData:   "",
+		parsers:         make(map[string]elementProcessor),
+		parserStarted:   time.Now(),
+		reportAfter:     time.Now().Add(time.Second * defaultLogAverageEachSeconds),
+		parsedForms:     0,
+		logAverageSpeed: defaultLogAverageEachSeconds,
+	}
+
+	parser.on("", parser.mute)
+	parser.on(".dictionary", parser.onDictionary)
+	parser.on(".dictionary.grammemes", parser.mute)
+	parser.on(".dictionary.grammemes.grammeme", parser.onGrammeme)
+	parser.on(".dictionary.grammemes.grammeme.name", parser.onGrammemeName)
+	parser.on(".dictionary.grammemes.grammeme.alias", parser.mute)
+	parser.on(".dictionary.grammemes.grammeme.description", parser.mute)
+	parser.on(".dictionary.restrictions", parser.mute)
+	parser.on(".dictionary.restrictions.restr", parser.mute)
+	parser.on(".dictionary.restrictions.restr.left", parser.mute)
+	parser.on(".dictionary.restrictions.restr.right", parser.mute)
+	parser.on(".dictionary.lemmata", parser.mute)
+	parser.on(".dictionary.lemmata.lemma", parser.onDictionaryLemmataLemma)
+	parser.on(".dictionary.lemmata.lemma.l", parser.onDictionaryLemmataLemmaL)
+	parser.on(".dictionary.lemmata.lemma.l.g", parser.onDictionaryLemmataLemmaLG)
+	parser.on(".dictionary.lemmata.lemma.f", parser.onDictionaryLemmataLemmaF)
+	parser.on(".dictionary.lemmata.lemma.f.g", parser.onDictionaryLemmataLemmaFG)
+	parser.on(".dictionary.link_types", parser.mute)
+	parser.on(".dictionary.link_types.type", parser.mute)
+	parser.on(".dictionary.links", parser.mute)
+	parser.on(".dictionary.links.link", parser.mute)
+
+	return parser
+}
+
 func (parser *Parser) SetMaxLemmas(maxLemmas int) {
 	parser.maxLemmas = maxLemmas
 }
@@ -120,54 +168,6 @@ func (parser *Parser) ProcessProcInst(_ xml.ProcInst) error {
 
 func (parser *Parser) ProcessDirective(_ xml.Directive) error {
 	return nil
-}
-
-func newParser(indexInstance dag.Index) *Parser {
-	dictionary := &Dictionary{
-		VersionAttr:  0,
-		RevisionAttr: 0,
-		Grammemes:    nil,
-		Restrictions: nil,
-		Lemmata:      nil,
-		Linktypes:    nil,
-		Links:        nil,
-	}
-
-	parser := &Parser{
-		Logger:          logging.NewNamedLogger("parser").WithLevel(logging.LevelDebug),
-		index:           indexInstance,
-		dictionary:      dictionary,
-		collectedData:   "",
-		parsers:         make(map[string]elementProcessor),
-		parserStarted:   time.Now(),
-		reportAfter:     time.Now().Add(time.Second * defaultLogAverageEachSeconds),
-		parsedForms:     0,
-		logAverageSpeed: defaultLogAverageEachSeconds,
-	}
-
-	parser.on("", parser.mute)
-	parser.on(".dictionary", parser.onDictionary)
-	parser.on(".dictionary.grammemes", parser.mute)
-	parser.on(".dictionary.grammemes.grammeme", parser.onGrammeme)
-	parser.on(".dictionary.grammemes.grammeme.name", parser.onGrammemeName)
-	parser.on(".dictionary.grammemes.grammeme.alias", parser.mute)
-	parser.on(".dictionary.grammemes.grammeme.description", parser.mute)
-	parser.on(".dictionary.restrictions", parser.mute)
-	parser.on(".dictionary.restrictions.restr", parser.mute)
-	parser.on(".dictionary.restrictions.restr.left", parser.mute)
-	parser.on(".dictionary.restrictions.restr.right", parser.mute)
-	parser.on(".dictionary.lemmata", parser.mute)
-	parser.on(".dictionary.lemmata.lemma", parser.onDictionaryLemmataLemma)
-	parser.on(".dictionary.lemmata.lemma.l", parser.onDictionaryLemmataLemmaL)
-	parser.on(".dictionary.lemmata.lemma.l.g", parser.onDictionaryLemmataLemmaLG)
-	parser.on(".dictionary.lemmata.lemma.f", parser.onDictionaryLemmataLemmaF)
-	parser.on(".dictionary.lemmata.lemma.f.g", parser.onDictionaryLemmataLemmaFG)
-	parser.on(".dictionary.link_types", parser.mute)
-	parser.on(".dictionary.link_types.type", parser.mute)
-	parser.on(".dictionary.links", parser.mute)
-	parser.on(".dictionary.links.link", parser.mute)
-
-	return parser
 }
 
 // on sets elementProcessor to parse specified elementPath.
@@ -278,12 +278,26 @@ func (parser *Parser) onDictionaryLemmataLemma() *elementProcessor {
 				// prepend form grammemes from Lemma.L
 				variant.G = append(parser.currentLemma.L.G, variant.G...)
 				// parser.Debugf("+ %v [%v]", variant.Form, variant.G)
+
+				debugWord := "сын"
+				if variant.Form == debugWord {
+					parser.Infof("+ %v", debugWord)
+				}
+
 				if node, err = parser.index.AddString(variant.Form); err != nil {
 					return fmt.Errorf("index: %w", err)
 				}
 
+				if variant.Form == debugWord {
+					parser.Infof("+ %v: node ts %v add %v", debugWord, node.TagSets(), variant.GetTagsFromSet())
+				}
+
 				if err = node.AddTagSet(variant.GetTagsFromSet()...); err != nil {
 					return fmt.Errorf("add lemma variant: %w", err)
+				}
+
+				if variant.Form == debugWord {
+					parser.Infof("+ %v: node ts %v", debugWord, node.TagSets())
 				}
 			}
 

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"runtime/debug"
 	"time"
 
 	"git.media-tel.ru/railgo/logging"
@@ -295,11 +296,12 @@ func (loader *Loader) SaveIndex(mainIndex *index.Index, toFile string) (err erro
 	}()
 
 	loader.Debugf("indexed %d words %d nodes", mainIndex.WordsCount(), mainIndex.NodesCount())
+	loader.Info("optimize index")
+	mainIndex.Optimize()
+	loader.Info("saving index")
 	if err = mainIndex.BinaryWriteTo(writer); err != nil {
 		return fmt.Errorf("%w: save index: %v", Error, err)
 	}
-
-	loader.Debugf("TagSetIndex: %v", mainIndex.TagSetIndex())
 
 	return nil
 }
@@ -308,7 +310,15 @@ func (loader *Loader) ParseUpdate(fromFile string, toFile string) (err error) {
 	loader.Info("start parse")
 	mainIndex := index.New()
 	parser := newParser(mainIndex)
-	parser.SetMaxLemmas(30)
+	// parser.SetMaxLemmas(1000)
+
+	defer func() {
+		if p := recover(); p != nil {
+			debug.PrintStack()
+			err = fmt.Errorf("%w: panic: %v", Error, p)
+		}
+	}()
+
 	err = libxml.ParseXMLFile(fromFile, parser)
 	if err != nil && !errors.Is(err, ErrControlledStop) {
 		return fmt.Errorf("parse: %w", err)
