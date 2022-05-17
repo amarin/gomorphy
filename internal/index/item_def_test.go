@@ -14,7 +14,7 @@ func TestItem_String(t *testing.T) {
 		ID       dag.ID
 		Parent   dag.ID
 		Letter   rune
-		Variants index.CollectionID
+		Variants index.VariantID
 		want     string
 	}{
 		{1, 1, 'z', 0, "z1_1_0"},

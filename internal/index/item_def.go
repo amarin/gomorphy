@@ -14,10 +14,10 @@ var Error = errors.New("index")
 
 // Item represents DAG index item.
 type Item struct {
-	Parent   dag.ID       // item Parent ID
-	ID       dag.ID       // item own ID
-	Letter   rune         // item rune
-	Variants CollectionID // TagSet CollectionID
+	Parent   dag.ID    // item Parent ID
+	ID       dag.ID    // item own ID
+	Letter   rune      // item rune
+	Variants VariantID // TagSet VariantID
 }
 
 // BinaryReadFrom reads item data using supplied binutils.BinaryReader.
@@ -43,7 +43,7 @@ func (i *Item) BinaryReadFrom(reader *binutils.BinaryReader) (err error) {
 	if readUint32, err = reader.ReadUint32(); err != nil {
 		return err
 	}
-	i.Variants = CollectionID(readUint32)
+	i.Variants = VariantID(readUint32)
 
 	return nil
 }

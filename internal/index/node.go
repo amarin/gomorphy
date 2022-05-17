@@ -12,12 +12,20 @@ type Node struct {
 	id    dag.ID
 }
 
+func (node *Node) Id() dag.ID {
+	return node.id
+}
+
+func (node Node) Item() Item {
+	return node.index.items.items[node.id]
+}
+
 // TagSets returns list of dag.TagSet. Implements dag.Node.
 func (node *Node) TagSets() (res []dag.TagSet) {
 	var (
 		found      bool
 		item       *Item
-		collection TableIDCollection
+		collection TagSetIDCollection
 		tagSetIDs  TagSet
 		tag        dag.Tag
 	)

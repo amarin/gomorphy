@@ -8,13 +8,13 @@ import (
 	"github.com/amarin/gomorphy/pkg/storage"
 )
 
-// TableIDCollection stores a list of TableID identifiers of TagSet stored in TagSetIndex.
-type TableIDCollection []TableID
+// TagSetIDCollection stores a list of TagSetID identifiers of TagSet stored in TagSetIndex.
+type TagSetIDCollection []TagSetID
 
 // BinaryWriteTo writes TagSetIndex data using specified binutils.BinaryWriter instance.
 // Returns error if happens or nil.
 // Implements binutils.BinaryWriterTo.
-func (t TableIDCollection) BinaryWriteTo(writer *binutils.BinaryWriter) (err error) {
+func (t TagSetIDCollection) BinaryWriteTo(writer *binutils.BinaryWriter) (err error) {
 	if err = writer.WriteUint8(uint8(len(t))); err != nil {
 		return fmt.Errorf("%w: %v", Error, err)
 	}
@@ -31,7 +31,7 @@ func (t TableIDCollection) BinaryWriteTo(writer *binutils.BinaryWriter) (err err
 // BinaryReadFrom reads TagSetIndex data using specified binutils.BinaryReader instance.
 // Returns error if happens or nil.
 // Implements binutils.BinaryReaderFrom.
-func (t *TableIDCollection) BinaryReadFrom(reader *binutils.BinaryReader) (err error) {
+func (t *TagSetIDCollection) BinaryReadFrom(reader *binutils.BinaryReader) (err error) {
 	var (
 		tagSetIndexLen uint8
 		currentUint32  uint32
@@ -41,36 +41,36 @@ func (t *TableIDCollection) BinaryReadFrom(reader *binutils.BinaryReader) (err e
 		return fmt.Errorf("%w: read: tagset: %v", Error, err)
 	}
 
-	*t = make(TableIDCollection, tagSetIndexLen)
+	*t = make(TagSetIDCollection, tagSetIndexLen)
 	for idx := 0; idx < int(tagSetIndexLen); idx++ {
 		if currentUint32, err = reader.ReadUint32(); err != nil {
 			return fmt.Errorf("%w: read: tagset: %v", Error, err)
 		}
-		(*t)[idx] = TableID(currentUint32)
+		(*t)[idx] = TagSetID(currentUint32)
 	}
 
 	return nil
 }
 
-// Len returns length of TableIDCollection. Implements sort.Interface.
-func (t TableIDCollection) Len() int {
+// Len returns length of TagSetIDCollection. Implements sort.Interface.
+func (t TagSetIDCollection) Len() int {
 	return len(t)
 }
 
-// Less returns true i-th element of TableIDCollection is fewer than j-th. Implements sort.Interface.
-func (t TableIDCollection) Less(i, j int) bool {
+// Less returns true i-th element of TagSetIDCollection is fewer than j-th. Implements sort.Interface.
+func (t TagSetIDCollection) Less(i, j int) bool {
 	return t[i] < t[j]
 }
 
 // Swap swaps i-th and j-th elements of array in place. Implements sort.Interface.
-func (t TableIDCollection) Swap(i, j int) {
+func (t TagSetIDCollection) Swap(i, j int) {
 	t[i], t[j] = t[j], t[i]
 }
 
-// EqualTo compares TableIDCollection with another one.
+// EqualTo compares TagSetIDCollection with another one.
 // Returns true if both sets are contains the same ID8 elements or false otherwise.
 // Note: both sets should be sorted before compare.
-func (t TableIDCollection) EqualTo(another TableIDCollection) bool {
+func (t TagSetIDCollection) EqualTo(another TagSetIDCollection) bool {
 	if t.Len() != another.Len() { // fast non-equal if length differs.
 		return false
 	}

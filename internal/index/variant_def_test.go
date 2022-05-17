@@ -15,13 +15,13 @@ func TestTableIDCollection_Less(t *testing.T) {
 	}
 	tests := []struct {
 		name string
-		t    index.TableIDCollection
+		t    index.TagSetIDCollection
 		args args
 		want bool
 	}{
-		{"i_is_less_than_j", index.TableIDCollection{10, 12}, args{0, 1}, true},
-		{"i_not_less_j", index.TableIDCollection{10, 10}, args{0, 1}, false},
-		{"i_is_greater_than_j", index.TableIDCollection{12, 10}, args{0, 1}, false},
+		{"i_is_less_than_j", index.TagSetIDCollection{10, 12}, args{0, 1}, true},
+		{"i_not_less_j", index.TagSetIDCollection{10, 10}, args{0, 1}, false},
+		{"i_is_greater_than_j", index.TagSetIDCollection{12, 10}, args{0, 1}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -37,12 +37,12 @@ func TestTableIDCollection_Swap(t *testing.T) {
 	}
 	tests := []struct {
 		name string
-		t    index.TableIDCollection
+		t    index.TagSetIDCollection
 		args args
 	}{
-		{"swap_0_1", index.TableIDCollection{10, 12}, args{0, 1}},
-		{"swap_1_2", index.TableIDCollection{10, 12, 13}, args{1, 2}},
-		{"swap_0_2", index.TableIDCollection{10, 12, 13}, args{0, 2}},
+		{"swap_0_1", index.TagSetIDCollection{10, 12}, args{0, 1}},
+		{"swap_1_2", index.TagSetIDCollection{10, 12, 13}, args{1, 2}},
+		{"swap_0_2", index.TagSetIDCollection{10, 12, 13}, args{0, 2}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

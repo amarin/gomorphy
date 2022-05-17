@@ -2,8 +2,10 @@ package index
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 
+	"git.media-tel.ru/railgo/logging"
 	"github.com/amarin/binutils"
 
 	"github.com/amarin/gomorphy/pkg/dag"
@@ -17,12 +19,12 @@ const (
 
 // Index implements main dictionary index.
 type Index struct {
-	mu            *sync.Mutex            // protect internals below
-	tags          dag.Idx                // Tag's storage
-	tagSets       TagSetIndex            // TagSet's storage
-	collectionIdx TableIDCollectionIndex // TableIDCollection storage
-	items         Items                  // Items storage
-	childrenMap   map[dag.ID]dag.IdMap   // children maps
+	mu            *sync.Mutex          // protect internals below
+	tags          dag.Idx              // Tag's storage
+	tagSets       TagSetIndex          // TagSet's storage
+	collectionIdx VariantsIndex        // TagSetIDCollection storage
+	items         Items                // Items storage
+	childrenMap   map[dag.ID]dag.IdMap // children maps
 	wordsCount    int
 }
 
@@ -38,7 +40,7 @@ func New() *Index {
 		items:         *NewItems(),
 		tags:          dag.NewIndex(),
 		tagSets:       make(TagSetIndex, 0),
-		collectionIdx: make(TableIDCollectionIndex, 0),
+		collectionIdx: make(VariantsIndex, 0),
 		childrenMap:   make(map[dag.ID]dag.IdMap),
 		wordsCount:    0,
 	}
@@ -201,11 +203,11 @@ func (index *Index) readItemsDefinitions(reader *binutils.BinaryReader) (err err
 }
 
 func (index *Index) rebuildChildrenIndex() {
-	index.getChildrenIDMap(0)
+	index.GetChildrenIDMap(0)
 	for idx, item := range index.items.items {
 		nodeID := dag.ID(idx)
-		index.getChildrenIDMap(item.Parent)
-		index.getChildrenIDMap(nodeID)
+		index.GetChildrenIDMap(item.Parent)
+		index.GetChildrenIDMap(nodeID)
 		index.childrenMap[item.Parent][item.Letter] = nodeID
 		if item.Variants != 0 {
 			index.wordsCount++
@@ -266,7 +268,7 @@ func (index *Index) FetchString(word string) (dag.Node, error) {
 
 // Children returns rootNode runes mapped to its nodes. Implements dag.Index.
 func (index *Index) Children() dag.NodeMap {
-	return index.getChildrenMap(0)
+	return index.GetChildrenMap(0)
 }
 
 // getItem returns node by its index or error if no such node found. Implements dag.Index.
@@ -308,14 +310,48 @@ func (index *Index) rootNode(letter rune) (root dag.Node) {
 // 	return index.GetItem(newItem.ID), nil
 // }
 
-// getChildrenIDMap generates children nodes for Node specified by its ID.
-func (index *Index) getChildrenIDMap(id dag.ID) (res dag.IdMap) {
+// GetChildrenIDMap generates children nodes for Node specified by its ID.
+func (index *Index) GetChildrenIDMap(id dag.ID) (res dag.IdMap) {
 	var ok bool
 
 	if res, ok = index.childrenMap[id]; !ok {
 		index.childrenMap[id] = make(dag.IdMap)
 	}
 	return index.childrenMap[id]
+}
+
+func (index *Index) FetchItemFromParent(parentID dag.ID, runes []rune) (*Node, error) {
+	var (
+		nextItemID      dag.ID
+		ok              bool
+		node            *Node
+		currentParentID = parentID
+		currentIndex    = 0
+	)
+
+	if len(runes) == 0 {
+		return nil, fmt.Errorf("%w: empty runes", Error)
+	}
+
+	for {
+		firstRune := runes[currentIndex]
+		childrenIDMap := index.GetChildrenIDMap(currentParentID)
+		if nextItemID, ok = childrenIDMap[firstRune]; !ok {
+			node = index.GetItem(currentParentID)
+			if node == nil {
+				return nil, fmt.Errorf("%w: fetch: no node: `%s[%s]`", Error, string(runes[:currentIndex]), string(firstRune))
+			}
+
+			return nil, fmt.Errorf("%w: fetch: not found: `%s[%s]`", Error, node.Word(), string(firstRune))
+		}
+
+		if currentIndex == len(runes)-1 {
+			return index.GetItem(nextItemID), nil
+		}
+
+		currentParentID = nextItemID
+		currentIndex += 1
+	}
 }
 
 func (index *Index) FetchFromItem(parentID dag.ID, runes []rune) (dag.Node, error) {
@@ -332,7 +368,7 @@ func (index *Index) FetchFromItem(parentID dag.ID, runes []rune) (dag.Node, erro
 
 	for {
 		firstRune := runes[currentIndex]
-		childrenIDMap := index.getChildrenIDMap(currentParentID)
+		childrenIDMap := index.GetChildrenIDMap(currentParentID)
 		if nextItemID, ok = childrenIDMap[firstRune]; !ok {
 			node := index.GetItem(currentParentID)
 			if node == nil {
@@ -371,7 +407,7 @@ func (index *Index) AddToNode(parentID dag.ID, runes []rune) (dag.Node, error) {
 		}
 
 		rootLetter := runes[currentIndex]
-		childrenIDMap := index.getChildrenIDMap(currentParentID)
+		childrenIDMap := index.GetChildrenIDMap(currentParentID)
 		if nextItemID, ok = childrenIDMap[rootLetter]; !ok {
 			newRootItem := index.items.NewChild(currentParentID, rootLetter)
 			nextItemID = newRootItem.ID
@@ -402,8 +438,8 @@ func (index *Index) GetItem(id dag.ID) *Node {
 	return newNode(index, id)
 }
 
-// getChildren generates children nodes for Node specified by its ID.
-func (index *Index) getChildrenMap(id dag.ID) dag.NodeMap {
+// GetChildrenMap generates children nodes for Node specified by its ID.
+func (index *Index) GetChildrenMap(id dag.ID) dag.NodeMap {
 	childrenItems := index.childrenMap[id]
 
 	res := make(dag.NodeMap)
@@ -430,7 +466,105 @@ func (index *Index) TagID(name dag.TagName, parent dag.TagName) dag.TagID {
 	return index.tags.Index(name, parent)
 }
 
+func (index *Index) TagSet(tagSet TagSet) (res dag.TagSet, err error) {
+	res = make(dag.TagSet, len(tagSet))
+	for idx, tagID := range tagSet {
+		tag, found := index.tags.Get(tagID)
+		if !found {
+			return res, fmt.Errorf("no such tagID %d", tagID)
+		}
+		res[idx] = tag
+	}
+
+	return res, nil
+}
+
 // TagSetIndex returns internal TagSetIndex.
 func (index *Index) TagSetIndex() TagSetIndex {
 	return index.tagSets
+}
+
+// Optimize reduces index deleting unused tag set's and collections;
+func (index *Index) Optimize() {
+	logger := logging.NewNamedLogger("optimize").WithLevel(logging.LevelDebug)
+	usedCollectionID := make(map[VariantID][]dag.ID)
+	knownCollections := index.collectionIdx.KnownID()
+	logger.Infof("check %d known collections", len(knownCollections))
+	for _, node := range index.items.items {
+		if node.Variants == 0 {
+			continue
+		}
+		if _, ok := usedCollectionID[node.Variants]; !ok {
+			usedCollectionID[node.Variants] = make([]dag.ID, 0)
+		}
+		usedCollectionID[node.Variants] = append(usedCollectionID[node.Variants], node.ID)
+	}
+
+	logger.Debugf("lookup unused collections")
+	unusedCollections := make(CollectionIDList, 0)
+	for _, knownCollectionID := range knownCollections {
+		if _, ok := usedCollectionID[knownCollectionID]; !ok {
+			unusedCollections = append(unusedCollections, knownCollectionID)
+		}
+	}
+
+	logger.Debugf("eliminate %d unused collections", len(unusedCollections))
+	if len(unusedCollections) == 0 {
+		logger.Debugf("no unused collections")
+		return
+	}
+
+	sort.Sort(unusedCollections)
+
+	type replacement struct {
+		old VariantID
+		new VariantID
+	}
+
+	newIndex := make(VariantsIndex, 0)
+	replaceCollections := make([]replacement, 0)
+	for _, collectionID := range knownCollections {
+		if _, ok := usedCollectionID[collectionID]; ok {
+			collection := index.collectionIdx.Get(collectionID)
+			newCollectionID := newIndex.Index(collection)
+			replacementPair := replacement{
+				old: collectionID,
+				new: newCollectionID,
+			}
+			newCollection := newIndex.Get(newCollectionID)
+			if !collection.EqualTo(newCollection) {
+				logger.Errorf("old id %X collection %v", collectionID, collection)
+				logger.Errorf("new id %X collection %v", newCollectionID, newCollection)
+
+				panic(fmt.Errorf("replacement differs"))
+			}
+			replaceCollections = append(replaceCollections, replacementPair)
+		}
+	}
+
+	logger.Infof("have %d collectionID to replace in items", len(replaceCollections))
+	itemsUpdated := 0
+	for _, replacementPair := range replaceCollections {
+		itemsToUpdate, ok := usedCollectionID[replacementPair.old]
+		if !ok {
+			panic(fmt.Errorf("no items to update with collectionID %d", replacementPair.old))
+		}
+
+		for _, itemID := range itemsToUpdate {
+			index.items.items[itemID].Variants = replacementPair.new
+			itemsUpdated++
+		}
+	}
+	logger.Infof("%d items VariantID updated", itemsUpdated)
+	logger.Infof("reduced collection from %d to %d items", len(index.collectionIdx.KnownID()), len(newIndex.KnownID()))
+	index.collectionIdx = newIndex
+
+	knownTagSets := index.tagSets.TableIDs()
+	// tagSetStrings := make([]string, len(knownTagSets))
+	logger.Infof("has %d possible tag sets", len(knownTagSets))
+}
+
+// Variants returns TagSet collection
+func (index *Index) Variants(id VariantID) (tagSetCollection TagSetIDCollection, err error) {
+	return index.collectionIdx.Get(id), err
 }
