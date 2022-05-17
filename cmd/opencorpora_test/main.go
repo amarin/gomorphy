@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ import (
 const (
 	cmdTag  = "tag"
 	cmdSet  = "set"
+	cmdVar  = "var"
 	cmdExit = "exit"
 	cmdNode = "node"
 )
@@ -27,6 +29,7 @@ const (
 var (
 	ErrTag  = errors.New(cmdTag)
 	ErrSet  = errors.New(cmdSet)
+	ErrVar  = errors.New(cmdVar)
 	ErrNode = errors.New(cmdNode)
 )
 
@@ -152,6 +155,28 @@ func processSet(idx *index.Index, logger logging.Logger, items ...string) error 
 	}
 }
 
+func processVar(idx *index.Index, logger logging.Logger, items ...string) error {
+	const subCmdID = "id"
+
+	if len(items) < 2 {
+		return fmt.Errorf("%w: at least 2 items required", ErrSet)
+	}
+
+	var subCmd = items[1]
+	logger.Infof("looking for var %v", subCmd)
+
+	collectionID, err := strconv.Atoi(subCmd)
+	if err != nil {
+		return fmt.Errorf("%w.%v: `%v`: expected id var", ErrVar, subCmdID, subCmd)
+	}
+
+	collection, _ := idx.Variants(index.VariantID(collectionID))
+
+	fmt.Printf("variants: %v: %v", collectionID, collection)
+
+	return nil
+}
+
 func processNode(idx *index.Index, logger logging.Logger, items ...string) error {
 	const (
 		subCmdCount = "count"
@@ -169,26 +194,44 @@ func processNode(idx *index.Index, logger logging.Logger, items ...string) error
 
 		return nil
 	default:
+		var (
+			item dag.Node
+			node *index.Node
+		)
 		if len(items) != 2 {
 			return fmt.Errorf("%w.%v: 2 items required", ErrNode, subCmdInfo)
 		}
 		strNodeId := items[1]
 		nodeID, err := strconv.Atoi(strNodeId)
+		lookupByString := false
 		if err != nil {
-			return fmt.Errorf("%w.%v: `%v`: int ID required", ErrNode, subCmdInfo, strNodeId)
+			node, err = idx.FetchItemFromParent(0, []rune(strNodeId))
+			if err != nil {
+				return fmt.Errorf("%w.%v: `%v`: not found", ErrNode, subCmdInfo, strNodeId)
+			}
+			lookupByString = true
 		}
-		if nodeID >= idx.NodesCount() {
-			return fmt.Errorf("%w.%v: `%v`: no such node", ErrNode, subCmdInfo, strNodeId)
-		}
-		var item dag.Node
 
-		if item, err = idx.Get(dag.ID(nodeID)); err != nil {
-			return fmt.Errorf("%w.%v: `%v`: get node: %v", ErrNode, subCmdInfo, strNodeId, err)
+		if lookupByString {
+			if item, err = idx.Get(node.Id()); err != nil {
+				return fmt.Errorf("%w.%v: `%v`: get node: %v", ErrNode, subCmdInfo, strNodeId, err)
+			}
+			strNodeId = strconv.Itoa(int(node.Id()))
+		} else {
+			if nodeID >= idx.NodesCount() {
+				return fmt.Errorf("%w.%v: `%v`: no such node", ErrNode, subCmdInfo, strNodeId)
+			}
+
+			if item, err = idx.Get(dag.ID(nodeID)); err != nil {
+				return fmt.Errorf("%w.%v: `%v`: get node: %v", ErrNode, subCmdInfo, strNodeId, err)
+			}
+			node = idx.GetItem(dag.ID(nodeID))
 		}
 
 		word := item.Word()
 		ts := item.TagSets()
 		setsStrings := make([]string, len(ts))
+
 		for tsIdx, tagSet := range ts {
 			tagSetStrings := make([]string, len(tagSet))
 			for tagIdx, tag := range tagSet {
@@ -197,7 +240,22 @@ func processNode(idx *index.Index, logger logging.Logger, items ...string) error
 			setsStrings[tsIdx] = "TS" + strconv.Itoa(tsIdx) + "(" + strings.Join(tagSetStrings, ",") + ")"
 		}
 
-		logger.Infof("node %v: %v: %v", strNodeId, word, strings.Join(setsStrings, ", "))
+		fmt.Printf(
+			"node %v: %v: variants %d: %v",
+			node.Id(), word, node.Item().Variants, strings.Join(setsStrings, ", "),
+		)
+		childrenMap := idx.GetChildrenIDMap(node.Id())
+		childrenStrings := make([]string, len(childrenMap))
+		currentChild := 0
+		for letter, childID := range childrenMap {
+			childrenStrings[currentChild] = fmt.Sprintf("%v[%d]: %d", string(letter), letter, childID)
+			currentChild++
+		}
+
+		sort.Strings(childrenStrings)
+		for _, childString := range childrenStrings {
+			fmt.Printf("\n\t%v", childString)
+		}
 
 		return nil
 	}
@@ -215,6 +273,8 @@ func processInput(idx *index.Index, logger logging.Logger, line string) {
 		err = processSet(idx, logger, items...)
 	case cmdNode:
 		err = processNode(idx, logger, items...)
+	case cmdVar:
+		err = processVar(idx, logger, items...)
 	case cmdExit:
 		logger.Infof("exiting")
 		os.Exit(0)
@@ -269,11 +329,11 @@ func main() {
 		}
 	}()
 
-	if logger.IsEnabledForLevel(logging.LevelDebug) {
-		outputTagsIndex(idx, logger)
-	}
+	// if logger.IsEnabledForLevel(logging.LevelDebug) {
+	// 	outputTagsIndex(idx, logger)
+	// }
 
-	logger.Debugf("TagSetIndex: %v", idx.TagSetIndex().String())
+	// logger.Debugf("TagSetIndex: %v", idx.TagSetIndex().String())
 
 	for {
 		if line, err = rl.Readline(); err != nil { // io.EOF
