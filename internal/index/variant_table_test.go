@@ -8,17 +8,6 @@ import (
 	"github.com/amarin/gomorphy/internal/index"
 )
 
-func TestVariantsTable_Get_0(t *testing.T) {
-	emptyVariantsTable := make(index.VariantsTable, 0)
-	res := emptyVariantsTable.Get(0)
-	t.Run("collection_table_0_returns_non_nil_collection_table", func(t *testing.T) {
-		require.NotNil(t, res)
-	})
-	t.Run("collection_table_0_returns_empty_collection_table", func(t *testing.T) {
-		require.Len(t, res, 0)
-	})
-}
-
 func TestVariantsTable_Index(t *testing.T) {
 	tests := []struct {
 		name       string
