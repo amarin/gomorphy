@@ -6,20 +6,9 @@ import (
 	"strings"
 
 	"github.com/amarin/binutils"
-
-	"github.com/amarin/gomorphy/pkg/storage"
 )
 
 const prefixTagSetTable = "TT"
-
-// TagSetID represents id of TagSet item in TagSetTable.
-// It's a simple wrapper over storage.ID16 type.
-type TagSetID storage.ID16
-
-// ID16 returns storage.ID16 value of TagSetID.
-func (tagSetID TagSetID) ID16() storage.ID16 {
-	return storage.ID16(tagSetID)
-}
 
 // TagSetTable stores unique TagSet lists having equal length.
 // It Uses its own ID16 index to address target sets.set16 stack in addition to address element in stack.
@@ -77,20 +66,20 @@ func (tagSetTable TagSetTable) BinaryWriteTo(writer *binutils.BinaryWriter) (err
 // Find returns 0-based index of ids.Set16 in Table16 storage.
 // If no such set found returns 0 and false found indicator.
 // It required sets.Set16 argument to be sorted before.
-func (tagSetTable TagSetTable) Find(item TagSet) (storageIdx TagSetID, found bool) {
+func (tagSetTable TagSetTable) Find(item TagSet) (storageIdx TagSetSubID, found bool) {
 	for id, existedSet := range tagSetTable {
 		if existedSet.EqualTo(item) {
-			return TagSetID(id), true
+			return TagSetSubID(id), true
 		}
 	}
 
 	return 0, false
 }
 
-// Index returns 0-based TagSetID index of ids.Set16 in Table16 instance.
+// Index returns 0-based TagSetSubID index of ids.Set16 in Table16 instance.
 // Returns index of existed item if found or of appended item.
 // Panics if specified set empty.
-func (tagSetTable *TagSetTable) Index(item TagSet) (storageIdx TagSetID) {
+func (tagSetTable *TagSetTable) Index(item TagSet) (storageIdx TagSetSubID) {
 	var found bool
 
 	if len(item) == 0 {
@@ -103,7 +92,7 @@ func (tagSetTable *TagSetTable) Index(item TagSet) (storageIdx TagSetID) {
 		return storageIdx
 	}
 
-	storageIdx = TagSetID(len(*tagSetTable))
+	storageIdx = TagSetSubID(len(*tagSetTable))
 
 	*tagSetTable = append(*tagSetTable, item)
 
@@ -111,7 +100,7 @@ func (tagSetTable *TagSetTable) Index(item TagSet) (storageIdx TagSetID) {
 }
 
 // Get returns ids.Set16 by index if present or found indicator will be false.
-func (tagSetTable TagSetTable) Get(storageIdx TagSetID) (targetSet TagSet, found bool) {
+func (tagSetTable TagSetTable) Get(storageIdx TagSetSubID) (targetSet TagSet, found bool) {
 	if int(storageIdx) >= len(tagSetTable) {
 		return nil, false
 	}

@@ -12,13 +12,10 @@ import (
 
 const binaryTagSetPrefix = "TI"
 
-// TableID represents TagSetTable ID in TagSetIndex.
-type TableID storage.ID32
-
-// TagSetIndex stores unique ids.Set16 items organized in Table16 storages where each storage
+// TagSetIndex stores unique TagSet items organized in TagSetTable storages where each storage
 // keeps sets of same sizes.
-// Each TagSetIndex item is addressable by unique ids.ID32
-// which consists of Table16 ID16 item index in collection and ID16 element index in Table16 item.
+// Each TagSetIndex item is addressable by unique TagSetID value
+// which consists of TagSetTableNumber internal table index and TagSetSubID element index in TagSetTable item.
 type TagSetIndex []TagSetTable
 
 // String returns string representation of TagSetIndex.
@@ -74,28 +71,29 @@ func (tagSetIndex *TagSetIndex) BinaryReadFrom(reader *binutils.BinaryReader) (e
 	return nil
 }
 
-// Find returns 0-based index of ids.Set16 item in TagSetIndex array.
-// If no such set found returns 0 and false found flag.
-func (tagSetIndex *TagSetIndex) Find(item TagSet) (storageIdx TableID, found bool) {
-	var lower TagSetID
+// Find returns ID of specified TAgSet in index.
+// If no such set found returns TagSetID=0 and false found indicator.
+func (tagSetIndex *TagSetIndex) Find(item TagSet) (storageIdx TagSetID, found bool) {
+	var lower TagSetSubID
 
-	columnIdx := len(item) - 1
-
-	if columnIdx < 0 {
+	if len(item) == 0 {
 		return 0, false // always return not found for empty sets
 	}
+	zeroBasedTableIdx := TagSetTableNumber(len(item) - 1)
 
-	if table, ok := tagSetIndex.getTable(storage.ID16(columnIdx)); ok {
+	if table, ok := tagSetIndex.getTable(zeroBasedTableIdx); ok {
 		if lower, ok = table.Find(item); ok {
-			return TableID(storage.Combine16(storage.ID16(columnIdx), lower.ID16())), ok
+			return TagSetID(storage.Combine16(storage.ID16(zeroBasedTableIdx), lower.ID16())), ok
 		}
 	}
 
 	return 0, false
 }
 
-// Index returns 0-based index of set in Collection8x8 array.
-func (tagSetIndex *TagSetIndex) Index(item TagSet) (storageIdx TableID) {
+// Index returns specified TagSet ID in index.
+// If no such TagSet registered before, it will be indexed first.
+// To check if TagSet present in index without registering use Find instead.
+func (tagSetIndex *TagSetIndex) Index(item TagSet) (storageIdx TagSetID) {
 	if len(item) == 0 {
 		return 0 // empty set means no data
 	}
@@ -111,34 +109,50 @@ func (tagSetIndex *TagSetIndex) Index(item TagSet) (storageIdx TableID) {
 
 	itemIdx := (*tagSetIndex)[columnIdx].Index(item)
 
-	return TableID(storage.Combine16(storage.ID16(columnIdx), itemIdx.ID16()))
+	return TagSetID(storage.Combine16(storage.ID16(columnIdx), itemIdx.ID16()))
 }
 
-func (tagSetIndex *TagSetIndex) getTable(upper storage.ID16) (table TagSetTable, ok bool) {
-	if ok = int(upper) < tagSetIndex.Len(); !ok {
+// TableIDs returns all known TagSet's identification list.
+func (tagSetIndex TagSetIndex) TableIDs() (res []TagSetID) {
+	res = make([]TagSetID, 0)
+	for tableIDx, table := range tagSetIndex {
+		for idxInTable := range table {
+			tableID := TagSetTableNumber(tableIDx).Add(1).TagSetID(TagSetSubID(idxInTable))
+			res = append(res, tableID)
+		}
+	}
+
+	return res
+}
+
+// getTable returns TagSetTable by TagSetTableNumber value or false found indicator.
+func (tagSetIndex *TagSetIndex) getTable(zeroBasedTableNum TagSetTableNumber) (table TagSetTable, ok bool) {
+	if zeroBasedTableNum.Int() >= tagSetIndex.Len() {
 		return nil, false
 	}
 
-	return (*tagSetIndex)[upper], ok
+	return (*tagSetIndex)[zeroBasedTableNum], true
 }
 
-func (tagSetIndex *TagSetIndex) getUpperLower(upper storage.ID16, lower storage.ID16) (TagSet, bool) {
-	if table, ok := tagSetIndex.getTable(upper); ok {
-		return table.Get(TagSetID(lower))
+// getTagSet returns TagSet by TagSetTableNumber and TagSetSubID values or false found indicator.
+func (tagSetIndex *TagSetIndex) getTagSet(zeroBasedTableNum TagSetTableNumber, lower TagSetSubID) (TagSet, bool) {
+	if table, ok := tagSetIndex.getTable(zeroBasedTableNum); ok {
+		return table.Get(lower)
 	}
 
 	return nil, false
 }
 
-// Get returns set by index.
-func (tagSetIndex *TagSetIndex) Get(storageIdx TableID) (TagSet, bool) {
+// Get returns TagSet by its TagSetID value.
+// If not found returns empty TagSet and false found indicator.
+func (tagSetIndex *TagSetIndex) Get(storageIdx TagSetID) (TagSet, bool) {
 	if storageIdx == 0 {
-		return make(TagSet, 0), true // zero-index TableID always exists and means no data
+		return make(TagSet, 0), true // zero-index TagSetID always exists and means no data
 	}
 
-	if int(storage.ID32(storageIdx).Upper16()) >= tagSetIndex.Len() {
+	if storageIdx.TagSetTableNumber().Int() >= tagSetIndex.Len() {
 		return nil, false
 	}
 
-	return tagSetIndex.getUpperLower(storage.ID32(storageIdx).Upper16(), storage.ID32(storageIdx).Lower16())
+	return tagSetIndex.getTagSet(storageIdx.TagSetTableNumber(), storageIdx.TagSetSubID())
 }
