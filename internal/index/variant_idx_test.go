@@ -32,37 +32,27 @@ func TestTableIDCollectionIndex_Index(t *testing.T) {
 }
 
 func TestVariantsIndex_Get(t *testing.T) {
+	exampleIndex := index.VariantsIndex{
+		index.VariantsTable{{10}, {11}, {12}},
+		index.VariantsTable{{20, 21}, {22, 23}},
+		index.VariantsTable{{30, 31, 32}, {33, 34, 35}, {36, 37, 38}},
+	}
 	tests := []struct {
-		name        string
-		tagSetIndex index.VariantsIndex
-		storageIdx  index.VariantID
-		want        index.TagSetIDCollection
+		name       string
+		storageIdx index.VariantID
+		want       index.TagSetIDCollection
 	}{
-		{
-			"get_0",
-			index.VariantsIndex{
-				index.VariantsTable{
-					{10},
-				},
-			},
-			0,
-			index.TagSetIDCollection{},
-		},
-		{
-			"get_0x10000",
-			index.VariantsIndex{
-				index.VariantsTable{
-					{10},
-				},
-			},
-			0,
-			index.TagSetIDCollection{10},
-		},
+		{"get_0x00000", 0, index.TagSetIDCollection{}},
+		{"get_0x10000", 0x10000, index.TagSetIDCollection{10}},
+		{"get_0x20001", 0x20001, index.TagSetIDCollection{22, 23}},
+		{"get_0x30002", 0x30002, index.TagSetIDCollection{36, 37, 38}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.tagSetIndex.Get(tt.storageIdx)
-			require.Equal(t, tt.want, got)
+			got := exampleIndex.Get(tt.storageIdx)
+			require.Equalf(t, tt.want, got,
+				"idx: %v\nid: %v,\ntable: %v\nitem: %v",
+				exampleIndex, tt.storageIdx, tt.storageIdx.TableNum(), tt.storageIdx.CollectionTableID())
 		})
 	}
 }

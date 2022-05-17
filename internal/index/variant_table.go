@@ -83,10 +83,6 @@ func (variantsTable *VariantsTable) Index(item TagSetIDCollection) (storageIdx V
 
 // Get returns TagSetIDCollection by its VariantSubID.
 func (variantsTable VariantsTable) Get(storageIdx VariantSubID) TagSetIDCollection {
-	if storageIdx == 0 {
-		return make(TagSetIDCollection, 0)
-	}
-
 	return variantsTable[storageIdx]
 }
 
