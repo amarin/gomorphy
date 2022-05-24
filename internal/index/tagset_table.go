@@ -32,6 +32,10 @@ func (tagSetTable TagSetTable) String() string {
 func (tagSetTable *TagSetTable) BinaryReadFrom(reader *binutils.BinaryReader) (err error) {
 	var tagSetLen uint16
 
+	if reader == nil {
+		return fmt.Errorf("%w: reader nil", Error)
+	}
+
 	if tagSetLen, err = reader.ReadUint16(); err != nil {
 		return fmt.Errorf("%w: read: tagset: %v", Error, err)
 	}
@@ -50,7 +54,10 @@ func (tagSetTable *TagSetTable) BinaryReadFrom(reader *binutils.BinaryReader) (e
 // Returns error if happens or nil.
 // Implements binutils.BinaryWriterTo.
 func (tagSetTable TagSetTable) BinaryWriteTo(writer *binutils.BinaryWriter) (err error) {
-	if err = writer.WriteUint16(uint16(len(tagSetTable))); err != nil {
+	if writer == nil {
+		return fmt.Errorf("%w: writer nil", Error)
+	}
+	if err = writer.WriteUint16(uint16(tagSetTable.Len())); err != nil {
 		return fmt.Errorf("%w: %v", Error, err)
 	}
 
@@ -100,8 +107,8 @@ func (tagSetTable *TagSetTable) Index(item TagSet) (storageIdx TagSetSubID) {
 }
 
 // Get returns ids.Set16 by index if present or found indicator will be false.
-func (tagSetTable TagSetTable) Get(storageIdx TagSetSubID) (targetSet TagSet, found bool) {
-	if int(storageIdx) >= len(tagSetTable) {
+func (tagSetTable TagSetTable) Get(storageIdx TagSetSubID) (tagSet TagSet, found bool) {
+	if storageIdx.Int() >= tagSetTable.Len() {
 		return nil, false
 	}
 
@@ -109,6 +116,6 @@ func (tagSetTable TagSetTable) Get(storageIdx TagSetSubID) (targetSet TagSet, fo
 }
 
 // Len returns length of TagSetTable in TagSet items.
-func (tagSetTable *TagSetTable) Len() int {
-	return len(*tagSetTable)
+func (tagSetTable TagSetTable) Len() int {
+	return len(tagSetTable)
 }
