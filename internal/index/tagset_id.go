@@ -13,6 +13,11 @@ func (tagSetID TagSetSubID) ID16() storage.ID16 {
 	return storage.ID16(tagSetID)
 }
 
+// Int returns TagSetSubID as integer value.
+func (tagSetID TagSetSubID) Int() int {
+	return int(tagSetID)
+}
+
 // TagSetTableNumber provides 0-based TagSetTable number in TagSetIndex.
 // It's a simple wrapper over storage.ID16 type.
 type TagSetTableNumber storage.ID16
