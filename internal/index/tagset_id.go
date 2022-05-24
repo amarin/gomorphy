@@ -4,7 +4,7 @@ import (
 	"github.com/amarin/gomorphy/pkg/storage"
 )
 
-// TagSetSubID represents id of TagSet item in TagSetTable.
+// TagSetSubID represents 0-based ID of TagSet item in TagSetTable.
 // It's a simple wrapper over storage.ID16 type.
 type TagSetSubID storage.ID16
 
@@ -13,7 +13,7 @@ func (tagSetID TagSetSubID) ID16() storage.ID16 {
 	return storage.ID16(tagSetID)
 }
 
-// TagSetTableNumber provides 1-based TagSetTable number in TagSetIndex.
+// TagSetTableNumber provides 0-based TagSetTable number in TagSetIndex.
 // It's a simple wrapper over storage.ID16 type.
 type TagSetTableNumber storage.ID16
 
@@ -32,12 +32,12 @@ func (tagSetTableNumber TagSetTableNumber) Int() int {
 	return int(tagSetTableNumber)
 }
 
-// TagSetID generates TagSetID value TagSetTableNumber uint32 value as upper uint16 part and specified id as lower one.
+// TagSetID generates TagSetID value TagSetTableNumber value as upper uint16 part and specified subID as lower.
 func (tagSetTableNumber TagSetTableNumber) TagSetID(id TagSetSubID) TagSetID {
 	return TagSetID(storage.Combine16(tagSetTableNumber.ID16(), id.ID16()))
 }
 
-// TagSetID provides unique TagSet identification in TagSetIndex.
+// TagSetID provides unique 0-based TagSet ID in TagSetIndex.
 type TagSetID storage.ID32
 
 // TagSetSubID returns lower uint16 part of TagSetID as TagSetSubID.
