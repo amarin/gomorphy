@@ -2,8 +2,6 @@ package index
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 
 	"github.com/amarin/binutils"
 
@@ -18,31 +16,39 @@ const binaryTagSetPrefix = "TI"
 // which consists of TagSetTableNumber internal table index and TagSetSubID element index in TagSetTable item.
 type TagSetIndex []TagSetTable
 
-// String returns string representation of TagSetIndex.
-// Implements fmt.Stringer.
-func (tagSetIndex TagSetIndex) String() string {
-	tableStrings := make([]string, tagSetIndex.Len())
-	for idx, table := range tagSetIndex {
-		tableStrings[idx] = strconv.Itoa(idx) + ": " + table.String()
+// // String returns string representation of TagSetIndex.
+// // Implements fmt.Stringer.
+// func (tagSetIndex TagSetIndex) String() string {
+// 	tableStrings := make([]string, len(tagSetIndex))
+// 	for idx, table := range tagSetIndex {
+// 		tableStrings[idx] = strconv.Itoa(idx) + ": " + table.String()
+// 	}
+//
+// 	return binaryTagSetPrefix + "(" + strings.Join(tableStrings, ",") + ")"
+// }
+
+// Size returns indexed elements count in TagSetIndex.
+func (tagSetIndex TagSetIndex) Size() (res int) {
+	res = 0
+	for _, table := range tagSetIndex {
+		res += table.Len()
 	}
-
-	return binaryTagSetPrefix + "(" + strings.Join(tableStrings, ",") + ")"
-}
-
-// Len returns length of TagSetIndex instance.
-func (tagSetIndex *TagSetIndex) Len() int {
-	return len(*tagSetIndex)
+	return res
 }
 
 // BinaryWriteTo writes TagSetIndex data using specified binutils.BinaryWriter instance.
 // Returns error if happens or nil.
 // Implements binutils.BinaryWriterTo.
-func (tagSetIndex *TagSetIndex) BinaryWriteTo(writer *binutils.BinaryWriter) (err error) {
-	if err = writer.WriteUint32(uint32(tagSetIndex.Len())); err != nil {
+func (tagSetIndex TagSetIndex) BinaryWriteTo(writer *binutils.BinaryWriter) (err error) {
+	if writer == nil {
+		return fmt.Errorf("%w: TagSetIndex", ErrNilWriter)
+	}
+
+	if err = writer.WriteUint32(uint32(len(tagSetIndex))); err != nil {
 		return fmt.Errorf("%w: %v", Error, err)
 	}
 
-	for _, tagSetTable := range *tagSetIndex {
+	for _, tagSetTable := range tagSetIndex {
 		if err = tagSetTable.BinaryWriteTo(writer); err != nil {
 			return err
 		}
@@ -55,6 +61,10 @@ func (tagSetIndex *TagSetIndex) BinaryWriteTo(writer *binutils.BinaryWriter) (er
 // Returns error if happens or nil.
 // Implements binutils.BinaryReaderFrom.
 func (tagSetIndex *TagSetIndex) BinaryReadFrom(reader *binutils.BinaryReader) (err error) {
+	if reader == nil {
+		return fmt.Errorf("%w: TagSetIndex", ErrNilReader)
+	}
+
 	var tagSetIndexLen uint32
 
 	if tagSetIndexLen, err = reader.ReadUint32(); err != nil {
@@ -79,11 +89,12 @@ func (tagSetIndex *TagSetIndex) Find(item TagSet) (storageIdx TagSetID, found bo
 	if len(item) == 0 {
 		return 0, false // always return not found for empty sets
 	}
+
 	zeroBasedTableIdx := TagSetTableNumber(len(item) - 1)
 
 	if table, ok := tagSetIndex.getTable(zeroBasedTableIdx); ok {
 		if lower, ok = table.Find(item); ok {
-			return TagSetID(storage.Combine16(storage.ID16(zeroBasedTableIdx), lower.ID16())), ok
+			return zeroBasedTableIdx.TagSetID(lower), ok
 		}
 	}
 
@@ -126,12 +137,12 @@ func (tagSetIndex TagSetIndex) TableIDs() (res []TagSetID) {
 }
 
 // getTable returns TagSetTable by TagSetTableNumber value or false found indicator.
-func (tagSetIndex *TagSetIndex) getTable(zeroBasedTableNum TagSetTableNumber) (table TagSetTable, ok bool) {
-	if zeroBasedTableNum.Int() >= tagSetIndex.Len() {
+func (tagSetIndex TagSetIndex) getTable(zeroBasedTableNum TagSetTableNumber) (table TagSetTable, ok bool) {
+	if zeroBasedTableNum.Int() >= len(tagSetIndex) {
 		return nil, false
 	}
 
-	return (*tagSetIndex)[zeroBasedTableNum], true
+	return tagSetIndex[zeroBasedTableNum], true
 }
 
 // getTagSet returns TagSet by TagSetTableNumber and TagSetSubID values or false found indicator.
@@ -145,12 +156,8 @@ func (tagSetIndex *TagSetIndex) getTagSet(zeroBasedTableNum TagSetTableNumber, l
 
 // Get returns TagSet by its TagSetID value.
 // If not found returns empty TagSet and false found indicator.
-func (tagSetIndex *TagSetIndex) Get(storageIdx TagSetID) (TagSet, bool) {
-	if storageIdx == 0 {
-		return make(TagSet, 0), true // zero-index TagSetID always exists and means no data
-	}
-
-	if storageIdx.TagSetTableNumber().Int() >= tagSetIndex.Len() {
+func (tagSetIndex TagSetIndex) Get(storageIdx TagSetID) (TagSet, bool) {
+	if storageIdx.TagSetTableNumber().Int() >= len(tagSetIndex) {
 		return nil, false
 	}
 
