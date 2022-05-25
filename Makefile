@@ -61,6 +61,9 @@ opencorpora_update: make_deploy
 	@echo "build $@ at $(DEPLOYMENT_PREFIX)"
 	${GOBUILD} -o $(DEPLOYMENT_PREFIX)/opencorpora_update ./cmd/opencorpora_update/main.go
 
+opencorpora_test: make_deploy
+	@echo "build $@ at $(DEPLOYMENT_PREFIX)"
+	${GOBUILD} -o $(DEPLOYMENT_PREFIX)/opencorpora_test ./cmd/opencorpora_test/main.go
 
 build: opencorpora_update ## build executable for target os
 
