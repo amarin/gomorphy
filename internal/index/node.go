@@ -60,7 +60,7 @@ func (node *Node) AddTagSet(newTagSet ...dag.TagName) error {
 	}
 
 	item := node.index.getItem(node.id)
-	collection := append(node.index.collectionIdx.Get(item.Variants), node.index.tagSets.Index(tagSet))
+	collection := append(node.index.collectionIdx.Get(item.Variants).Add(node.index.tagSets.Index(tagSet)))
 	if item.Variants == 0 {
 		node.index.wordsCount++
 	}

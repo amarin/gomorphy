@@ -2,6 +2,9 @@ package index
 
 import (
 	"fmt"
+	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/amarin/binutils"
 
@@ -10,6 +13,15 @@ import (
 
 // TagSetIDCollection stores a list of TagSetID identifiers of TagSet stored in TagSetIndex.
 type TagSetIDCollection []TagSetID
+
+func (t TagSetIDCollection) GoString() string {
+	stringsList := make([]string, len(t))
+	for idx, ts := range t {
+		stringsList[idx] = strconv.FormatUint(uint64(ts), 16)
+	}
+
+	return "[" + strings.Join(stringsList, ",") + "]"
+}
 
 // BinaryWriteTo writes TagSetIndex data using specified binutils.BinaryWriter instance.
 // Returns error if happens or nil.
@@ -82,4 +94,32 @@ func (t TagSetIDCollection) EqualTo(another TagSetIDCollection) bool {
 	}
 
 	return true
+}
+
+// Has returns true if TagSetIDCollection contains specified TagSetID.
+func (t TagSetIDCollection) Has(searchTagSetID TagSetID) bool {
+	for _, tsID := range t {
+		if tsID == searchTagSetID {
+			return true
+		}
+	}
+
+	return false
+}
+
+// Add makes a new TagSetIDCollection having all TagSetID's from original plus specified additional TagSetID.
+// Result is sorted and ready to place into VariantsIndex.
+// If original TagSetIDCollection already contains specified element,
+// resulting TagSetIDCollection will be the same as original one.
+func (t TagSetIDCollection) Add(additionalTagSetID TagSetID) TagSetIDCollection {
+	if t.Has(additionalTagSetID) {
+		return t
+	}
+
+	res := make(TagSetIDCollection, len(t)+1)
+	copy(res, t)
+	res[len(t)] = additionalTagSetID
+	sort.Sort(res)
+
+	return res
 }
