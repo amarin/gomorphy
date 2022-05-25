@@ -1,8 +1,11 @@
 package index_test
 
 import (
+	"bytes"
+	"encoding/hex"
 	"testing"
 
+	"github.com/amarin/binutils"
 	"github.com/stretchr/testify/require"
 
 	"github.com/amarin/gomorphy/internal/index"
@@ -53,6 +56,58 @@ func TestVariantsIndex_Get(t *testing.T) {
 			require.Equalf(t, tt.want, got,
 				"idx: %v\nid: %v,\ntable: %v\nitem: %v",
 				exampleIndex, tt.storageIdx, tt.storageIdx.TableNum(), tt.storageIdx.CollectionTableID())
+		})
+	}
+}
+
+func TestVariantsIndex_BinaryWriteTo_BinaryReadFrom(t *testing.T) {
+	tests := []struct {
+		name       string
+		addToIndex index.TagSetIDCollection
+	}{
+		{"index_1st_level", index.TagSetIDCollection{11}},
+		{"index_2nd_level", index.TagSetIDCollection{11, 13}},
+		{"index_3rd_level", index.TagSetIDCollection{11, 13, 17}},
+		{"index_4rd_level", index.TagSetIDCollection{11, 13, 17, 19}},
+		{"index_5th_level", index.TagSetIDCollection{11, 13, 17, 19, 23}},
+		{"index_6th_level", index.TagSetIDCollection{11, 13, 17, 19, 23, 29}},
+		{"index_7th_level", index.TagSetIDCollection{11, 13, 17, 19, 23, 29, 31}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var (
+				originalVariantID index.VariantID
+				loadedVariantID   index.VariantID
+				found             bool
+			)
+			idxOriginal := make(index.VariantsIndex, 0)
+			originalVariantID = idxOriginal.Index(tt.addToIndex)
+			loadedVariantID, found = idxOriginal.Find(tt.addToIndex)
+			require.Truef(t, found,
+				"variant not found after index:\nLooking for variant: %v (0x%x)\nindex: %v",
+				originalVariantID, originalVariantID, idxOriginal.Tables(),
+			)
+			require.Equalf(t, originalVariantID, loadedVariantID,
+				"variant get after index:\nLooking for variant: %v\nindex: %v\n",
+				originalVariantID, loadedVariantID, idxOriginal.Tables(),
+			)
+
+			buffer := new(bytes.Buffer)
+
+			require.NoError(t, idxOriginal.BinaryWriteTo(binutils.NewBinaryWriter(buffer)))
+			writtenBytes := buffer.Bytes()
+			idxLoaded := make(index.VariantsIndex, 0)
+			require.NoError(t, idxLoaded.BinaryReadFrom(binutils.NewBinaryReader(buffer)))
+
+			loadedVariantID, found = idxLoaded.Find(tt.addToIndex)
+			require.Truef(t, found,
+				"variant not found after save-load:\nLooking for variant: %v (%0X)\n index binary: %v\nindex: %v\nloaded: %v",
+				originalVariantID, originalVariantID, hex.EncodeToString(writtenBytes), idxOriginal.Tables(), idxLoaded.Tables(),
+			)
+			require.Equalf(t, originalVariantID, loadedVariantID,
+				"variant changed after save-load:\nOriginal for variant: %v\nReceived variant: %v\nindex binary: %v\nindex: %v\nloaded: %v",
+				originalVariantID, loadedVariantID, hex.EncodeToString(writtenBytes), idxOriginal.Tables(), idxLoaded.Tables(),
+			)
 		})
 	}
 }
