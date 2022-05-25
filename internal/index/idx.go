@@ -533,12 +533,13 @@ func (index *Index) Optimize() {
 			}
 			newCollection := newIndex.Get(newCollectionID)
 			if !collection.EqualTo(newCollection) {
-				logger.Errorf("old id %X collection %v", collectionID, collection)
-				logger.Errorf("new id %X collection %v", newCollectionID, newCollection)
+				logger.Errorf("old subID %X collection %v", collectionID, collection)
+				logger.Errorf("new subID %X collection %v", newCollectionID, newCollection)
 
 				panic(fmt.Errorf("replacement differs"))
 			}
 			replaceCollections = append(replaceCollections, replacementPair)
+			logger.Debugf("IDX? O%#08x N%#08x", replacementPair.old, replacementPair.new)
 		}
 	}
 
@@ -551,6 +552,15 @@ func (index *Index) Optimize() {
 		}
 
 		for _, itemID := range itemsToUpdate {
+			if logger.IsEnabledForLevel(logging.LevelDebug) {
+				logger.Debugf(
+					"IDX# I%08d O%#08x OL%v N%#08x NL%v",
+					itemID,
+					index.items.items[itemID].Variants,
+					index.collectionIdx.Get(index.items.items[itemID].Variants).GoString(),
+					replacementPair.new,
+					newIndex.Get(replacementPair.new).GoString())
+			}
 			index.items.items[itemID].Variants = replacementPair.new
 			itemsUpdated++
 		}
@@ -560,7 +570,6 @@ func (index *Index) Optimize() {
 	index.collectionIdx = newIndex
 
 	knownTagSets := index.tagSets.TableIDs()
-	// tagSetStrings := make([]string, len(knownTagSets))
 	logger.Infof("has %d possible tag sets", len(knownTagSets))
 }
 
