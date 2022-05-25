@@ -58,7 +58,7 @@ func (tagSetIndex VariantsIndex) Find(item TagSetIDCollection) (storageIdx Varia
 
 	internalTableID := CollectionTableNumber(len(item) - 1)
 
-	if len(item) >= len(tagSetIndex) {
+	if len(item) > len(tagSetIndex) {
 		return 0, false // always return not found for internalTableID over collection length.
 	}
 
