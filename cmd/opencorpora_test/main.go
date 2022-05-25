@@ -19,28 +19,30 @@ import (
 )
 
 const (
-	cmdTag  = "tag"
-	cmdSet  = "set"
-	cmdVar  = "var"
-	cmdExit = "exit"
-	cmdNode = "node"
+	cmdTag         = "tag"
+	cmdTagShort    = "t"
+	cmdSet         = "set"
+	cmdSetShort    = "s"
+	cmdVar         = "var"
+	cmdVarShort    = "v"
+	cmdExit        = "exit"
+	cmdExitShort   = "e"
+	cmdNode        = "node"
+	cmdNodeShort   = "n"
+	cmdReload      = "reload"
+	cmdReloadShort = "r"
 )
 
 var (
+	idx *index.Index
+
 	ErrTag  = errors.New(cmdTag)
 	ErrSet  = errors.New(cmdSet)
 	ErrVar  = errors.New(cmdVar)
 	ErrNode = errors.New(cmdNode)
 )
 
-func outputTagsIndex(idx *index.Index, logger logging.Logger) {
-	logger.Debugf("Tags index:")
-	for tagID, tag := range idx.Tags() {
-		logger.Debugf("[%d] %s (%s)", tagID, tag.Name.String(), tag.Parent.String())
-	}
-}
-
-func processSearch(idx *index.Index, logger logging.Logger, line string) {
+func processSearch(logger logging.Logger, line string) {
 	var (
 		forms dag.Node
 		err   error
@@ -63,7 +65,7 @@ func processSearch(idx *index.Index, logger logging.Logger, line string) {
 	}
 }
 
-func processTag(idx *index.Index, logger logging.Logger, items ...string) error {
+func processTag(logger logging.Logger, items ...string) error {
 	const (
 		subCmdCount = "count"
 	)
@@ -103,10 +105,8 @@ func processTag(idx *index.Index, logger logging.Logger, items ...string) error 
 	}
 }
 
-func processSet(idx *index.Index, logger logging.Logger, items ...string) error {
+func processSet(logger logging.Logger, items ...string) error {
 	const (
-		subCmdCount  = "count"
-		subCmdList   = "list"
 		subCmdTables = "tables"
 		subCmdTable  = "table"
 	)
@@ -120,9 +120,9 @@ func processSet(idx *index.Index, logger logging.Logger, items ...string) error 
 
 	switch subCmd {
 	case subCmdTables:
-		logger.Infof("%v.%v: total %v", cmdSet, subCmdTables, sets.Len())
-		tablesStr := make([]string, sets.Len())
-		for tableIdx := 0; tableIdx < sets.Len(); tableIdx++ {
+		logger.Infof("%v.%v: total %v", cmdSet, subCmdTables, len(sets))
+		tablesStr := make([]string, len(sets))
+		for tableIdx := 0; tableIdx < len(sets); tableIdx++ {
 			table := sets[tableIdx]
 			tablesStr[tableIdx] = fmt.Sprintf("%02d(%d)", tableIdx, table.Len())
 		}
@@ -138,7 +138,7 @@ func processSet(idx *index.Index, logger logging.Logger, items ...string) error 
 		if err != nil {
 			return fmt.Errorf("%w.%v: `%v`: int ID required", ErrSet, subCmdTable, items[2])
 		}
-		if tableID >= sets.Len() {
+		if tableID >= len(sets) {
 			return fmt.Errorf("%w.%v: `%v`: no such set table", ErrSet, subCmdTable, tableID)
 		}
 		table := sets[tableID]
@@ -151,11 +151,38 @@ func processSet(idx *index.Index, logger logging.Logger, items ...string) error 
 		return nil
 
 	default:
+		logger.Infof("%v.%v: looking tag set %v", cmdSet, subCmd, subCmd)
+		tsNumber, err := strconv.ParseInt(subCmd, 0, 0)
+		if err != nil {
+			return fmt.Errorf("%w.%v: expected int or hex set number", ErrSet, subCmd)
+		}
+
+		logger.Infof("%v.%v(0x%0X): load tag set", cmdSet, tsNumber, tsNumber)
+
+		tsIdx := idx.TagSetIndex()
+		ts, ok := tsIdx.Get(index.TagSetID(tsNumber))
+		logger.Infof("%v.%v(0x%0X): tag set %v loaded ok %v", cmdSet, tsNumber, tsNumber, ts, ok)
+		if !ok {
+			return fmt.Errorf("%w.%v: tag set not found", ErrSet, subCmd)
+		}
+
+		logger.Infof("%v.%v(0x%0X): tag set %v len %d", cmdSet, tsNumber, tsNumber, ts, ts.Len())
+		setsStrings := make([]string, ts.Len())
+		for setIdx, tagID := range ts {
+			setsStrings[setIdx] = fmt.Sprintf("[%d]!!!NOT_FOUND!!!", tagID)
+			tag, ok := idx.Tags().Get(tagID)
+			if ok {
+				setsStrings[setIdx] = string(tag.Name)
+			}
+		}
+
+		fmt.Printf("%v.%v(0x%0X): %v", cmdSet, tsNumber, tsNumber, strings.Join(setsStrings, ", "))
+
 		return nil
 	}
 }
 
-func processVar(idx *index.Index, logger logging.Logger, items ...string) error {
+func processVar(logger logging.Logger, items ...string) error {
 	const subCmdID = "id"
 
 	if len(items) < 2 {
@@ -165,19 +192,46 @@ func processVar(idx *index.Index, logger logging.Logger, items ...string) error 
 	var subCmd = items[1]
 	logger.Infof("looking for var %v", subCmd)
 
-	collectionID, err := strconv.Atoi(subCmd)
+	collectionID, err := strconv.ParseUint(subCmd, 0, 32)
 	if err != nil {
 		return fmt.Errorf("%w.%v: `%v`: expected id var", ErrVar, subCmdID, subCmd)
 	}
 
-	collection, _ := idx.Variants(index.VariantID(collectionID))
+	collectionIDTyped := index.VariantID(collectionID)
+	logger.Infof("looking for ID %d(0x%x)", collectionIDTyped, collectionIDTyped)
+	collection, err := idx.Variants(collectionIDTyped)
+	if err != nil {
+		return fmt.Errorf("%w.%v: `%v`: load variant 0x%x: %v", ErrVar, subCmdID, subCmd, collectionIDTyped, err)
+	}
+	logger.Infof("loaded variants %v", collection)
 
-	fmt.Printf("variants: %v: %v", collectionID, collection)
+	fmt.Printf("variant: %v: %v", collectionID, collection)
+	for iterIdx, tagSetID := range collection {
+		logger.Infof("unpack tagset %v(%0X)", tagSetID, tagSetID)
+		tsIdx := idx.TagSetIndex()
+		ts, ok := tsIdx.Get(tagSetID)
+		logger.Infof("tagset %v: %v", tagSetID, ts)
+		tsString := "!!!NOT FOUND!!!"
+		if ok {
+			tagStrings := make([]string, len(ts))
+			for tagIterIdx, tagID := range ts {
+				tagStrings[tagIterIdx] = "!!!NOT FOUND!!!"
+				tag, tagOK := idx.Tags().Get(tagID)
+				if tagOK {
+					tagStrings[tagIterIdx] = string(tag.Name)
+				}
+			}
+			tsString = fmt.Sprintf("TS%03d: %v", tagSetID, strings.Join(tagStrings, ","))
+		}
+		fmt.Printf("\n- %02d: %03d: %v", iterIdx, tagSetID, tsString)
+	}
+
+	fmt.Println("")
 
 	return nil
 }
 
-func processNode(idx *index.Index, logger logging.Logger, items ...string) error {
+func processNode(logger logging.Logger, items ...string) error {
 	const (
 		subCmdCount = "count"
 		subCmdInfo  = "info"
@@ -201,6 +255,7 @@ func processNode(idx *index.Index, logger logging.Logger, items ...string) error
 		if len(items) != 2 {
 			return fmt.Errorf("%w.%v: 2 items required", ErrNode, subCmdInfo)
 		}
+
 		strNodeId := items[1]
 		nodeID, err := strconv.Atoi(strNodeId)
 		lookupByString := false
@@ -213,6 +268,7 @@ func processNode(idx *index.Index, logger logging.Logger, items ...string) error
 		}
 
 		if lookupByString {
+			logger.Debugf("node %v taken by string `%v`", node.Id(), strNodeId)
 			if item, err = idx.Get(node.Id()); err != nil {
 				return fmt.Errorf("%w.%v: `%v`: get node: %v", ErrNode, subCmdInfo, strNodeId, err)
 			}
@@ -226,6 +282,7 @@ func processNode(idx *index.Index, logger logging.Logger, items ...string) error
 				return fmt.Errorf("%w.%v: `%v`: get node: %v", ErrNode, subCmdInfo, strNodeId, err)
 			}
 			node = idx.GetItem(dag.ID(nodeID))
+			logger.Debugf("node %v taken by id ", node.Id())
 		}
 
 		word := item.Word()
@@ -237,50 +294,77 @@ func processNode(idx *index.Index, logger logging.Logger, items ...string) error
 			for tagIdx, tag := range tagSet {
 				tagSetStrings[tagIdx] = string(tag.Name)
 			}
-			setsStrings[tsIdx] = "TS" + strconv.Itoa(tsIdx) + "(" + strings.Join(tagSetStrings, ",") + ")"
+			setsStrings[tsIdx] = fmt.Sprintf("\n- %02d: (%v)", tsIdx, strings.Join(tagSetStrings, ","))
 		}
 
-		fmt.Printf(
-			"node %v: %v: variants %d: %v",
-			node.Id(), word, node.Item().Variants, strings.Join(setsStrings, ", "),
-		)
+		fmt.Printf("Node:     %v\n", node.Id())
+		fmt.Printf("Prefix:   %v\n", word)
+		fmt.Printf("Parent:   %v\n", node.Item().Parent)
+		if node.Item().Variants != 0 {
+			fmt.Printf("Variants: %v(0x%X), %v item(s): %v\n",
+				node.Item().Variants, node.Item().Variants, node.Item().Variants.TableNum(),
+				strings.Join(setsStrings, ""),
+			)
+		} else {
+			fmt.Printf("Variants: --------\n")
+		}
+
 		childrenMap := idx.GetChildrenIDMap(node.Id())
-		childrenStrings := make([]string, len(childrenMap))
-		currentChild := 0
-		for letter, childID := range childrenMap {
-			childrenStrings[currentChild] = fmt.Sprintf("%v[%d]: %d", string(letter), letter, childID)
-			currentChild++
-		}
+		if len(childrenMap) > 0 {
+			fmt.Printf("Children: %d items:\n", len(childrenMap))
+			childrenStrings := make([]string, len(childrenMap))
+			currentChild := 0
+			for letter, childID := range childrenMap {
+				childrenStrings[currentChild] = fmt.Sprintf("%v[%d]: %d", string(letter), letter, childID)
+				currentChild++
+			}
+			sort.Strings(childrenStrings)
 
-		sort.Strings(childrenStrings)
-		for _, childString := range childrenStrings {
-			fmt.Printf("\n\t%v", childString)
+			for _, childString := range childrenStrings {
+				fmt.Printf("- %v\n", childString)
+			}
+		} else {
+			fmt.Printf("Children: --------\n")
 		}
 
 		return nil
 	}
 }
 
-func processInput(idx *index.Index, logger logging.Logger, line string) {
+func processReload(logger logging.Logger) (err error) {
+	logger.Infof("reloading index")
+	loader := opencorpora.NewLoader("")
+	if idx, err = loader.LoadIndex(); err != nil {
+		logger.Error("load index: %v", err)
+		os.Exit(1)
+	}
+
+	return nil
+}
+
+func processInput(logger logging.Logger, line string) {
 	var err error
 
 	items := strings.Split(line, " ")
 
 	switch items[0] {
-	case cmdTag:
-		err = processTag(idx, logger, items...)
-	case cmdSet:
-		err = processSet(idx, logger, items...)
-	case cmdNode:
-		err = processNode(idx, logger, items...)
-	case cmdVar:
-		err = processVar(idx, logger, items...)
-	case cmdExit:
+	case cmdTag, cmdTagShort:
+		err = processTag(logger, items...)
+	case cmdSet, cmdSetShort:
+		err = processSet(logger, items...)
+	case cmdNode, cmdNodeShort:
+		err = processNode(logger, items...)
+	case cmdVar, cmdVarShort:
+		err = processVar(logger, items...)
+	case cmdReload, cmdReloadShort:
+		err = processReload(logger)
+	case cmdExit, cmdExitShort:
 		logger.Infof("exiting")
 		os.Exit(0)
 	default:
-		processSearch(idx, logger, line)
+		processSearch(logger, line)
 	}
+	fmt.Println("")
 
 	if err != nil {
 		logger.Error(err.Error())
@@ -292,7 +376,6 @@ func main() {
 	var (
 		err    error
 		logger logging.Logger
-		idx    *index.Index
 		rl     *readline.Instance
 		line   string
 	)
@@ -329,18 +412,12 @@ func main() {
 		}
 	}()
 
-	// if logger.IsEnabledForLevel(logging.LevelDebug) {
-	// 	outputTagsIndex(idx, logger)
-	// }
-
-	// logger.Debugf("TagSetIndex: %v", idx.TagSetIndex().String())
-
 	for {
 		if line, err = rl.Readline(); err != nil { // io.EOF
 			break
 		}
 
-		processInput(idx, logger, line)
+		processInput(logger, line)
 	}
 
 	os.Exit(0)
