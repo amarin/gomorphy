@@ -70,6 +70,7 @@ func (variantsTable *VariantsTable) Index(item TagSetIDCollection) (storageIdx V
 	}
 
 	sort.Sort(item) // sort item before find or adding to index to compare and search easy.
+
 	if storageIdx, found = variantsTable.Find(item); found {
 		return storageIdx
 	}
