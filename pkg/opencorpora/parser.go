@@ -7,6 +7,7 @@ import (
 
 	"git.media-tel.ru/railgo/logging"
 
+	"github.com/amarin/gomorphy/internal/index"
 	"github.com/amarin/gomorphy/pkg/dag"
 )
 
@@ -275,29 +276,25 @@ func (parser *Parser) onDictionaryLemmataLemma() *elementProcessor {
 		processEnd: func(element xml.EndElement) (err error) {
 			var node dag.Node
 			for _, variant := range parser.currentLemma.F {
-				// prepend form grammemes from Lemma.L
+				// prepend form categories with Lemma.L categories list
 				variant.G = append(parser.currentLemma.L.G, variant.G...)
-				// parser.Debugf("+ %v [%v]", variant.Form, variant.G)
-
-				debugWord := "сын"
-				if variant.Form == debugWord {
-					parser.Infof("+ %v", debugWord)
-				}
 
 				if node, err = parser.index.AddString(variant.Form); err != nil {
 					return fmt.Errorf("index: %w", err)
-				}
-
-				if variant.Form == debugWord {
-					parser.Infof("+ %v: node ts %v add %v", debugWord, node.TagSets(), variant.GetTagsFromSet())
 				}
 
 				if err = node.AddTagSet(variant.GetTagsFromSet()...); err != nil {
 					return fmt.Errorf("add lemma variant: %w", err)
 				}
 
-				if variant.Form == debugWord {
-					parser.Infof("+ %v: node ts %v", debugWord, node.TagSets())
+				switch indexedNode := node.(type) {
+				case *index.Node:
+					item := indexedNode.Item()
+					parser.Debugf(
+						"IDX+ I%07d P%07d %#08x %v [%v] ",
+						item.ID, item.Parent, item.Variants, variant.Form, variant.G)
+				default:
+					parser.Debugf("+ %v [%v]", variant.Form, variant.G)
 				}
 			}
 
