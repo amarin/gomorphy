@@ -97,7 +97,12 @@ func (tagSetIndex VariantsIndex) Get(storageIdx VariantID) TagSetIDCollection {
 		return make(TagSetIDCollection, 0)
 	}
 
-	return tagSetIndex[storageIdx.TableNum().Add(-1)].Get(storageIdx.CollectionTableID())
+	tableNumber := storageIdx.TableNum()
+	if tableNumber < 1 {
+		return make(TagSetIDCollection, 0)
+	}
+
+	return tagSetIndex[tableNumber.Add(-1)].Get(storageIdx.CollectionTableID())
 }
 
 // Table returns internal CollectionTable by its index.
