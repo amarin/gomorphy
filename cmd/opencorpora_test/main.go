@@ -9,8 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"git.media-tel.ru/railgo/logging"
-	"git.media-tel.ru/railgo/logging/zap"
+	"github.com/amarin/logging"
 	"github.com/chzyer/readline"
 
 	"github.com/amarin/gomorphy/internal/index"
@@ -86,7 +85,7 @@ func processTag(logger logging.Logger, items ...string) error {
 	default:
 		if tagId, err = strconv.Atoi(arg); err != nil {
 			for intTagId, tag := range tags {
-				if strings.ToLower(string(tag.Name)) == strings.ToLower(arg) {
+				if strings.EqualFold(string(tag.Name), arg) {
 					logger.Infof("%s[%v] %v(%v)", cmdTag, intTagId, tag.Name, tag.Parent)
 					return nil
 				}
@@ -380,16 +379,12 @@ func main() {
 		line   string
 	)
 
-	loggingConfig := *logging.CurrentConfig()
-	loggingConfig.Level = logging.LevelDebug
-
-	if err = logging.Init(loggingConfig, new(zap.Backend)); err != nil {
+	if err = logging.Init(logging.WithLevel(logging.LevelDebug)); err != nil {
 		fmt.Printf("logging: init: %v\n", err)
 		os.Exit(1)
 	}
 
 	logger = logging.NewNamedLogger("opencorpora")
-	logger.WithLevel(logging.LevelDebug)
 
 	started := time.Now()
 	loader := opencorpora.NewLoader("")

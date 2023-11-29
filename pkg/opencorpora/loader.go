@@ -11,9 +11,9 @@ import (
 	"runtime/debug"
 	"time"
 
-	"git.media-tel.ru/railgo/logging"
 	"github.com/amarin/binutils"
 	"github.com/amarin/libxml"
+	"github.com/amarin/logging"
 
 	"github.com/amarin/gomorphy/internal/index"
 	"github.com/amarin/gomorphy/pkg/common"

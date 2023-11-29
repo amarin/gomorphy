@@ -1,8 +1,9 @@
 package storage_test
 
 import (
-	"github.com/amarin/gomorphy/pkg/storage"
 	"testing"
+
+	"github.com/amarin/gomorphy/pkg/storage"
 
 	"github.com/stretchr/testify/require"
 )
