@@ -24,6 +24,6 @@ func (id32value ID32) Uint32() uint32 {
 }
 
 // Combine16 makes an ID32 value putting upper ID16 onto upper bits and lower ID16 onto lower bits.
-func Combine16(upper ID16, lower ID16) ID32 {
+func Combine16(upper, lower ID16) ID32 {
 	return ID32(upper)<<uint16bits | ID32(lower)
 }

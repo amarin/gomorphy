@@ -5,9 +5,8 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/amarin/gomorphy/pkg/storage"
-
 	"github.com/amarin/binutils"
+	"github.com/amarin/gomorphy/pkg/storage"
 	"github.com/stretchr/testify/require"
 )
 

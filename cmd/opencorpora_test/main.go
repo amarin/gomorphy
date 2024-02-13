@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"git.media-tel.ru/railgo/logging"
-	"git.media-tel.ru/railgo/logging/zap"
+	"github.com/amarin/logging"
 	"github.com/chzyer/readline"
 
+	"github.com/amarin/gomorphy/internal/app"
 	"github.com/amarin/gomorphy/internal/index"
 	"github.com/amarin/gomorphy/pkg/dag"
 	"github.com/amarin/gomorphy/pkg/opencorpora"
@@ -380,13 +380,7 @@ func main() {
 		line   string
 	)
 
-	loggingConfig := *logging.CurrentConfig()
-	loggingConfig.Level = logging.LevelDebug
-
-	if err = logging.Init(loggingConfig, new(zap.Backend)); err != nil {
-		fmt.Printf("logging: init: %v\n", err)
-		os.Exit(1)
-	}
+	app.InitLogging(true)
 
 	logger = logging.NewNamedLogger("opencorpora")
 	logger.WithLevel(logging.LevelDebug)

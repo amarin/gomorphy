@@ -11,9 +11,9 @@ import (
 	"runtime/debug"
 	"time"
 
-	"git.media-tel.ru/railgo/logging"
 	"github.com/amarin/binutils"
 	"github.com/amarin/libxml"
+	"github.com/amarin/logging"
 
 	"github.com/amarin/gomorphy/internal/index"
 	"github.com/amarin/gomorphy/pkg/common"
@@ -22,10 +22,11 @@ import (
 // Loader provides OpenCorpora dictionary parsing utilities.
 type Loader struct {
 	logging.Logger
-	dataPath   string
-	stringData string
+	dataPath string
 }
 
+// NewLoader creates new opencorpora loader instance.
+// Takes path to data storage. If empty path provided, uses .data/opencorpora by default.
 func NewLoader(dataPath string) *Loader {
 	if dataPath == "" {
 		dataPath = common.DomainDataPath(DomainName)
@@ -37,7 +38,7 @@ func NewLoader(dataPath string) *Loader {
 	}
 }
 
-func (loader Loader) DataPath() string {
+func (loader *Loader) DataPath() string {
 	return path.Join(loader.dataPath)
 }
 
@@ -49,27 +50,27 @@ func (loader *Loader) SetDataPath(dataPath string) {
 	loader.dataPath = dataPath
 }
 
-func (loader Loader) filePath(fileName string) string {
+func (loader *Loader) filePath(fileName string) string {
 	return path.Join(loader.DataPath(), fileName)
 }
 
 // unpackedFilePath returns path to unpacked lemmata file.
-func (loader Loader) downloadedFilePath() string {
+func (loader *Loader) downloadedFilePath() string {
 	return loader.filePath(LocalSourceFilename)
 }
 
 // unpackedFilePath returns path to unpacked lemmata file.
-func (loader Loader) unpackedFilePath() string {
+func (loader *Loader) unpackedFilePath() string {
 	return loader.filePath(LocalUnpackedFilename)
 }
 
 // compiledFilePath returns path to compiled lemmata file.
-func (loader Loader) compiledFilePath() string {
+func (loader *Loader) compiledFilePath() string {
 	return loader.filePath(LocalCompiledFilename)
 }
 
 // IsDownloadExists returns true if downloaded file exists at expected path.
-func (loader Loader) IsDownloadExists() bool {
+func (loader *Loader) IsDownloadExists() bool {
 	loader.Info("check if downloaded file exists")
 	expectedFile := loader.downloadedFilePath()
 	loader.Debugf("check file %v", expectedFile)
@@ -94,7 +95,7 @@ func (loader Loader) IsDownloadExists() bool {
 }
 
 // IsUnpackedExists returns true if downloaded and unpacked file exists at expected path.
-func (loader Loader) IsUnpackedExists() bool {
+func (loader *Loader) IsUnpackedExists() bool {
 	loader.Info("check if unpacked file exists")
 	expectedFile := loader.unpackedFilePath()
 	loader.Debugf("check file %v", expectedFile)
@@ -118,7 +119,7 @@ func (loader Loader) IsUnpackedExists() bool {
 	}
 }
 
-func (loader Loader) IsUpdateRequired() (bool, error) {
+func (loader *Loader) IsUpdateRequired() (bool, error) {
 	loader.Info("check if update required")
 	expectedFile := loader.downloadedFilePath()
 	loader.Debugf("check file %v", expectedFile)
@@ -158,7 +159,7 @@ func (loader Loader) IsUpdateRequired() (bool, error) {
 	return false, nil // site version is older then local
 }
 
-func (loader Loader) DownloadUpdate() (updated bool, err error) {
+func (loader *Loader) DownloadUpdate() (updated bool, err error) {
 	updateRequired, err := loader.IsUpdateRequired()
 
 	switch {
@@ -203,7 +204,7 @@ func (loader Loader) DownloadUpdate() (updated bool, err error) {
 	return true, nil
 }
 
-func (loader Loader) UnpackUpdate() (err error) {
+func (loader *Loader) UnpackUpdate() (err error) {
 	var (
 		source     io.ReadCloser
 		bzipSource io.Reader
@@ -327,7 +328,7 @@ func (loader *Loader) ParseUpdate(fromFile string, toFile string) (err error) {
 	return loader.SaveIndex(mainIndex, toFile)
 }
 
-func (loader Loader) Update(forceRecompile bool) (err error) {
+func (loader *Loader) Update(forceRecompile bool) (err error) {
 	var updated, updateRequired, downloadedExists, unpackedExists bool
 
 	loader.Info("check OpenCorpora updates")

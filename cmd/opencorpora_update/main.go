@@ -6,9 +6,9 @@ import (
 	"os"
 	"path"
 
-	"git.media-tel.ru/railgo/logging"
-	"git.media-tel.ru/railgo/logging/zap"
+	"github.com/amarin/logging"
 
+	"github.com/amarin/gomorphy/internal/app"
 	"github.com/amarin/gomorphy/pkg/opencorpora"
 )
 
@@ -35,21 +35,12 @@ func main() {
 
 	flag.Parse()
 	if *usageOutput {
-		fmt.Fprintf(flag.CommandLine.Output(), "%s - %s\n\n", path.Base(os.Args[0]), programDescription)
+		_, _ = fmt.Fprintf(flag.CommandLine.Output(), "%s - %s\n\n", path.Base(os.Args[0]), programDescription)
 		flag.PrintDefaults()
 		os.Exit(0)
 	}
 
-	loggingConfig := *logging.CurrentConfig()
-	loggingConfig.Level = logging.LevelInfo
-	if *debugLogging {
-		loggingConfig.Level = logging.LevelDebug
-	}
-
-	if err := logging.Init(loggingConfig, new(zap.Backend)); err != nil {
-		fmt.Printf("logging: init: %v\n", err)
-		os.Exit(1)
-	}
+	app.InitLogging(*debugLogging)
 
 	logger := logging.NewNamedLogger("opencorpora")
 	logger.WithLevel(logging.LevelDebug)

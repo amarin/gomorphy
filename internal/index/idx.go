@@ -5,8 +5,8 @@ import (
 	"sort"
 	"sync"
 
-	"git.media-tel.ru/railgo/logging"
 	"github.com/amarin/binutils"
+	"github.com/amarin/logging"
 
 	"github.com/amarin/gomorphy/pkg/dag"
 )

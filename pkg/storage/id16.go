@@ -19,6 +19,6 @@ func (id16value ID16) Lower() ID8 {
 }
 
 // Combine8 makes an ID16 value putting upper ID8 onto upper bits and lower ID8 onto lower bits.
-func Combine8(hi ID8, lo ID8) ID16 {
+func Combine8(hi, lo ID8) ID16 {
 	return ID16(hi)<<uint8bits | ID16(lo)
 }
