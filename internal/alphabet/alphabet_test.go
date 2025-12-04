@@ -1,6 +1,7 @@
 package alphabet
 
 import (
+	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -77,5 +78,58 @@ func TestStorage_Get(t *testing.T) {
 		require.Equal(t, 'a', alphabet.MustGetByIdx(idx))
 		require.True(t, alphabet.Has('a'))
 		require.Equal(t, 0, idx)
+	})
+}
+
+func TestStorage_MustGetByIdx(t *testing.T) {
+	alphabet := New()
+	alphabet.Add('a')
+	t.Run("успешное получение символа по индексу", func(t *testing.T) {
+		require.Equal(t, 'a', alphabet.MustGetByIdx(0))
+	})
+	t.Run("паника при запросе отрицательного индекса", func(t *testing.T) {
+		require.Panics(t, func() { alphabet.MustGetByIdx(-1) })
+	})
+	t.Run("паника при запросе индекса за пределами хранилища", func(t *testing.T) {
+		require.Panics(t, func() { alphabet.MustGetByIdx(1) })
+	})
+}
+
+func TestStorage_Alphabet(t *testing.T) {
+	alphabet := New()
+	t.Run("пустой алфавит возвращает пустую строку", func(t *testing.T) {
+		require.Equal(t, "", alphabet.String())
+	})
+	t.Run("строка алфавита", func(t *testing.T) {
+		alphabet.Add('a')
+		alphabet.Add('b')
+		alphabet.Add('c')
+		alphabet.Add('d')
+		require.Equal(t, "abcd", alphabet.String())
+	})
+}
+
+func TestStorage_Reset(t *testing.T) {
+	alphabet := New()
+
+	fullEnglishAlpjhabet := "abcdefghijklmnopqrstuvwxyz"
+	alphabet.Add('F')
+	t.Run("загрузка нового алфавита", func(t *testing.T) {
+		require.NoError(t, alphabet.Reset(fullEnglishAlpjhabet))
+		require.Equal(t, fullEnglishAlpjhabet, alphabet.String())
+		require.False(t, alphabet.Has('F'))
+		require.True(t, alphabet.Has('f'))
+	})
+	t.Run("ошибка при загрузке алфавита с повторами", func(t *testing.T) {
+		runeSet := []rune(fullEnglishAlpjhabet)
+		for i := 0; i < 100; i++ {
+			randomCharIdxToRepeat := rand.Intn(len(runeSet) - 1)
+			charToRepeat := string(runeSet[randomCharIdxToRepeat])
+			alphabetWithRepeats := fullEnglishAlpjhabet + charToRepeat
+			require.Errorf(t, alphabet.Reset(alphabetWithRepeats),
+				"ожидалась ошибка при повторе '%s' в алфавите `%s`",
+				charToRepeat, alphabetWithRepeats,
+			)
+		}
 	})
 }

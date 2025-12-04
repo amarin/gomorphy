@@ -11,6 +11,9 @@ var (
 
 	// ErrNoRuneAtIndex сигнализирует об ошибке поиска символа по индексу
 	ErrNoRuneAtIndex = errors.New("no rune at index")
+
+	// ErrRepeatedCharacters сигнализирует о повторяющихся символах в алфавите
+	ErrRepeatedCharacters = errors.New("repeated characters")
 )
 
 // Storage реализует компактное хранение используемого алфавита.
@@ -116,4 +119,36 @@ func (s *Storage) Get(char rune) (int, error) {
 	}
 
 	return -1, ErrNoRuneInAlphabet
+}
+
+// String возвращает алфавит одной строкой.
+func (s *Storage) String() string {
+	s.mutex.RLock()
+	characters := s.characters
+	s.mutex.RUnlock()
+
+	return string(characters)
+}
+
+// Reset заполняет алфавит из заданной строки. Удаляет любые существовавшие символы.
+// Индексы символов в алфавите будут соответствовать индексам символа в строке.
+// Символы в строке не должны повторяться.
+func (s *Storage) Reset(alphabetString string) error {
+	newChars := []rune(alphabetString)
+	newIndex := map[rune]int{}
+
+	for idx, char := range newChars {
+		newIndex[char] = idx
+	}
+
+	if len(newChars) != len(newIndex) {
+		return ErrRepeatedCharacters
+	}
+
+	s.mutex.Lock()
+	s.characters = newChars
+	s.index = newIndex
+	s.mutex.Unlock()
+
+	return nil
 }
