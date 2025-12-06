@@ -79,7 +79,6 @@ func TestNode_Hex(t *testing.T) {
 			var (
 				a8   uint8  = 0
 				a16  uint16 = 0
-				a32  uint32 = 0
 				i16  uint16 = 0
 				i32  uint32 = 0
 				p16  uint16 = 0
@@ -92,8 +91,6 @@ func TestNode_Hex(t *testing.T) {
 				a8 = typed
 			case uint16:
 				a16 = typed
-			case uint32:
-				a32 = typed
 			}
 
 			switch typed := tt.idx.(type) {
@@ -123,12 +120,6 @@ func TestNode_Hex(t *testing.T) {
 			case a16 != 0 && i32 != 0:
 				node = New(i32, a16, p32)
 				read = New(uint32(0), uint16(0), uint32(0))
-			case a32 != 0 && i16 != 0:
-				node = New(i16, a32, p16)
-				read = New(uint16(0), uint32(0), uint16(0))
-			case a32 != 0 && i32 != 0:
-				node = New(i32, a32, p32)
-				read = New(uint32(0), uint32(0), uint32(0))
 			default:
 				require.Fail(t, "неожиданное сочетание типов")
 			}
@@ -182,20 +173,6 @@ func TestNode_Next(t *testing.T) {
 		require.Equal(t, uint32(1), next.prev)
 		require.Equal(t, uint32(2), next.idx)
 	})
-	t.Run("алфавит uint32 морфемы uint16", func(t *testing.T) {
-		node := New(uint16(1), uint32(0), uint16(0))
-		next := node.Next(2, 0)
-		require.Equal(t, uint32(0), next.charIdx)
-		require.Equal(t, uint16(1), next.prev)
-		require.Equal(t, uint16(2), next.idx)
-	})
-	t.Run("алфавит uint32 морфемы uint32", func(t *testing.T) {
-		node := New(uint32(1), uint32(0), uint32(0))
-		next := node.Next(2, 0)
-		require.Equal(t, uint32(0), next.charIdx)
-		require.Equal(t, uint32(1), next.prev)
-		require.Equal(t, uint32(2), next.idx)
-	})
 }
 
 func TestNode_PrevIdx(t *testing.T) {
@@ -211,12 +188,6 @@ func TestNode_PrevIdx(t *testing.T) {
 	t.Run("алфавит uint16 морфемы uint32", func(t *testing.T) {
 		require.Equal(t, uint32(1), New(uint32(2), uint16(0), uint32(1)).PrevIdx())
 	})
-	t.Run("алфавит uint32 морфемы uint16", func(t *testing.T) {
-		require.Equal(t, uint16(1), New(uint16(2), uint32(0), uint16(1)).PrevIdx())
-	})
-	t.Run("алфавит uint32 морфемы uint32", func(t *testing.T) {
-		require.Equal(t, uint32(1), New(uint32(2), uint32(0), uint32(1)).PrevIdx())
-	})
 }
 
 func TestNode_CharIdx(t *testing.T) {
@@ -231,12 +202,6 @@ func TestNode_CharIdx(t *testing.T) {
 	})
 	t.Run("алфавит uint16 морфемы uint32", func(t *testing.T) {
 		require.Equal(t, uint16(2), New(uint32(1), uint16(2), uint32(0)).CharIdx())
-	})
-	t.Run("алфавит uint32 морфемы uint16", func(t *testing.T) {
-		require.Equal(t, uint16(2), New(uint16(1), uint16(2), uint16(0)).CharIdx())
-	})
-	t.Run("алфавит uint32 морфемы uint32", func(t *testing.T) {
-		require.Equal(t, uint32(2), New(uint32(1), uint32(2), uint32(0)).CharIdx())
 	})
 }
 
@@ -261,18 +226,6 @@ func TestNode_HasNext(t *testing.T) {
 	})
 	t.Run("алфавит uint16 морфемы uint32", func(t *testing.T) {
 		node := New(uint32(1), uint16(0), uint32(0))
-		_ = node.Next(2, 1)
-		require.True(t, node.HasNext(1))
-		require.False(t, node.HasNext(0))
-	})
-	t.Run("алфавит uint32 морфемы uint16", func(t *testing.T) {
-		node := New(uint16(1), uint32(0), uint16(0))
-		_ = node.Next(2, 1)
-		require.True(t, node.HasNext(1))
-		require.False(t, node.HasNext(0))
-	})
-	t.Run("алфавит uint32 морфемы uint32", func(t *testing.T) {
-		node := New(uint32(1), uint32(0), uint32(0))
 		_ = node.Next(2, 1)
 		require.True(t, node.HasNext(1))
 		require.False(t, node.HasNext(0))
@@ -309,24 +262,6 @@ func TestNode_NextIdx(t *testing.T) {
 	})
 	t.Run("алфавит uint16 морфемы uint32", func(t *testing.T) {
 		node := New(uint32(1), uint16(0), uint32(0))
-		_ = node.Next(2, 1)
-		nextIdx, exists := node.NextIdx(1)
-		require.True(t, exists)
-		require.Equal(t, uint32(2), nextIdx)
-		nextIdx, exists = node.NextIdx(2)
-		require.False(t, exists)
-	})
-	t.Run("алфавит uint32 морфемы uint16", func(t *testing.T) {
-		node := New(uint16(1), uint32(0), uint16(0))
-		_ = node.Next(2, 1)
-		nextIdx, exists := node.NextIdx(1)
-		require.True(t, exists)
-		require.Equal(t, uint16(2), nextIdx)
-		nextIdx, exists = node.NextIdx(2)
-		require.False(t, exists)
-	})
-	t.Run("алфавит uint32 морфемы uint32", func(t *testing.T) {
-		node := New(uint32(1), uint32(0), uint32(0))
 		_ = node.Next(2, 1)
 		nextIdx, exists := node.NextIdx(1)
 		require.True(t, exists)

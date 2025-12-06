@@ -6,22 +6,12 @@ import (
 	"io"
 
 	"github.com/amarin/binutils"
-)
 
-type (
-	// AlphabetSize задаёт максимальную размерность алфавита
-	AlphabetSize interface {
-		~uint8 | ~uint16 | ~uint32
-	}
-
-	// MorphemesMaxCount задаёт максимальную размерность словаря с учётом всех возможных словоформ
-	MorphemesMaxCount interface {
-		~uint16 | ~uint32
-	}
+	"github.com/amarin/gomorphy/internal/size"
 )
 
 // Node задаёт структуру хранения данных об узле DAG.
-type Node[A AlphabetSize, M MorphemesMaxCount] struct {
+type Node[A size.Alphabet, M size.Morphemes] struct {
 	idx     M
 	prev    M
 	charIdx A
@@ -29,7 +19,7 @@ type Node[A AlphabetSize, M MorphemesMaxCount] struct {
 }
 
 // New создаёт новый узел DAG c индексом idx, индексом символа charIdx и индексом предыдущего узла prev.
-func New[A AlphabetSize, M MorphemesMaxCount](idx M, charIdx A, prev M) *Node[A, M] {
+func New[A size.Alphabet, M size.Morphemes](idx M, charIdx A, prev M) *Node[A, M] {
 	return &Node[A, M]{
 		idx:     idx,
 		charIdx: charIdx,
