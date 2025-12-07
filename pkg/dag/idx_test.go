@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/amarin/gomorphy/pkg/dag"
+	"github.com/amarin/gomorphy/pkg/tag"
 )
 
 type testIndexStruct struct {
@@ -21,10 +22,10 @@ type testIndexStruct struct {
 
 var testCategoryListData = []testIndexStruct{ // nolint:gochecknoglobals
 	{"empty_tags_list", []dag.Tag{}, "00", false},
-	{"single_empty_tag", []dag.Tag{{dag.EmptyTagName, dag.EmptyTagName}}, "012020202020202020", false},
-	{"single_filled_tag", []dag.Tag{{dag.EmptyTagName, "POST"}},
+	{"single_empty_tag", []dag.Tag{{tag.EmptyTagName, tag.EmptyTagName}}, "012020202020202020", false},
+	{"single_filled_tag", []dag.Tag{{tag.EmptyTagName, "POST"}},
 		"0120202020504f5354", false},
-	{"couple_of_filled_tags", []dag.Tag{{dag.EmptyTagName, "POST"}, {"POST", "NOUN"}},
+	{"couple_of_filled_tags", []dag.Tag{{tag.EmptyTagName, "POST"}, {"POST", "NOUN"}},
 		"0220202020504f5354504f53544e4f554e", false},
 }
 
@@ -33,13 +34,13 @@ func TestIndex_Idx(t *testing.T) {
 
 	for _, tt := range []struct {
 		testName string
-		name     dag.TagName
-		parent   dag.TagName
+		name     tag.Name
+		parent   tag.Name
 		indexed  dag.Idx
 		want     dag.TagID
 	}{
 		{"in_empty", "1111", "", dag.Idx{}, 0},
-		{testName: "new_wo_parent", name: "2222", parent: dag.EmptyTagName,
+		{testName: "new_wo_parent", name: "2222", parent: tag.EmptyTagName,
 			indexed: dag.Idx{dag.Tag{Parent: "", Name: "1111"}}, want: 1},
 		{testName: "new_to_parent", name: "2222", parent: "1111",
 			indexed: dag.Idx{
@@ -47,12 +48,12 @@ func TestIndex_Idx(t *testing.T) {
 			}, want: 1},
 		{testName: "existed_to_root", name: "2222",
 			indexed: dag.Idx{
-				dag.Tag{Parent: dag.EmptyTagName, Name: "1111"},
-				dag.Tag{Parent: dag.EmptyTagName, Name: "2222"},
+				dag.Tag{Parent: tag.EmptyTagName, Name: "1111"},
+				dag.Tag{Parent: tag.EmptyTagName, Name: "2222"},
 			}, want: 1},
 		{testName: "existed_to_parent", name: "3333", parent: "1111",
 			indexed: dag.Idx{
-				dag.Tag{Parent: dag.EmptyTagName, Name: "1111"},
+				dag.Tag{Parent: tag.EmptyTagName, Name: "1111"},
 				dag.Tag{Parent: "1111", Name: "2222"},
 			}, want: 2},
 	} {
@@ -72,7 +73,7 @@ func TestIndex_ReadFrom(t *testing.T) {
 	tests = append(tests, []testIndexStruct{
 		{ // extra data in buffer is not taken and not an error
 			"extra_data_after_error",
-			[]dag.Tag{{dag.EmptyTagName, "POST"}},
+			[]dag.Tag{{tag.EmptyTagName, "POST"}},
 			"0120202020504f5354FF", false,
 		},
 		{ // no data len byte should raise
@@ -205,8 +206,8 @@ func TestIndex_Find(t *testing.T) { //nolint:paralleltest
 	for _, tt := range []struct {
 		testName  string
 		idx       []dag.Tag
-		name      dag.TagName
-		parent    dag.TagName
+		name      tag.Name
+		parent    tag.Name
 		wantID    dag.TagID
 		wantFound bool
 	}{

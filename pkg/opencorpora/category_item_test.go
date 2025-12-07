@@ -3,14 +3,14 @@ package opencorpora_test
 import (
 	"testing"
 
-	"github.com/amarin/gomorphy/pkg/dag"
 	. "github.com/amarin/gomorphy/pkg/opencorpora"
+	"github.com/amarin/gomorphy/pkg/tag"
 )
 
 func TestCategory_String(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
-		g       dag.TagName
+		g       tag.Name
 		args    []byte
 		wantErr bool
 	}{

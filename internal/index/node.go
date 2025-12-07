@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/amarin/gomorphy/pkg/dag"
+	"github.com/amarin/gomorphy/pkg/tag"
 )
 
 // Node represents index node.
@@ -49,7 +50,7 @@ func (node *Node) TagSets() (res []dag.TagSet) {
 	return res
 }
 
-func (node *Node) AddTagSet(newTagSet ...dag.TagName) error {
+func (node *Node) AddTagSet(newTagSet ...tag.Name) error {
 	var found bool
 	tagSet := make(TagSet, len(newTagSet))
 	for idx, tagName := range newTagSet {

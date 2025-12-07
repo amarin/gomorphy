@@ -9,6 +9,7 @@ import (
 	"github.com/amarin/logging"
 
 	"github.com/amarin/gomorphy/pkg/dag"
+	"github.com/amarin/gomorphy/pkg/tag"
 )
 
 const (
@@ -462,7 +463,7 @@ func (index *Index) getChild(id dag.ID, letter rune) *Node {
 }
 
 // TagID gets or creates tag in internal tag index and returns its ID.
-func (index *Index) TagID(name dag.TagName, parent dag.TagName) dag.TagID {
+func (index *Index) TagID(name tag.Name, parent tag.Name) dag.TagID {
 	return index.tags.Index(name, parent)
 }
 

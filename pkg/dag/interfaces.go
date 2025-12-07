@@ -2,6 +2,8 @@ package dag
 
 import (
 	"fmt"
+
+	"github.com/amarin/gomorphy/pkg/tag"
 )
 
 // Node implements container methods as well as node specific rune fetcher and parent resolver.
@@ -12,7 +14,7 @@ type Node interface {
 	TagSets() []TagSet
 
 	// AddTagSet adds a new TagSet to node data.
-	AddTagSet(newTagSet ...TagName) error
+	AddTagSet(newTagSet ...tag.Name) error
 
 	// Word returns sequence of characters from root upto current node wrapped into string.
 	Word() string
@@ -37,5 +39,5 @@ type Index interface {
 	FetchString(word string) (Node, error)
 
 	// TagID returns index of grammeme specified by name and parent name.
-	TagID(name TagName, parent TagName) TagID
+	TagID(name tag.Name, parent tag.Name) TagID
 }

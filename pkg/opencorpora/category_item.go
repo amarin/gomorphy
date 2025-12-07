@@ -1,12 +1,12 @@
 package opencorpora
 
 import (
-	"github.com/amarin/gomorphy/pkg/dag"
+	"github.com/amarin/gomorphy/pkg/tag"
 )
 
-// Category represents OpenCorpora grammar category as a set of grammar TagName's
+// Category represents OpenCorpora grammar category as a set of grammar Name's
 type Category struct {
-	VAttr dag.TagName `xml:"v,attr"`
+	VAttr tag.Name `xml:"v,attr"`
 }
 
 // String returns string representation of category. Implements fmt.Stringer.

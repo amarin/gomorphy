@@ -2,14 +2,15 @@ package opencorpora
 
 import (
 	"github.com/amarin/gomorphy/pkg/dag"
+	"github.com/amarin/gomorphy/pkg/tag"
 )
 
 // Grammeme provides grammar category definition structure as provided by OpenCorpora
 type Grammeme struct {
-	// ParentAttr provides parent category TagName.
-	ParentAttr dag.TagName `xml:"parent,attr"`
+	// ParentAttr provides parent category Name.
+	ParentAttr tag.Name `xml:"parent,attr"`
 	// Наименование категории. Аббревиатура от латинского или англоязычного наименования. Всегда 4 символа
-	Name dag.TagName `xml:"name"`
+	Name tag.Name `xml:"name"`
 	// Кириллическая аббревиатура наименования.
 	Alias string `xml:"alias"`
 	// Полное наименование на русском языке

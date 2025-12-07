@@ -3,7 +3,7 @@ package opencorpora
 import (
 	"strings"
 
-	"github.com/amarin/gomorphy/pkg/dag"
+	"github.com/amarin/gomorphy/pkg/tag"
 )
 
 // CategoryList provides a category list.
@@ -19,8 +19,8 @@ func (c CategoryList) String() string {
 }
 
 // GrammemeNames возвращает список имён граммем, заданных в списке категорий.
-func (c CategoryList) GrammemeNames() []dag.TagName {
-	res := make([]dag.TagName, 0)
+func (c CategoryList) GrammemeNames() []tag.Name {
+	res := make([]tag.Name, 0)
 	for _, item := range c {
 		res = append(res, item.VAttr)
 	}

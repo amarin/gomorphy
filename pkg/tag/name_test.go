@@ -1,16 +1,16 @@
-package dag_test
+package tag_test
 
 import (
 	"reflect"
 	"testing"
 
-	"github.com/amarin/gomorphy/pkg/dag"
+	"github.com/amarin/gomorphy/pkg/tag"
 )
 
 func TestTagName_MarshalBinary(t *testing.T) { //nolint:paralleltest
 	tests := []struct {
 		name     string
-		g        dag.TagName
+		g        tag.Name
 		wantData []byte
 		wantErr  bool
 	}{
@@ -39,20 +39,20 @@ func TestTagName_MarshalBinary(t *testing.T) { //nolint:paralleltest
 func TestTagName_UnmarshalBinary(t *testing.T) { //nolint:paralleltest
 	tests := []struct {
 		name    string
-		g       dag.TagName
+		g       tag.Name
 		args    []byte
 		wantErr bool
 	}{
 		{"ok_4_bytes", "aaaa", []byte{97, 97, 97, 97}, false},
 		{"nok_3_bytes", "aaa", []byte{97, 97, 97}, true},
 		{"nok_5_bytes", "aaaaa", []byte{97, 97, 97, 98, 99}, true},
-		{"ok_empty", dag.EmptyTagName, []byte{32, 32, 32, 32}, false},
+		{"ok_empty", tag.EmptyTagName, []byte{32, 32, 32, 32}, false},
 	}
 
 	for _, tt := range tests { //nolint:paralleltest
 		tt := tt // pin variable
 		t.Run(tt.name, func(t *testing.T) {
-			target := new(dag.TagName)
+			target := new(tag.Name)
 			if err := target.UnmarshalBinary(tt.args); (err != nil) != tt.wantErr {
 				t.Errorf("UnmarshalBinary() error = %v, wantErr %v", err, tt.wantErr)
 			} else if err == nil && *target != tt.g {

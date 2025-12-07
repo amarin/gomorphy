@@ -3,7 +3,7 @@ package opencorpora
 import (
 	"strings"
 
-	"github.com/amarin/gomorphy/pkg/dag"
+	"github.com/amarin/gomorphy/pkg/tag"
 )
 
 // WordForm provides word form and categories list.
@@ -28,9 +28,9 @@ func (x WordForm) String() string {
 	return "WordForm(" + x.Form + "," + strings.Join(str, ",") + ")"
 }
 
-// GetTagsFromSet takes TagName's list from word form.
-func (x WordForm) GetTagsFromSet() []dag.TagName {
-	var resultTags []dag.TagName
+// GetTagsFromSet takes Name's list from word form.
+func (x WordForm) GetTagsFromSet() []tag.Name {
+	var resultTags []tag.Name
 	for _, g := range x.G {
 		if g != nil {
 		}

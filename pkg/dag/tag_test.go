@@ -10,11 +10,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/amarin/gomorphy/pkg/dag"
+	"github.com/amarin/gomorphy/pkg/tag"
 )
 
 type tagTestFields struct {
-	ParentAttr dag.TagName
-	Name       dag.TagName
+	ParentAttr tag.Name
+	Name       tag.Name
 }
 
 var tagTests = []struct { // nolint:gochecknoglobals
@@ -79,8 +80,8 @@ func BenchmarkTag_String(b *testing.B) {
 
 func TestNewTag(t *testing.T) { //nolint:paralleltest
 	type args struct {
-		parent dag.TagName
-		name   dag.TagName
+		parent tag.Name
+		name   tag.Name
 	}
 
 	for _, tt := range []struct { //nolint:paralleltest

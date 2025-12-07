@@ -9,6 +9,7 @@ import (
 
 	"github.com/amarin/gomorphy/internal/index"
 	"github.com/amarin/gomorphy/pkg/dag"
+	"github.com/amarin/gomorphy/pkg/tag"
 )
 
 const defaultLogAverageEachSeconds = 10
@@ -208,7 +209,7 @@ func (parser *Parser) onGrammeme() *elementProcessor {
 			if parentStr, err = getAttr("parent", element.Attr); err != nil {
 				return fmt.Errorf("%w: required parent attr", Error)
 			}
-			parser.currentGrammeme.Parent = dag.TagName(parentStr)
+			parser.currentGrammeme.Parent = tag.Name(parentStr)
 
 			return nil
 		},
@@ -231,7 +232,7 @@ func (parser *Parser) onGrammemeName() *elementProcessor {
 	return &elementProcessor{
 		processStart: ignoreElementStart,
 		processData: func(data string) error {
-			parser.currentGrammeme.Name = dag.TagName(data)
+			parser.currentGrammeme.Name = tag.Name(data)
 			return nil
 		},
 		processEnd: ignoreElementEnd,
@@ -246,7 +247,7 @@ func (parser *Parser) onDictionaryLemmataLemmaFG() *elementProcessor {
 			if tagString, err = Attr(element.Attr).GetString("v"); err != nil {
 				return fmt.Errorf("%w: %v: %v", Error, element.Attr, err)
 			}
-			parser.currentForm.G = append(parser.currentForm.G, &Category{VAttr: dag.TagName(tagString)})
+			parser.currentForm.G = append(parser.currentForm.G, &Category{VAttr: tag.Name(tagString)})
 
 			return nil
 		},
@@ -367,7 +368,7 @@ func (parser *Parser) onDictionaryLemmataLemmaLG() *elementProcessor {
 				return fmt.Errorf("%w: %v: %v", Error, element.Attr, err)
 			}
 
-			parser.currentLemma.L.G = append(parser.currentLemma.L.G, &Category{VAttr: dag.TagName(tagString)})
+			parser.currentLemma.L.G = append(parser.currentLemma.L.G, &Category{VAttr: tag.Name(tagString)})
 			// parser.Debugf("lemma.l.g: `%v`: %v", parser.currentLemma.L.Form, parser.currentLemma.L.G)
 			return nil
 		},

@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/amarin/gomorphy/pkg/storage"
+	tag2 "github.com/amarin/gomorphy/pkg/tag"
 
 	"github.com/amarin/binutils"
 
@@ -31,7 +32,7 @@ func NewIndex(knownTags ...Tag) Idx {
 
 	for idx, tag := range knownTags {
 		if tag.Parent == "" {
-			tag.Parent = EmptyTagName
+			tag.Parent = tag2.EmptyTagName
 		}
 
 		tagsIndex[idx] = tag
@@ -85,7 +86,7 @@ func (tagsIndex Idx) Len() int {
 
 // Find returns indexed ID by known name and parent.
 // Returns false found indicator if no such indexed found.
-func (tagsIndex Idx) Find(name TagName) (id TagID, found bool) {
+func (tagsIndex Idx) Find(name tag2.Name) (id TagID, found bool) {
 	for idx, tag := range tagsIndex {
 		if string(tag.Name) == string(name) {
 			return TagID(idx), true
@@ -97,11 +98,11 @@ func (tagsIndex Idx) Find(name TagName) (id TagID, found bool) {
 
 // Index returns indexed ID.
 // Adds indexed to index if not indexed before.
-func (tagsIndex *Idx) Index(name TagName, parent TagName) (id TagID) {
+func (tagsIndex *Idx) Index(name tag2.Name, parent tag2.Name) (id TagID) {
 	var found bool
 
 	if parent == "" {
-		parent = EmptyTagName
+		parent = tag2.EmptyTagName
 	}
 
 	if id, found = tagsIndex.Find(name); found {

@@ -4,6 +4,7 @@ import (
 	"io"
 
 	"github.com/amarin/gomorphy/pkg/dag"
+	"github.com/amarin/gomorphy/pkg/tag"
 )
 
 // Index defines main dictionary interface.
@@ -25,7 +26,7 @@ type Index interface {
 	FetchString(word string) (dag.Node, error)
 
 	// TagID returns index of grammeme specified by name and parent name.
-	TagID(name dag.TagName, parent dag.TagName) dag.TagID
+	TagID(name tag.Name, parent tag.Name) dag.TagID
 }
 
 type BinaryWriterTo interface {
