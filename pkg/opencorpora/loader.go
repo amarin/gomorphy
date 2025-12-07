@@ -16,9 +16,9 @@ import (
 	"github.com/amarin/logging"
 
 	"github.com/amarin/gomorphy/internal/index"
-	"github.com/amarin/gomorphy/internal/simple"
 	"github.com/amarin/gomorphy/internal/size"
 	"github.com/amarin/gomorphy/pkg/common"
+	"github.com/amarin/gomorphy/pkg/simple"
 )
 
 // Loader provides OpenCorpora dictionary parsing utilities.
