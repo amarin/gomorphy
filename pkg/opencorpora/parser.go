@@ -33,7 +33,7 @@ var ignoreElement = elementProcessor{processStart: ignoreElementStart, processDa
 
 type Parser struct {
 	logging.Logger
-	index           dag.Index
+	index           any
 	dictionary      *Dictionary
 	collectedData   string
 	currentPath     string
@@ -52,7 +52,13 @@ type Parser struct {
 	maxLemmas int
 }
 
-func newParser(indexInstance dag.Index) *Parser {
+func newParser(indexInstance any) *Parser {
+	switch indexInstance.(type) {
+	case Index, SimpleIndex:
+	default:
+		panic("unknown index type, must be either Index or SimpleIndex")
+	}
+
 	dictionary := &Dictionary{
 		VersionAttr:  0,
 		RevisionAttr: 0,
@@ -176,10 +182,12 @@ func (parser *Parser) on(elementPath string, parseWith func() *elementProcessor)
 	parser.parsers[elementPath] = *parseWith()
 }
 
+// mute игнорирует текущий элемент
 func (parser *Parser) mute() *elementProcessor {
 	return &ignoreElement
 }
 
+// onDictionary обрабатывает начало словаря, извлекая параметры version и revision
 func (parser *Parser) onDictionary() *elementProcessor {
 	return &elementProcessor{
 		processStart: func(element xml.StartElement) error {
@@ -190,6 +198,7 @@ func (parser *Parser) onDictionary() *elementProcessor {
 	}
 }
 
+// onGrammeme обрабатывает начало граммемы
 func (parser *Parser) onGrammeme() *elementProcessor {
 	return &elementProcessor{
 		processStart: func(element xml.StartElement) (err error) {
@@ -205,7 +214,13 @@ func (parser *Parser) onGrammeme() *elementProcessor {
 		},
 		processData: ignoreElementData,
 		processEnd: func(element xml.EndElement) error {
-			_ = parser.index.TagID(parser.currentGrammeme.Name, parser.currentGrammeme.Parent)
+			switch typed := parser.index.(type) {
+			case dag.Index:
+				_ = typed.TagID(parser.currentGrammeme.Name, parser.currentGrammeme.Parent)
+			default:
+
+			}
+
 			parser.currentGrammeme = nil
 			return nil
 		},
@@ -274,27 +289,40 @@ func (parser *Parser) onDictionaryLemmataLemma() *elementProcessor {
 		},
 		processData: ignoreElementData,
 		processEnd: func(element xml.EndElement) (err error) {
-			var node dag.Node
+			var (
+				node dag.Node
+			)
 			for _, variant := range parser.currentLemma.F {
 				// prepend form categories with Lemma.L categories list
 				variant.G = append(parser.currentLemma.L.G, variant.G...)
 
-				if node, err = parser.index.AddString(variant.Form); err != nil {
-					return fmt.Errorf("index: %w", err)
-				}
+				switch typedIndex := parser.index.(type) {
+				case Index:
+					if node, err = typedIndex.AddString(variant.Form); err != nil {
+						return fmt.Errorf("index: %w", err)
+					}
 
-				if err = node.AddTagSet(variant.GetTagsFromSet()...); err != nil {
-					return fmt.Errorf("add lemma variant: %w", err)
-				}
+					if err = node.AddTagSet(variant.GetTagsFromSet()...); err != nil {
+						return fmt.Errorf("add lemma variant: %w", err)
+					}
 
-				switch indexedNode := node.(type) {
-				case *index.Node:
-					item := indexedNode.Item()
+					switch indexedNode := node.(type) {
+					case *index.Node:
+						item := indexedNode.Item()
+						parser.Debugf(
+							"IDX+ I%07d P%07d %#08x %v [%v] ",
+							item.ID, item.Parent, item.Variants, variant.Form, variant.G)
+					default:
+						parser.Debugf("+ %v [%v]", variant.Form, variant.G)
+					}
+				case SimpleIndex:
+					nodeIdx, err := typedIndex.Add(variant.Form)
+					if err != nil {
+						return fmt.Errorf("index: %w", err)
+					}
 					parser.Debugf(
 						"IDX+ I%07d P%07d %#08x %v [%v] ",
-						item.ID, item.Parent, item.Variants, variant.Form, variant.G)
-				default:
-					parser.Debugf("+ %v [%v]", variant.Form, variant.G)
+						nodeIdx, "0", "0", variant.Form, variant.G)
 				}
 			}
 

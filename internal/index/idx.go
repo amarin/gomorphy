@@ -17,7 +17,7 @@ const (
 	binaryItemsIdxPrefix = "ID"
 )
 
-// Index implements main dictionary index.
+// Index реализует словарь сопоставления последовательности символов и наборов граммем.
 type Index struct {
 	mu            *sync.Mutex          // protect internals below
 	tags          dag.Idx              // Tag's storage

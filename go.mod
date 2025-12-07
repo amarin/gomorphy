@@ -1,4 +1,6 @@
-go 1.18
+go 1.23.0
+
+toolchain go1.24.3
 
 module github.com/amarin/gomorphy
 
@@ -7,7 +9,9 @@ require (
 	github.com/amarin/libxml v0.1.2
 	github.com/amarin/logging v0.1.2
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
-	github.com/stretchr/testify v1.8.4
+	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8
+	github.com/stretchr/testify v1.9.0
+	go.uber.org/mock v0.6.0
 )
 
 require (

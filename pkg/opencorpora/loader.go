@@ -16,6 +16,8 @@ import (
 	"github.com/amarin/logging"
 
 	"github.com/amarin/gomorphy/internal/index"
+	"github.com/amarin/gomorphy/internal/simple"
+	"github.com/amarin/gomorphy/internal/size"
 	"github.com/amarin/gomorphy/pkg/common"
 )
 
@@ -270,7 +272,7 @@ func (loader *Loader) LoadIndex() (mainIndex *index.Index, err error) {
 	return mainIndex, nil
 }
 
-func (loader *Loader) SaveIndex(mainIndex *index.Index, toFile string) (err error) {
+func (loader *Loader) SaveIndex(mainIndex mainIndex, toFile string) (err error) {
 	var writer *binutils.BinaryWriter
 
 	loader.Info("save compiled index")
@@ -296,9 +298,11 @@ func (loader *Loader) SaveIndex(mainIndex *index.Index, toFile string) (err erro
 		}
 	}()
 
-	loader.Debugf("indexed %d words %d nodes", mainIndex.WordsCount(), mainIndex.NodesCount())
+	idxSizeBefore := size.Of(mainIndex)
+	loader.Infof("indexed %d words %d nodes, %d bytes in memory", mainIndex.WordsCount(), mainIndex.NodesCount(), idxSizeBefore)
 	loader.Info("optimize index")
 	mainIndex.Optimize()
+
 	loader.Info("saving index")
 	if err = mainIndex.BinaryWriteTo(writer); err != nil {
 		return fmt.Errorf("%w: save index: %v", Error, err)
@@ -307,9 +311,9 @@ func (loader *Loader) SaveIndex(mainIndex *index.Index, toFile string) (err erro
 	return nil
 }
 
-func (loader *Loader) ParseUpdate(fromFile string, toFile string) (err error) {
+func (loader *Loader) ParseUpdate(fromFile string, toFile string, mainIndex mainIndex) (err error) {
 	loader.Info("start parse")
-	mainIndex := index.New()
+
 	parser := newParser(mainIndex)
 	// parser.SetMaxLemmas(1000)
 
@@ -385,7 +389,9 @@ unpack:
 	}
 
 compile:
-	if err = loader.ParseUpdate(loader.unpackedFilePath(), loader.compiledFilePath()); err != nil {
+	//mainIndex := index.New()
+	mainIndex := simple.New()
+	if err = loader.ParseUpdate(loader.unpackedFilePath(), loader.compiledFilePath(), mainIndex); err != nil {
 		loader.Errorf("compile: %v", err)
 		return err
 	}
