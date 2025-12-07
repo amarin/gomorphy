@@ -7,7 +7,7 @@ import (
 
 	"github.com/amarin/binutils"
 
-	"github.com/amarin/gomorphy/internal/size"
+	"github.com/amarin/gomorphy/pkg/size"
 )
 
 // Node задаёт структуру хранения данных об узле DAG.

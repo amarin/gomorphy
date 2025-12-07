@@ -10,10 +10,11 @@
 package node
 
 import (
-	reflect "reflect"
+	"reflect"
 
-	size "github.com/amarin/gomorphy/internal/size"
-	gomock "go.uber.org/mock/gomock"
+	"go.uber.org/mock/gomock"
+
+	"github.com/amarin/gomorphy/pkg/size"
 )
 
 // MockalphabetInterface is a mock of alphabetInterface interface.
@@ -68,4 +69,18 @@ func (m *MockalphabetInterface[A]) GetOrCreate(char rune) (A, error) {
 func (mr *MockalphabetInterfaceMockRecorder[A]) GetOrCreate(char any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOrCreate", reflect.TypeOf((*MockalphabetInterface[A])(nil).GetOrCreate), char)
+}
+
+// String mocks base method.
+func (m *MockalphabetInterface[A]) String() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "String")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// String indicates an expected call of String.
+func (mr *MockalphabetInterfaceMockRecorder[A]) String() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "String", reflect.TypeOf((*MockalphabetInterface[A])(nil).String))
 }

@@ -4,7 +4,7 @@ import (
 	"math"
 	"sync"
 
-	"github.com/amarin/gomorphy/internal/size"
+	"github.com/amarin/gomorphy/pkg/size"
 )
 
 // Alphabet реализует компактное хранение используемого алфавита.

@@ -6,7 +6,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/amarin/gomorphy/internal/size"
+	"github.com/amarin/gomorphy/pkg/size"
 )
 
 var (

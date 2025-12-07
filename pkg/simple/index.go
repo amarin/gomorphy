@@ -3,8 +3,8 @@ package simple
 import (
 	"io"
 
-	"github.com/amarin/gomorphy/internal/alphabet"
-	"github.com/amarin/gomorphy/internal/node"
+	"github.com/amarin/gomorphy/pkg/alphabet"
+	"github.com/amarin/gomorphy/pkg/node"
 )
 
 // Index реализует управление и взаимодействие с индексом графа.

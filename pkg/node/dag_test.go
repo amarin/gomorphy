@@ -6,12 +6,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/amarin/gomorphy/internal/alphabet"
+	alphabet2 "github.com/amarin/gomorphy/pkg/alphabet"
 )
 
 func TestGraph_Add(t *testing.T) {
 	t.Run("alphabet uint8 words uint16", func(t *testing.T) {
-		a := alphabet.New[uint8]()
+		a := alphabet2.New[uint8]()
 		graph := NewGraph[uint8, uint16](a)
 
 		t.Run("add word", func(t *testing.T) {
@@ -46,16 +46,16 @@ func TestGraph_Add(t *testing.T) {
 
 			mockedAlphabet.EXPECT().GetOrCreate('d').Return(uint8(0), nil)
 			mockedAlphabet.EXPECT().GetOrCreate('a').Return(uint8(1), nil)
-			mockedAlphabet.EXPECT().GetOrCreate('g').Return(uint8(0), alphabet.ErrOverflow)
+			mockedAlphabet.EXPECT().GetOrCreate('g').Return(uint8(0), alphabet2.ErrOverflow)
 
 			_, err := localGraph.Add("dag")
 			require.Error(t, err)
-			require.Error(t, alphabet.ErrOverflow)
+			require.Error(t, alphabet2.ErrOverflow)
 			require.Error(t, ErrAddWord)
 		})
 	})
 	t.Run("alphabet uint8 words uint32", func(t *testing.T) {
-		a := alphabet.New[uint8]()
+		a := alphabet2.New[uint8]()
 		graph := NewGraph[uint8, uint32](a)
 
 		t.Run("add word", func(t *testing.T) {
@@ -90,16 +90,16 @@ func TestGraph_Add(t *testing.T) {
 
 			mockedAlphabet.EXPECT().GetOrCreate('d').Return(uint8(0), nil)
 			mockedAlphabet.EXPECT().GetOrCreate('a').Return(uint8(1), nil)
-			mockedAlphabet.EXPECT().GetOrCreate('g').Return(uint8(0), alphabet.ErrOverflow)
+			mockedAlphabet.EXPECT().GetOrCreate('g').Return(uint8(0), alphabet2.ErrOverflow)
 
 			_, err := localGraph.Add("dag")
 			require.Error(t, err)
-			require.Error(t, alphabet.ErrOverflow)
+			require.Error(t, alphabet2.ErrOverflow)
 			require.Error(t, ErrAddWord)
 		})
 	})
 	t.Run("alphabet uint16 words uint16", func(t *testing.T) {
-		a := alphabet.New[uint16]()
+		a := alphabet2.New[uint16]()
 		graph := NewGraph[uint16, uint16](a)
 
 		t.Run("add word", func(t *testing.T) {
@@ -134,17 +134,17 @@ func TestGraph_Add(t *testing.T) {
 
 			mockedAlphabet.EXPECT().GetOrCreate('d').Return(uint8(0), nil)
 			mockedAlphabet.EXPECT().GetOrCreate('a').Return(uint8(1), nil)
-			mockedAlphabet.EXPECT().GetOrCreate('g').Return(uint8(0), alphabet.ErrOverflow)
+			mockedAlphabet.EXPECT().GetOrCreate('g').Return(uint8(0), alphabet2.ErrOverflow)
 
 			_, err := localGraph.Add("dag")
 			require.Error(t, err)
-			require.Error(t, alphabet.ErrOverflow)
+			require.Error(t, alphabet2.ErrOverflow)
 			require.Error(t, ErrAddWord)
 		})
 	})
 
 	t.Run("alphabet uint16 words uint32", func(t *testing.T) {
-		a := alphabet.New[uint16]()
+		a := alphabet2.New[uint16]()
 		graph := NewGraph[uint16, uint32](a)
 
 		t.Run("add word", func(t *testing.T) {
@@ -179,11 +179,11 @@ func TestGraph_Add(t *testing.T) {
 
 			mockedAlphabet.EXPECT().GetOrCreate('d').Return(uint8(0), nil)
 			mockedAlphabet.EXPECT().GetOrCreate('a').Return(uint8(1), nil)
-			mockedAlphabet.EXPECT().GetOrCreate('g').Return(uint8(0), alphabet.ErrOverflow)
+			mockedAlphabet.EXPECT().GetOrCreate('g').Return(uint8(0), alphabet2.ErrOverflow)
 
 			_, err := localGraph.Add("dag")
 			require.Error(t, err)
-			require.Error(t, alphabet.ErrOverflow)
+			require.Error(t, alphabet2.ErrOverflow)
 			require.Error(t, ErrAddWord)
 		})
 	})
