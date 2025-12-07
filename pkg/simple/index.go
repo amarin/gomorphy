@@ -5,18 +5,21 @@ import (
 
 	"github.com/amarin/gomorphy/pkg/alphabet"
 	"github.com/amarin/gomorphy/pkg/node"
+	"github.com/amarin/gomorphy/pkg/tag"
 )
 
 // Index реализует управление и взаимодействие с индексом графа.
 type Index struct {
-	dag *node.Graph[uint8, uint16]
+	dag        *node.Graph[uint8, uint16]
+	tagIndexer *tag.Indexer
 }
 
 // New создаёт новый экземпляр индекса.
 func New() *Index {
 	a := alphabet.New[uint8]()
 	return &Index{
-		dag: node.NewGraph[uint8, uint16](a),
+		dag:        node.NewGraph[uint8, uint16](a),
+		tagIndexer: tag.NewIndexer(),
 	}
 }
 

@@ -332,68 +332,58 @@ func (loader *Loader) ParseUpdate(fromFile string, toFile string, mainIndex main
 	return loader.SaveIndex(mainIndex, toFile)
 }
 
-func (loader *Loader) Update(forceRecompile bool) (err error) {
-	var updated, updateRequired, downloadedExists, unpackedExists bool
+func (loader *Loader) Update(forceRecompile bool, skipDownload bool) (err error) {
+	var (
+		updated, updateRequired, downloadedExists, unpackedExists bool
+	)
 
 	loader.Info("check OpenCorpora updates")
 
-	updateRequired, err = loader.IsUpdateRequired()
 	downloadedExists = loader.IsDownloadExists()
+	updateRequired, err = loader.IsUpdateRequired()
 	unpackedExists = loader.IsUnpackedExists()
 
-	switch {
-	case err != nil && forceRecompile && unpackedExists:
-		loader.Errorf("check update: %v, force recompile using previous unpacked file", err)
-		goto compile
-	case err != nil && forceRecompile && downloadedExists:
-		loader.Errorf("check update: %v, force recompile using previous downloaded file", err)
-		goto unpack
-	case err != nil:
-		loader.Errorf("check update: %v", err)
-		return err
-	case !updateRequired:
-		loader.Info("lemmata up to date")
+	downloadRequired := (updateRequired || !downloadedExists) && !skipDownload
+	unpackRequired := false
+	compileRequired := forceRecompile || unpackedExists
 
-		if forceRecompile {
-			loader.Info("do recompile as force update required")
-			goto compile
-		}
-
-		return nil
-
-	default:
+	if downloadRequired {
 		loader.Info("update required, downloading")
+		updated, err = loader.DownloadUpdate()
+
+		switch {
+		case err != nil:
+			loader.Errorf("download: %v", err)
+			return err
+		case !updated:
+			loader.Warn("files not updated, no errors")
+			return nil
+		default:
+			loader.Info("downloaded, unpacking")
+			unpackRequired = true
+		}
 	}
 
-	updated, err = loader.DownloadUpdate()
+	if unpackRequired {
+		err = loader.UnpackUpdate()
 
-	switch {
-	case err != nil:
-		loader.Errorf("download: %v", err)
-		return err
-	case !updated:
-		loader.Warn("files not updated, no errors")
-		return nil
-	default:
-		loader.Info("downloaded, unpacking")
-	}
-unpack:
-	err = loader.UnpackUpdate()
-
-	switch {
-	case err != nil:
-		loader.Errorf("unpack: %v", err)
-		return err
-	default:
-		loader.Info("lemmata updated, compile")
+		switch {
+		case err != nil:
+			loader.Errorf("unpack: %v", err)
+			return err
+		default:
+			loader.Info("updated file unpacked updated, compile")
+			compileRequired = true
+		}
 	}
 
-compile:
-	//mainIndex := index.New()
-	mainIndex := simple.New()
-	if err = loader.ParseUpdate(loader.unpackedFilePath(), loader.compiledFilePath(), mainIndex); err != nil {
-		loader.Errorf("compile: %v", err)
-		return err
+	if compileRequired {
+		//mainIndex := index.New()
+		mainIndex := simple.New()
+		if err = loader.ParseUpdate(loader.unpackedFilePath(), loader.compiledFilePath(), mainIndex); err != nil {
+			loader.Errorf("compile: %v", err)
+			return err
+		}
 	}
 
 	return nil

@@ -8,6 +8,7 @@ import (
 	"github.com/amarin/logging"
 
 	"github.com/amarin/gomorphy/internal/index"
+	"github.com/amarin/gomorphy/internal/parse/xmlstream"
 	"github.com/amarin/gomorphy/pkg/dag"
 	"github.com/amarin/gomorphy/pkg/tag"
 )
@@ -17,31 +18,17 @@ const defaultLogAverageEachSeconds = 10
 // ErrControlledStop raised when limit to parse items set.
 var ErrControlledStop = fmt.Errorf("%w: controlled stop", Error)
 
-type processStart func(element xml.StartElement) error
-type processData func(data string) error
-type processEnd func(element xml.EndElement) error
-
-type elementProcessor struct {
-	processStart processStart
-	processData  processData
-	processEnd   processEnd
-}
-
-var ignoreElementStart = func(element xml.StartElement) error { return nil }
-var ignoreElementData = func(data string) error { return nil }
-var ignoreElementEnd = func(element xml.EndElement) error { return nil }
-var ignoreElement = elementProcessor{processStart: ignoreElementStart, processData: ignoreElementData, processEnd: ignoreElementEnd}
-
 type Parser struct {
+	xmlstream.Parser
+
 	logging.Logger
-	index           any
-	dictionary      *Dictionary
-	collectedData   string
-	currentPath     string
+	index      any
+	dictionary *Dictionary
+
 	currentGrammeme *tag.Tag
 	currentLemma    *Lemma
 	currentForm     *WordForm
-	parsers         map[string]elementProcessor
+
 	parserStarted   time.Time
 	reportAfter     time.Time
 	parsedLemmas    int // parsed lemma's items
@@ -71,38 +58,37 @@ func newParser(indexInstance any) *Parser {
 	}
 
 	parser := &Parser{
+		Parser:          *xmlstream.New(),
 		Logger:          logging.NewNamedLogger("parser").WithLevel(logging.LevelDebug),
 		index:           indexInstance,
 		dictionary:      dictionary,
-		collectedData:   "",
-		parsers:         make(map[string]elementProcessor),
 		parserStarted:   time.Now(),
 		reportAfter:     time.Now().Add(time.Second * defaultLogAverageEachSeconds),
 		parsedForms:     0,
 		logAverageSpeed: defaultLogAverageEachSeconds,
 	}
 
-	parser.on("", parser.mute)
-	parser.on(".dictionary", parser.onDictionary)
-	parser.on(".dictionary.grammemes", parser.mute)
-	parser.on(".dictionary.grammemes.grammeme", parser.onGrammeme)
-	parser.on(".dictionary.grammemes.grammeme.name", parser.onGrammemeName)
-	parser.on(".dictionary.grammemes.grammeme.alias", parser.mute)
-	parser.on(".dictionary.grammemes.grammeme.description", parser.mute)
-	parser.on(".dictionary.restrictions", parser.mute)
-	parser.on(".dictionary.restrictions.restr", parser.mute)
-	parser.on(".dictionary.restrictions.restr.left", parser.mute)
-	parser.on(".dictionary.restrictions.restr.right", parser.mute)
-	parser.on(".dictionary.lemmata", parser.mute)
-	parser.on(".dictionary.lemmata.lemma", parser.onDictionaryLemmataLemma)
-	parser.on(".dictionary.lemmata.lemma.l", parser.onDictionaryLemmataLemmaL)
-	parser.on(".dictionary.lemmata.lemma.l.g", parser.onDictionaryLemmataLemmaLG)
-	parser.on(".dictionary.lemmata.lemma.f", parser.onDictionaryLemmataLemmaF)
-	parser.on(".dictionary.lemmata.lemma.f.g", parser.onDictionaryLemmataLemmaFG)
-	parser.on(".dictionary.link_types", parser.mute)
-	parser.on(".dictionary.link_types.type", parser.mute)
-	parser.on(".dictionary.links", parser.mute)
-	parser.on(".dictionary.links.link", parser.mute)
+	parser.OnElement("", parser.mute)
+	parser.OnElement(".dictionary", parser.onDictionary)
+	parser.OnElement(".dictionary.grammemes", parser.mute)
+	parser.OnElement(".dictionary.grammemes.grammeme", parser.onGrammeme)
+	parser.OnElement(".dictionary.grammemes.grammeme.name", parser.onGrammemeName)
+	parser.OnElement(".dictionary.grammemes.grammeme.alias", parser.mute)
+	parser.OnElement(".dictionary.grammemes.grammeme.description", parser.mute)
+	parser.OnElement(".dictionary.restrictions", parser.mute)
+	parser.OnElement(".dictionary.restrictions.restr", parser.mute)
+	parser.OnElement(".dictionary.restrictions.restr.left", parser.mute)
+	parser.OnElement(".dictionary.restrictions.restr.right", parser.mute)
+	parser.OnElement(".dictionary.lemmata", parser.mute)
+	parser.OnElement(".dictionary.lemmata.lemma", parser.onDictionaryLemmataLemma)
+	parser.OnElement(".dictionary.lemmata.lemma.l", parser.onDictionaryLemmataLemmaL)
+	parser.OnElement(".dictionary.lemmata.lemma.l.g", parser.onDictionaryLemmataLemmaLG)
+	parser.OnElement(".dictionary.lemmata.lemma.f", parser.onDictionaryLemmataLemmaF)
+	parser.OnElement(".dictionary.lemmata.lemma.f.g", parser.onDictionaryLemmataLemmaFG)
+	parser.OnElement(".dictionary.link_types", parser.mute)
+	parser.OnElement(".dictionary.link_types.type", parser.mute)
+	parser.OnElement(".dictionary.links", parser.mute)
+	parser.OnElement(".dictionary.links.link", parser.mute)
 
 	return parser
 }
@@ -111,98 +97,26 @@ func (parser *Parser) SetMaxLemmas(maxLemmas int) {
 	parser.maxLemmas = maxLemmas
 }
 
-func (parser *Parser) ProcessStartElement(element xml.StartElement) error {
-	parser.collectedData = ""
-	parser.currentPath += "." + element.Name.Local
-	p, ok := parser.parsers[parser.currentPath]
-
-	switch {
-	case !ok:
-		return fmt.Errorf("%w: unexpected start: `%v`", Error, parser.currentPath)
-	case p.processStart == nil:
-		parser.Info("> " + parser.currentPath)
-		return nil
-	case fmt.Sprintf("%p", p.processStart) == fmt.Sprintf("%p", ignoreElementStart):
-		return nil
-	default:
-		return p.processStart(element)
-	}
-}
-
-func (parser *Parser) ProcessCharData(data xml.CharData) error {
-	p, ok := parser.parsers[parser.currentPath]
-	if !ok {
-		return fmt.Errorf("%w: unexpected char: `%v`", Error, parser.currentPath)
-	}
-	switch {
-	case p.processData == nil:
-		parser.Debug("= " + parser.currentPath)
-		return nil
-	case fmt.Sprintf("%p", p.processData) == fmt.Sprintf("%p", ignoreElementData):
-		return nil
-	default:
-		return p.processData(string(data))
-	}
-}
-
-func (parser *Parser) ProcessEndElement(element xml.EndElement) error {
-	p, ok := parser.parsers[parser.currentPath]
-	if !ok {
-		return fmt.Errorf("%w: unexpected end: `%v`", Error, parser.currentPath)
-	}
-
-	defer func() {
-		parser.currentPath = parser.currentPath[:len(parser.currentPath)-len(element.Name.Local)-1]
-	}()
-
-	switch {
-	case p.processEnd == nil:
-		parser.Debug("< " + parser.currentPath)
-		return nil
-	case fmt.Sprintf("%p", p.processEnd) == fmt.Sprintf("%p", ignoreElementEnd):
-		return nil
-	default:
-		return p.processEnd(element)
-	}
-}
-
-func (parser *Parser) ProcessComment(_ xml.Comment) error {
-	return nil
-}
-
-func (parser *Parser) ProcessProcInst(_ xml.ProcInst) error {
-	return nil
-}
-
-func (parser *Parser) ProcessDirective(_ xml.Directive) error {
-	return nil
-}
-
-// on sets elementProcessor to parse specified elementPath.
-func (parser *Parser) on(elementPath string, parseWith func() *elementProcessor) {
-	parser.parsers[elementPath] = *parseWith()
-}
-
 // mute игнорирует текущий элемент
-func (parser *Parser) mute() *elementProcessor {
-	return &ignoreElement
+func (parser *Parser) mute() *xmlstream.ElementProcessor {
+	return &xmlstream.IgnoreElement
 }
 
 // onDictionary обрабатывает начало словаря, извлекая параметры version и revision
-func (parser *Parser) onDictionary() *elementProcessor {
-	return &elementProcessor{
-		processStart: func(element xml.StartElement) error {
+func (parser *Parser) onDictionary() *xmlstream.ElementProcessor {
+	return &xmlstream.ElementProcessor{
+		OnStart: func(element xml.StartElement) error {
 			return parser.dictionary.processElem(parser, element)
 		},
-		processData: ignoreElementData,
-		processEnd:  nil,
+		OnData: xmlstream.IgnoreElementData,
+		OnEnd:  nil,
 	}
 }
 
 // onGrammeme обрабатывает начало граммемы
-func (parser *Parser) onGrammeme() *elementProcessor {
-	return &elementProcessor{
-		processStart: func(element xml.StartElement) (err error) {
+func (parser *Parser) onGrammeme() *xmlstream.ElementProcessor {
+	return &xmlstream.ElementProcessor{
+		OnStart: func(element xml.StartElement) (err error) {
 			var parentStr string
 
 			parser.currentGrammeme = new(tag.Tag)
@@ -213,8 +127,8 @@ func (parser *Parser) onGrammeme() *elementProcessor {
 
 			return nil
 		},
-		processData: ignoreElementData,
-		processEnd: func(element xml.EndElement) error {
+		OnData: xmlstream.IgnoreElementData,
+		OnEnd: func(element xml.EndElement) error {
 			switch typed := parser.index.(type) {
 			case dag.Index:
 				_ = typed.TagID(parser.currentGrammeme.Name, parser.currentGrammeme.Parent)
@@ -228,20 +142,20 @@ func (parser *Parser) onGrammeme() *elementProcessor {
 	}
 }
 
-func (parser *Parser) onGrammemeName() *elementProcessor {
-	return &elementProcessor{
-		processStart: ignoreElementStart,
-		processData: func(data string) error {
+func (parser *Parser) onGrammemeName() *xmlstream.ElementProcessor {
+	return &xmlstream.ElementProcessor{
+		OnStart: xmlstream.IgnoreElementStart,
+		OnData: func(data string) error {
 			parser.currentGrammeme.Name = tag.Name(data)
 			return nil
 		},
-		processEnd: ignoreElementEnd,
+		OnEnd: xmlstream.IgnoreElementEnd,
 	}
 }
 
-func (parser *Parser) onDictionaryLemmataLemmaFG() *elementProcessor {
-	return &elementProcessor{
-		processStart: func(element xml.StartElement) (err error) {
+func (parser *Parser) onDictionaryLemmataLemmaFG() *xmlstream.ElementProcessor {
+	return &xmlstream.ElementProcessor{
+		OnStart: func(element xml.StartElement) (err error) {
 			var tagString string
 
 			if tagString, err = Attr(element.Attr).GetString("v"); err != nil {
@@ -251,22 +165,22 @@ func (parser *Parser) onDictionaryLemmataLemmaFG() *elementProcessor {
 
 			return nil
 		},
-		processData: ignoreElementData,
-		processEnd:  ignoreElementEnd,
+		OnData: xmlstream.IgnoreElementData,
+		OnEnd:  xmlstream.IgnoreElementEnd,
 	}
 }
 
-func (parser *Parser) onDictionaryLemmataLemmaF() *elementProcessor {
-	return &elementProcessor{
-		processStart: func(element xml.StartElement) (err error) {
+func (parser *Parser) onDictionaryLemmataLemmaF() *xmlstream.ElementProcessor {
+	return &xmlstream.ElementProcessor{
+		OnStart: func(element xml.StartElement) (err error) {
 			parser.currentForm = newWordForm()
 			if parser.currentForm.Form, err = Attr(element.Attr).GetString("t"); err != nil {
 				return fmt.Errorf("%w: %v: %v", Error, element.Attr, err)
 			}
 			return nil
 		},
-		processData: nil,
-		processEnd: func(element xml.EndElement) error {
+		OnData: nil,
+		OnEnd: func(element xml.EndElement) error {
 			parser.currentLemma.F = append(parser.currentLemma.F, parser.currentForm)
 			parser.currentForm = nil
 			parser.parsedForms++
@@ -276,9 +190,9 @@ func (parser *Parser) onDictionaryLemmataLemmaF() *elementProcessor {
 	}
 }
 
-func (parser *Parser) onDictionaryLemmataLemma() *elementProcessor {
-	return &elementProcessor{
-		processStart: func(element xml.StartElement) (err error) {
+func (parser *Parser) onDictionaryLemmataLemma() *xmlstream.ElementProcessor {
+	return &xmlstream.ElementProcessor{
+		OnStart: func(element xml.StartElement) (err error) {
 			parser.currentLemma = newLemma()
 			if parser.currentLemma.IdAttr, err = getIntAttr("id", element.Attr); err != nil {
 				return fmt.Errorf("%w: %v: %v", Error, element.Attr, err)
@@ -288,8 +202,8 @@ func (parser *Parser) onDictionaryLemmataLemma() *elementProcessor {
 			}
 			return nil
 		},
-		processData: ignoreElementData,
-		processEnd: func(element xml.EndElement) (err error) {
+		OnData: xmlstream.IgnoreElementData,
+		OnEnd: func(element xml.EndElement) (err error) {
 			var (
 				node dag.Node
 			)
@@ -344,9 +258,9 @@ func (parser *Parser) onDictionaryLemmataLemma() *elementProcessor {
 	}
 }
 
-func (parser *Parser) onDictionaryLemmataLemmaL() *elementProcessor {
-	return &elementProcessor{
-		processStart: func(element xml.StartElement) (err error) {
+func (parser *Parser) onDictionaryLemmataLemmaL() *xmlstream.ElementProcessor {
+	return &xmlstream.ElementProcessor{
+		OnStart: func(element xml.StartElement) (err error) {
 			if parser.currentLemma.L.Form, err = getAttr("t", element.Attr); err != nil {
 				return fmt.Errorf("%w: %v: %v", Error, element.Attr, err)
 			}
@@ -354,14 +268,14 @@ func (parser *Parser) onDictionaryLemmataLemmaL() *elementProcessor {
 
 			return nil
 		},
-		processData: ignoreElementData,
-		processEnd:  ignoreElementEnd,
+		OnData: xmlstream.IgnoreElementData,
+		OnEnd:  xmlstream.IgnoreElementEnd,
 	}
 }
 
-func (parser *Parser) onDictionaryLemmataLemmaLG() *elementProcessor {
-	return &elementProcessor{
-		processStart: func(element xml.StartElement) (err error) {
+func (parser *Parser) onDictionaryLemmataLemmaLG() *xmlstream.ElementProcessor {
+	return &xmlstream.ElementProcessor{
+		OnStart: func(element xml.StartElement) (err error) {
 			var tagString string
 
 			if tagString, err = getAttr("v", element.Attr); err != nil {
@@ -372,7 +286,7 @@ func (parser *Parser) onDictionaryLemmataLemmaLG() *elementProcessor {
 			// parser.Debugf("lemma.l.g: `%v`: %v", parser.currentLemma.L.Form, parser.currentLemma.L.G)
 			return nil
 		},
-		processData: ignoreElementData,
-		processEnd:  ignoreElementEnd,
+		OnData: xmlstream.IgnoreElementData,
+		OnEnd:  xmlstream.IgnoreElementEnd,
 	}
 }

@@ -22,6 +22,11 @@ func main() {
 		true,
 		"force rebuild index from previously downloaded data even if compiled index already present",
 	)
+	skipDownload := flag.Bool(
+		"l",
+		false,
+		"use local file only, skip downloading.",
+	)
 	debugLogging := flag.Bool(
 		"d",
 		false,
@@ -47,7 +52,7 @@ func main() {
 	// init loader
 	loader := opencorpora.NewLoader("")
 
-	if err := loader.Update(*forceRecompile); err != nil {
+	if err := loader.Update(*forceRecompile, *skipDownload); err != nil {
 		os.Exit(1)
 	}
 
