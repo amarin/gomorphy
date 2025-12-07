@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/amarin/gomorphy/pkg/storage"
-	tag2 "github.com/amarin/gomorphy/pkg/tag"
+	"github.com/amarin/gomorphy/pkg/tag"
 
 	"github.com/amarin/binutils"
 
@@ -24,18 +24,18 @@ func (t TagID) Uint8() uint8 {
 }
 
 // Idx implements Tag index routines.
-type Idx []Tag
+type Idx []tag.Tag
 
 // NewIndex creates new Idx.
-func NewIndex(knownTags ...Tag) Idx {
+func NewIndex(knownTags ...tag.Tag) Idx {
 	tagsIndex := make(Idx, len(knownTags))
 
-	for idx, tag := range knownTags {
-		if tag.Parent == "" {
-			tag.Parent = tag2.EmptyTagName
+	for idx, knownTag := range knownTags {
+		if knownTag.Parent == "" {
+			knownTag.Parent = tag.EmptyTagName
 		}
 
-		tagsIndex[idx] = tag
+		tagsIndex[idx] = knownTag
 	}
 
 	return tagsIndex
@@ -86,7 +86,7 @@ func (tagsIndex Idx) Len() int {
 
 // Find returns indexed ID by known name and parent.
 // Returns false found indicator if no such indexed found.
-func (tagsIndex Idx) Find(name tag2.Name) (id TagID, found bool) {
+func (tagsIndex Idx) Find(name tag.Name) (id TagID, found bool) {
 	for idx, tag := range tagsIndex {
 		if string(tag.Name) == string(name) {
 			return TagID(idx), true
@@ -98,11 +98,11 @@ func (tagsIndex Idx) Find(name tag2.Name) (id TagID, found bool) {
 
 // Index returns indexed ID.
 // Adds indexed to index if not indexed before.
-func (tagsIndex *Idx) Index(name tag2.Name, parent tag2.Name) (id TagID) {
+func (tagsIndex *Idx) Index(name tag.Name, parent tag.Name) (id TagID) {
 	var found bool
 
 	if parent == "" {
-		parent = tag2.EmptyTagName
+		parent = tag.EmptyTagName
 	}
 
 	if id, found = tagsIndex.Find(name); found {
@@ -110,16 +110,16 @@ func (tagsIndex *Idx) Index(name tag2.Name, parent tag2.Name) (id TagID) {
 	}
 
 	id = TagID(len(*tagsIndex))
-	*tagsIndex = append(*tagsIndex, *NewTag(parent, name))
+	*tagsIndex = append(*tagsIndex, *tag.NewTag(parent, name))
 
 	return id
 }
 
 // Get returns indexed from index using its indexed ID.
 // Returns found indexed or found indicator will false.
-func (tagsIndex Idx) Get(requiredIdx TagID) (foundItem Tag, found bool) {
+func (tagsIndex Idx) Get(requiredIdx TagID) (foundItem tag.Tag, found bool) {
 	if int(requiredIdx) >= len(tagsIndex) {
-		return Tag{}, false //nolint:exhaustivestruct
+		return tag.Tag{}, false //nolint:exhaustivestruct
 	}
 
 	return tagsIndex[int(requiredIdx)], true

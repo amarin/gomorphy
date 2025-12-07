@@ -38,7 +38,7 @@ type Parser struct {
 	dictionary      *Dictionary
 	collectedData   string
 	currentPath     string
-	currentGrammeme *dag.Tag
+	currentGrammeme *tag.Tag
 	currentLemma    *Lemma
 	currentForm     *WordForm
 	parsers         map[string]elementProcessor
@@ -205,7 +205,7 @@ func (parser *Parser) onGrammeme() *elementProcessor {
 		processStart: func(element xml.StartElement) (err error) {
 			var parentStr string
 
-			parser.currentGrammeme = new(dag.Tag)
+			parser.currentGrammeme = new(tag.Tag)
 			if parentStr, err = getAttr("parent", element.Attr); err != nil {
 				return fmt.Errorf("%w: required parent attr", Error)
 			}

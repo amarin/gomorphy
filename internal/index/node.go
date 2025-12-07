@@ -28,7 +28,7 @@ func (node *Node) TagSets() (res []dag.TagSet) {
 		item       *Item
 		collection TagSetIDCollection
 		tagSetIDs  TagSet
-		tag        dag.Tag
+		tagValue   tag.Tag
 	)
 
 	item = node.index.getItem(node.id)
@@ -41,8 +41,8 @@ func (node *Node) TagSets() (res []dag.TagSet) {
 		}
 		res[idx] = make(dag.TagSet, tagSetIDs.Len())
 		for tagIdx, tagID := range tagSetIDs {
-			if tag, found = node.index.tags.Get(tagID); found {
-				res[idx][tagIdx] = tag
+			if tagValue, found = node.index.tags.Get(tagID); found {
+				res[idx][tagIdx] = tagValue
 			}
 		}
 	}

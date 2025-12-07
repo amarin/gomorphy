@@ -1,7 +1,6 @@
 package opencorpora
 
 import (
-	"github.com/amarin/gomorphy/pkg/dag"
 	"github.com/amarin/gomorphy/pkg/tag"
 )
 
@@ -22,6 +21,6 @@ func (g Grammeme) String() string {
 }
 
 // Tag provides grammar tag from OpenCorpora grammeme definition.
-func (g Grammeme) Tag() dag.Tag {
-	return *dag.NewTag(g.ParentAttr, g.Name)
+func (g Grammeme) Tag() tag.Tag {
+	return *tag.NewTag(g.ParentAttr, g.Name)
 }

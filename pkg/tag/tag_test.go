@@ -1,4 +1,4 @@
-package dag_test
+package tag_test
 
 import (
 	"bytes"
@@ -9,7 +9,6 @@ import (
 	"github.com/amarin/binutils"
 	"github.com/stretchr/testify/require"
 
-	"github.com/amarin/gomorphy/pkg/dag"
 	"github.com/amarin/gomorphy/pkg/tag"
 )
 
@@ -36,17 +35,17 @@ var tagTests = []struct { // nolint:gochecknoglobals
 }
 var tagSerializeTest = []struct {
 	name    string
-	tag     dag.Tag
+	tag     tag.Tag
 	binData string
 }{
 	{
 		"with_no_parent",
-		*dag.NewTag("", "POST"),
+		*tag.NewTag("", "POST"),
 		"2d2d2d2d504f5354",
 	},
 	{
 		"with_parent",
-		*dag.NewTag("NOUN", "POST"),
+		*tag.NewTag("NOUN", "POST"),
 		"4e4f554e504f5354",
 	},
 }
@@ -56,7 +55,7 @@ func TestTag_String(t *testing.T) { //nolint:paralleltest
 		tt := tt // pin
 		t.Run(tt.name, func(t *testing.T) {
 			tt := tt // pin
-			g := dag.NewTag(tt.fields.ParentAttr, tt.fields.Name)
+			g := tag.NewTag(tt.fields.ParentAttr, tt.fields.Name)
 			if got := g.String(); got != tt.want {
 				t.Errorf("String() = %v, want %v", got, tt.want)
 			}
@@ -69,7 +68,7 @@ func BenchmarkTag_String(b *testing.B) {
 		tt := tt // pin
 		b.Run(tt.name, func(b *testing.B) {
 			tt := tt // pin
-			g := dag.NewTag(tt.fields.ParentAttr, tt.fields.Name)
+			g := tag.NewTag(tt.fields.ParentAttr, tt.fields.Name)
 
 			for i := 0; i < b.N; i++ {
 				_ = g.String()
@@ -87,23 +86,23 @@ func TestNewTag(t *testing.T) { //nolint:paralleltest
 	for _, tt := range []struct { //nolint:paralleltest
 		name string
 		args args
-		want *dag.Tag
+		want *tag.Tag
 	}{
 		{
 			name: "root",
 			args: args{"", "POST"},
-			want: &dag.Tag{Parent: "----", Name: "POST"},
+			want: &tag.Tag{Parent: "----", Name: "POST"},
 		},
 		{
 			name: "child",
 			args: args{"POST", "NOUN"},
-			want: &dag.Tag{Parent: "POST", Name: "NOUN"},
+			want: &tag.Tag{Parent: "POST", Name: "NOUN"},
 		},
 	} {
 		tt := tt // pin
 		t.Run(tt.name, func(t *testing.T) {
 			tt := tt // pin
-			expectedTag := dag.NewTag(tt.args.parent, tt.args.name)
+			expectedTag := tag.NewTag(tt.args.parent, tt.args.name)
 			if got := expectedTag; !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("NewTag() = %v, want %v", got, tt.want)
 			}
@@ -114,7 +113,7 @@ func TestNewTag(t *testing.T) { //nolint:paralleltest
 func TestTag_BinaryReadFrom(t *testing.T) {
 	for _, tt := range tagSerializeTest {
 		t.Run(tt.name, func(t *testing.T) {
-			g := &dag.Tag{}
+			g := &tag.Tag{}
 			data, err := hex.DecodeString(tt.binData)
 			require.NoError(t, err)
 			reader := binutils.NewBinaryReader(bytes.NewBuffer(data))

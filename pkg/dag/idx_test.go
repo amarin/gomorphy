@@ -15,17 +15,17 @@ import (
 
 type testIndexStruct struct {
 	name     string
-	known    []dag.Tag
+	known    []tag.Tag
 	wantData string
 	wantErr  bool
 }
 
 var testCategoryListData = []testIndexStruct{ // nolint:gochecknoglobals
-	{"empty_tags_list", []dag.Tag{}, "00", false},
-	{"single_empty_tag", []dag.Tag{{tag.EmptyTagName, tag.EmptyTagName}}, "012020202020202020", false},
-	{"single_filled_tag", []dag.Tag{{tag.EmptyTagName, "POST"}},
+	{"empty_tags_list", []tag.Tag{}, "00", false},
+	{"single_empty_tag", []tag.Tag{{tag.EmptyTagName, tag.EmptyTagName}}, "012020202020202020", false},
+	{"single_filled_tag", []tag.Tag{{tag.EmptyTagName, "POST"}},
 		"0120202020504f5354", false},
-	{"couple_of_filled_tags", []dag.Tag{{tag.EmptyTagName, "POST"}, {"POST", "NOUN"}},
+	{"couple_of_filled_tags", []tag.Tag{{tag.EmptyTagName, "POST"}, {"POST", "NOUN"}},
 		"0220202020504f5354504f53544e4f554e", false},
 }
 
@@ -41,20 +41,20 @@ func TestIndex_Idx(t *testing.T) {
 	}{
 		{"in_empty", "1111", "", dag.Idx{}, 0},
 		{testName: "new_wo_parent", name: "2222", parent: tag.EmptyTagName,
-			indexed: dag.Idx{dag.Tag{Parent: "", Name: "1111"}}, want: 1},
+			indexed: dag.Idx{tag.Tag{Parent: "", Name: "1111"}}, want: 1},
 		{testName: "new_to_parent", name: "2222", parent: "1111",
 			indexed: dag.Idx{
-				dag.Tag{Parent: "", Name: "1111"},
+				tag.Tag{Parent: "", Name: "1111"},
 			}, want: 1},
 		{testName: "existed_to_root", name: "2222",
 			indexed: dag.Idx{
-				dag.Tag{Parent: tag.EmptyTagName, Name: "1111"},
-				dag.Tag{Parent: tag.EmptyTagName, Name: "2222"},
+				tag.Tag{Parent: tag.EmptyTagName, Name: "1111"},
+				tag.Tag{Parent: tag.EmptyTagName, Name: "2222"},
 			}, want: 1},
 		{testName: "existed_to_parent", name: "3333", parent: "1111",
 			indexed: dag.Idx{
-				dag.Tag{Parent: tag.EmptyTagName, Name: "1111"},
-				dag.Tag{Parent: "1111", Name: "2222"},
+				tag.Tag{Parent: tag.EmptyTagName, Name: "1111"},
+				tag.Tag{Parent: "1111", Name: "2222"},
 			}, want: 2},
 	} {
 		tt := tt
@@ -73,7 +73,7 @@ func TestIndex_ReadFrom(t *testing.T) {
 	tests = append(tests, []testIndexStruct{
 		{ // extra data in buffer is not taken and not an error
 			"extra_data_after_error",
-			[]dag.Tag{{tag.EmptyTagName, "POST"}},
+			[]tag.Tag{{tag.EmptyTagName, "POST"}},
 			"0120202020504f5354FF", false,
 		},
 		{ // no data len byte should raise
@@ -90,7 +90,7 @@ func TestIndex_ReadFrom(t *testing.T) {
 		},
 		{ // len of Tag's list greater than available data should raise
 			"err_len_mismatch_data",
-			[]dag.Tag{{"", "POST"}},
+			[]tag.Tag{{"", "POST"}},
 			"02504f535420202020",
 			true,
 		},
@@ -134,8 +134,8 @@ func TestIndex_Add(t *testing.T) {
 	t.Parallel()
 
 	index := dag.NewIndex()
-	post := dag.NewTag("", "POST")
-	pos1 := dag.NewTag("", "POS1")
+	post := tag.NewTag("", "POST")
+	pos1 := tag.NewTag("", "POS1")
 
 	require.Equal(t, dag.TagID(0), index.Index(post.Name, post.Parent))
 	require.Equal(t, dag.TagID(0), index.Index(post.Name, post.Parent)) // duplicated add returns same index
@@ -146,9 +146,9 @@ func TestIndex_Get(t *testing.T) {
 	t.Parallel()
 
 	testIndex := dag.NewIndex(
-		*dag.NewTag("", "POST"),
-		*dag.NewTag("POST", "NOUN"),
-		*dag.NewTag("POST", "VERB"))
+		*tag.NewTag("", "POST"),
+		*tag.NewTag("POST", "NOUN"),
+		*tag.NewTag("POST", "VERB"))
 
 	for _, tt := range []struct {
 		name  string
@@ -175,18 +175,18 @@ func TestIndex_Get(t *testing.T) {
 }
 
 func TestNewIndex(t *testing.T) {
-	POST := dag.NewTag("", "POST")
-	NOUN := dag.NewTag("POST", "NOUN")
-	VERB := dag.NewTag("POST", "VERB")
+	POST := tag.NewTag("", "POST")
+	NOUN := tag.NewTag("POST", "NOUN")
+	VERB := tag.NewTag("POST", "VERB")
 
 	for _, tt := range []struct {
 		name string
-		tags []dag.Tag
+		tags []tag.Tag
 	}{
-		{"ok_empty", []dag.Tag{}},
-		{"ok_single", []dag.Tag{*POST}},
-		{"ok_pair", []dag.Tag{*NOUN, *VERB}},
-		{"ok_triplet", []dag.Tag{*NOUN, *VERB, *POST}},
+		{"ok_empty", []tag.Tag{}},
+		{"ok_single", []tag.Tag{*POST}},
+		{"ok_pair", []tag.Tag{*NOUN, *VERB}},
+		{"ok_triplet", []tag.Tag{*NOUN, *VERB, *POST}},
 	} {
 		tt := tt // pin
 		t.Run(tt.name, func(t *testing.T) {
@@ -205,19 +205,19 @@ func TestNewIndex(t *testing.T) {
 func TestIndex_Find(t *testing.T) { //nolint:paralleltest
 	for _, tt := range []struct {
 		testName  string
-		idx       []dag.Tag
+		idx       []tag.Tag
 		name      tag.Name
 		parent    tag.Name
 		wantID    dag.TagID
 		wantFound bool
 	}{
-		{"find_in_empty", make([]dag.Tag, 0), //nolint:gofumpt
+		{"find_in_empty", make([]tag.Tag, 0), //nolint:gofumpt
 			"", "", 0, false},
-		{"find_not_existed_name", []dag.Tag{{"", "1111"}},
+		{"find_not_existed_name", []tag.Tag{{"", "1111"}},
 			"2222", "", 0, false},
-		{"find_existed_root", []dag.Tag{{"", "1111"}, {"2222", "1111"}},
+		{"find_existed_root", []tag.Tag{{"", "1111"}, {"2222", "1111"}},
 			"1111", "", 0, true},
-		{"find_existed_with_parent", []dag.Tag{{"", "1111"}, {"1111", "2222"}},
+		{"find_existed_with_parent", []tag.Tag{{"", "1111"}, {"1111", "2222"}},
 			"2222", "1111", 1, true},
 	} {
 		tt := tt
