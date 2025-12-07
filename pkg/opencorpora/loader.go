@@ -1,6 +1,7 @@
 package opencorpora
 
 import (
+	"bufio"
 	"compress/bzip2"
 	"errors"
 	"fmt"
@@ -281,8 +282,14 @@ func (loader *Loader) SaveIndex(mainIndex mainIndex, toFile string) (err error) 
 		return fmt.Errorf("%w: create index: %v", Error, err)
 	}
 
+	bufferedWriter := bufio.NewWriter(writer)
+
 	defer func() {
 		loader.Debugf("finishing %v", toFile)
+		if err = bufferedWriter.Flush(); err != nil {
+			loader.Warn(err.Error())
+		}
+
 		if closeErr := writer.Close(); err != nil {
 			loader.Warnf("close index: %v", closeErr)
 		}
@@ -304,7 +311,7 @@ func (loader *Loader) SaveIndex(mainIndex mainIndex, toFile string) (err error) 
 	mainIndex.Optimize()
 
 	loader.Info("saving index")
-	if err = mainIndex.BinaryWriteTo(writer); err != nil {
+	if err = mainIndex.BinaryWriteTo(bufferedWriter); err != nil {
 		return fmt.Errorf("%w: save index: %v", Error, err)
 	}
 
@@ -362,6 +369,8 @@ func (loader *Loader) Update(forceRecompile bool, skipDownload bool) (err error)
 			loader.Info("downloaded, unpacking")
 			unpackRequired = true
 		}
+	} else {
+		loader.Info("skip download")
 	}
 
 	if unpackRequired {
@@ -375,6 +384,8 @@ func (loader *Loader) Update(forceRecompile bool, skipDownload bool) (err error)
 			loader.Info("updated file unpacked updated, compile")
 			compileRequired = true
 		}
+	} else {
+		loader.Info("skip unpack")
 	}
 
 	if compileRequired {
@@ -384,6 +395,8 @@ func (loader *Loader) Update(forceRecompile bool, skipDownload bool) (err error)
 			loader.Errorf("compile: %v", err)
 			return err
 		}
+	} else {
+		loader.Info("skip compile")
 	}
 
 	return nil
