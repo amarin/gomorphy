@@ -2,8 +2,6 @@ package node
 
 import (
 	"errors"
-	"fmt"
-	"io"
 	"sync"
 
 	"github.com/amarin/gomorphy/pkg/size"
@@ -19,28 +17,6 @@ type Graph[A size.Alphabet, M size.Morphemes] struct {
 	mu           *sync.RWMutex
 	nodes        []Node[A, M]
 	withAlphabet alphabetInterface[A]
-}
-
-func (graph *Graph[A, M]) BinaryWriteTo(writer io.Writer) error {
-	if _, err := writer.Write([]byte("DAG")); err != nil {
-		return err
-	}
-
-	alphabetString := graph.withAlphabet.String()
-	if _, err := fmt.Fprintf(writer, "%dZ", len(alphabetString)); err != nil {
-		return err
-	}
-	if _, err := writer.Write([]byte(alphabetString)); err != nil {
-		return err
-	}
-
-	for _, node := range graph.nodes {
-		if _, err := node.WriteTo(writer); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 // NewGraph создаёт новый DAG.

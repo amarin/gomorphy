@@ -113,7 +113,7 @@ func (parser *Parser) onDictionary() *xmlstream.ElementProcessor {
 	}
 }
 
-// onGrammeme обрабатывает начало граммемы
+// onGrammeme обрабатывает тег `grammeme`.
 func (parser *Parser) onGrammeme() *xmlstream.ElementProcessor {
 	return &xmlstream.ElementProcessor{
 		OnStart: func(element xml.StartElement) (err error) {
@@ -132,6 +132,11 @@ func (parser *Parser) onGrammeme() *xmlstream.ElementProcessor {
 			switch typed := parser.index.(type) {
 			case dag.Index:
 				_ = typed.TagID(parser.currentGrammeme.Name, parser.currentGrammeme.Parent)
+			case SimpleIndex:
+				_, err := typed.RegisterTag(*parser.currentGrammeme)
+				if err != nil {
+					return err
+				}
 			default:
 
 			}

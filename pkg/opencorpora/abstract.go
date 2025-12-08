@@ -43,4 +43,5 @@ type mainIndex interface {
 type SimpleIndex interface {
 	mainIndex
 	Add(word string, tags ...any) (int, error)
+	RegisterTag(tag.Tag) (int, error)
 }
