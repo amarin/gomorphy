@@ -1,4 +1,4 @@
-package storager
+package storage
 
 import (
 	"io"

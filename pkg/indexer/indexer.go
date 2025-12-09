@@ -12,30 +12,33 @@ var (
 	ErrNotFound       = errors.New("not found")
 )
 
-type Size interface {
-	~uint8
+// IndexOf реализует индекс элементов.
+type IndexOf[S size, T any, I item[T]] struct {
+	name string
+
+	mu  *sync.RWMutex
+	idx []I
 }
 
-type Indexer[S Size, T any] struct {
-	mu  sync.RWMutex
-	idx []T
-}
-
-func New[S Size, T any]() *Indexer[S, T] {
-	return &Indexer[S, T]{
-		mu:  sync.RWMutex{},
-		idx: make([]T, 0),
+// New создаёт новых индекс.
+func New[S size, T any, I item[T]](name string) *IndexOf[S, T, I] {
+	return &IndexOf[S, T, I]{
+		mu:   new(sync.RWMutex),
+		idx:  make([]I, 0),
+		name: name,
 	}
 }
 
-func (indexer *Indexer[S, T]) Len() int {
+// Len возвращает длину списка элементов в индексе.
+func (indexer *IndexOf[S, T, I]) Len() int {
 	indexer.mu.RLock()
 	defer indexer.mu.RUnlock()
 
 	return len(indexer.idx)
 }
 
-func (indexer *Indexer[S, T]) Append(value T) (S, error) {
+// Add Добавляет элемент в конец списка.
+func (indexer *IndexOf[S, T, I]) Add(value T) (S, error) {
 	var indexSize any = S(0)
 
 	indexer.mu.Lock()
@@ -48,14 +51,25 @@ func (indexer *Indexer[S, T]) Append(value T) (S, error) {
 		if nextIdx > math.MaxUint8-1 {
 			return 0, ErrOverflow
 		}
-		indexer.idx = append(indexer.idx, value)
+		indexer.idx = append(indexer.idx, &value)
 		return S(nextIdx), nil
 	default:
 		return 0, ErrUnexpectedSize
 	}
 }
 
-func (indexer *Indexer[S, T]) Get(idx S) (*T, error) {
+// MustAdd Добавляет элемент в конец списка. Паникует, если не удалось добавить.
+func (indexer *IndexOf[S, T, I]) MustAdd(value T) S {
+	idx, err := indexer.Add(value)
+	if err != nil {
+		panic(err)
+	}
+
+	return idx
+}
+
+// Get получает элемент из списка по индексу.
+func (indexer *IndexOf[S, T, I]) Get(idx S) (*T, error) {
 	indexer.mu.RLock()
 	defer indexer.mu.RUnlock()
 
@@ -64,5 +78,15 @@ func (indexer *Indexer[S, T]) Get(idx S) (*T, error) {
 		return nil, ErrNotFound
 	}
 
-	return &indexer.idx[idx], nil
+	return indexer.idx[idx], nil
+}
+
+// MustGet получает элемент из списка. Паникует, если не удалось получить.
+func (indexer *IndexOf[S, T, I]) MustGet(idx S) T {
+	elem, err := indexer.Get(idx)
+	if err != nil {
+		panic(err)
+	}
+
+	return *elem
 }

@@ -1,4 +1,4 @@
-package storager
+package storage
 
 import (
 	"io"
@@ -21,23 +21,23 @@ func NewWriter(name string, config Config) *Writer {
 }
 
 // WriteTo записывает данные сегментов в заданный io.Writer
-func (reader Reader) WriteTo(r io.Writer) (n int64, err error) {
-	reader.log.Info("writing data")
+func (writer Writer) WriteTo(r io.Writer) (n int64, err error) {
+	writer.log.Info("writing data")
 	n = 0
 	bytesWritten := int64(0)
 
-	for _, segment := range reader.config.segments {
-		reader.log.Debugf("writing segment %s", segment.name)
+	for _, segment := range writer.config.segments {
+		writer.log.Debugf("writing segment %s", segment.name)
 
 		bytesWritten, err = segment.Write(r)
 		n += bytesWritten
 
-		reader.log.Debugf("put %d bytes of segment %s data", bytesWritten, segment.name)
+		writer.log.Debugf("put %d bytes of segment %s data", bytesWritten, segment.name)
 		if err != nil {
 			return n, err
 		}
 	}
 
-	reader.log.Info("saved successfully")
+	writer.log.Info("saved successfully")
 	return n, err
 }
