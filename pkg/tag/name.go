@@ -3,6 +3,7 @@ package tag
 import (
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/amarin/binutils"
 )
@@ -21,8 +22,10 @@ var (
 	// ErrName указывает на ошибки с именем тега
 	ErrName = errors.New("tag name")
 
-	errRead  = fmt.Errorf("%w: read", ErrName)
-	errWrite = fmt.Errorf("%w: write", ErrName)
+	errRead   = fmt.Errorf("%w: read", ErrName)
+	errDecode = fmt.Errorf("%w: decode", ErrName)
+	errWrite  = fmt.Errorf("%w: write", ErrName)
+	errEncode = fmt.Errorf("%w: encode", ErrName)
 
 	emptyTagNameBytes = []byte{0x20, 0x20, 0x20, 0x20}
 )
@@ -43,21 +46,48 @@ func (g *Name) BinaryReadFrom(reader *binutils.BinaryReader) (err error) {
 	return nil
 }
 
+func (g *Name) ReadFrom(r io.Reader) (n int64, err error) {
+	var (
+		tagNameBytes     = make([]byte, tagNameLen)
+		bytesTaken   int = 0
+	)
+	if bytesTaken, err = r.Read(tagNameBytes); err != nil {
+		return int64(bytesTaken), errors.Join(errRead, err)
+	}
+
+	if err = g.UnmarshalBinary(tagNameBytes); err != nil {
+		return int64(bytesTaken), errors.Join(errDecode, err)
+	}
+
+	return int64(bytesTaken), nil
+}
+
 // BinaryWriteTo writes Name data using specified binutils.BinaryWriter instance.
 // Returns error if happens or nil.
 // Implements binutils.BinaryWriterTo.
 func (g *Name) BinaryWriteTo(writer *binutils.BinaryWriter) (err error) {
-	var nameBytes []byte
-
-	if nameBytes, err = g.MarshalBinary(); err != nil {
+	if _, err = g.WriteTo(writer); err != nil {
 		return err
 	}
 
-	if err = writer.WriteBytes(nameBytes); err != nil {
-		return errors.Join(errWrite, err)
+	return nil
+}
+
+func (g *Name) WriteTo(w io.Writer) (n int64, err error) {
+	var (
+		nameBytes    []byte
+		bytesWritten int
+	)
+
+	if nameBytes, err = g.MarshalBinary(); err != nil {
+		return 0, errors.Join(errEncode, err)
 	}
 
-	return nil
+	if bytesWritten, err = w.Write(nameBytes); err != nil {
+		return int64(bytesWritten), errors.Join(errWrite, err)
+	}
+
+	return int64(bytesWritten), nil
 }
 
 // String возвращает имя в формате строки. Реализует интерфейс fmt.Stringer.
