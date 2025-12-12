@@ -13,3 +13,8 @@ type Segment interface {
 	io.ReaderFrom
 	io.WriterTo
 }
+
+type storageConfigProvider interface {
+	// StorageConfig возвращает конфигурацию чтения-записи.
+	StorageConfig() Config
+}

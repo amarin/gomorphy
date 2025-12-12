@@ -3,8 +3,8 @@ package indexer
 
 import "io"
 
-type size interface {
-	~uint8
+type indexSize interface {
+	uint8 | uint16 | uint32
 }
 
 type item[T any] interface {
@@ -12,5 +12,3 @@ type item[T any] interface {
 	io.WriterTo
 	*T
 }
-
-//type itemConstructor[T any] func() *T

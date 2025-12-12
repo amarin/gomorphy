@@ -2,50 +2,71 @@ package indexer
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
 
 	"github.com/amarin/gomorphy/internal/storage"
+	"github.com/amarin/gomorphy/pkg/size"
 )
+
+const (
+	storageBlockSizeName   = "indexSize"
+	storageBlockLengthName = "length"
+	storageBlockItemsName  = "items"
+)
+
+var errUnexpectedIndexSize = errors.New("unexpected index indexSize")
 
 // storageConfig возвращает конфигурацию чтения и записи данных индекса.
 func (indexer *IndexOf[S, T, I]) storageConfig() *storage.Config {
-	var idxSize = Uint8
+	var idxSize = indexer.Size()
+
 	return storage.Define(
-		*storage.Block("size", storage.StaticBytes([]byte{byte(idxSize)})),
-		*storage.ReadWrite("length", indexer.readLength, indexer.writeLength),
-		*storage.ReadWrite("items", indexer.readItems, indexer.writeItems),
+		*storage.Block(storageBlockSizeName, &idxSize),
+		*storage.ReadWrite(storageBlockLengthName, indexer.readLength, indexer.writeLength),
+		*storage.ReadWrite(storageBlockItemsName, indexer.readItems, indexer.writeItems),
 	)
 }
 
 // writeLength записывает длину списка.
 func (indexer *IndexOf[S, T, I]) writeLength(w io.Writer) (n int64, err error) {
-	var indexSize any = S(0)
-	switch indexSize.(type) {
-	case uint8:
-		if err = binary.Write(w, binary.LittleEndian, byte(len(indexer.idx))); err != nil {
+	switch s := indexer.Size(); s {
+	case size.Uint8:
+		if err = binary.Write(w, binary.LittleEndian, uint8(len(indexer.idx))); err != nil {
 			return 0, err
 		}
-		return 1, nil
+		return s.BytesCount(), nil
+	case size.Uint16:
+		if err = binary.Write(w, binary.LittleEndian, uint16(len(indexer.idx))); err != nil {
+			return 0, err
+		}
+		return s.BytesCount(), nil
 	default:
-		return 0, errUnknownSize
+		return 0, errUnexpectedIndexSize
 	}
 }
 
 // readItems читает значение длины списка и инициализирует индекс с заданным количеством элементов.
 func (indexer *IndexOf[S, T, I]) readLength(r io.Reader) (n int64, err error) {
-	var indexSize any = S(0)
-
-	switch indexSize.(type) {
-	case uint8:
-		byteValue := byte(0)
-		if err = binary.Read(r, binary.LittleEndian, &byteValue); err != nil {
+	switch s := indexer.Size(); s {
+	case size.Uint8:
+		var innerSize uint8
+		if err = binary.Read(r, binary.LittleEndian, &innerSize); err != nil {
 			return 0, err
 		}
-		indexer.idx = make([]I, int(byteValue))
+		indexer.idx = make([]I, innerSize)
 
-		return 1, nil
+		return s.BytesCount(), nil
+	case size.Uint16:
+		var innerSize uint16
+		if err = binary.Read(r, binary.LittleEndian, &innerSize); err != nil {
+			return 0, err
+		}
+		indexer.idx = make([]I, innerSize)
+
+		return s.BytesCount(), nil
 	default:
-		return 0, errUnknownSize
+		return 0, errUnexpectedIndexSize
 	}
 }
 

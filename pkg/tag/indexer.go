@@ -1,13 +1,10 @@
 package tag
 
-import "github.com/amarin/gomorphy/pkg/indexer"
+import (
+	"github.com/amarin/gomorphy/pkg/indexer"
+	"github.com/amarin/gomorphy/pkg/size"
+)
 
-type Indexer struct {
-	*indexer.IndexOf[uint8, Tag, *Tag]
-}
-
-func NewIndexer() *Indexer {
-	return &Indexer{
-		IndexOf: indexer.New[uint8, Tag]("tags"),
-	}
+func NewIndexer[S size.TagsSize]() *indexer.IndexOf[S, Tag, *Tag] {
+	return indexer.New[S, Tag]("tags")
 }

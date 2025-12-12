@@ -1,9 +1,16 @@
 //go:generate mockgen -source=${GOFILE} -destination=mocks_test.go -package=${GOPACKAGE}
 package node
 
-import "github.com/amarin/gomorphy/pkg/size"
+import (
+	"io"
+
+	"github.com/amarin/gomorphy/pkg/size"
+)
 
 type alphabetInterface[A size.Alphabet] interface {
+	io.ReaderFrom
+	io.WriterTo
+
 	// GetOrCreate возвращает индекс символа в алфавите;
 	// Добавляет символ в алфавит при необходимости.
 	// Возвращает ошибку, если символа не было в алфавите и не удалось добавить

@@ -11,7 +11,7 @@ import (
 type Alphabet[A size.Alphabet] struct {
 	maxIdx A // Максимальный индекс символа
 
-	mutex      *sync.RWMutex // Защита параллельного доступа для атрибутов ниже
+	mu         *sync.RWMutex // Защита параллельного доступа для атрибутов ниже
 	characters []rune        // Все символы алфавита и их порядок
 	index      map[rune]A    // Индексы символов
 }
@@ -32,7 +32,7 @@ func New[A size.Alphabet]() *Alphabet[A] {
 	}
 
 	return &Alphabet[A]{
-		mutex:      new(sync.RWMutex),
+		mu:         new(sync.RWMutex),
 		characters: []rune{},
 		index:      map[rune]A{},
 		maxIdx:     maxIdx,
@@ -41,8 +41,8 @@ func New[A size.Alphabet]() *Alphabet[A] {
 
 // Length возвращает длину алфавита в символах.
 func (s *Alphabet[A]) Length() int {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	return len(s.characters)
 }
@@ -50,16 +50,16 @@ func (s *Alphabet[A]) Length() int {
 // Add добавляет символ в алфавит, если такого символа ещё нет.
 // Возвращает индекс добавленного или существующего символа.
 func (s *Alphabet[A]) Add(char rune) (A, error) {
-	s.mutex.RLock()
+	s.mu.RLock()
 	existedIndex, alreadyExists := s.index[char]
-	s.mutex.RUnlock()
+	s.mu.RUnlock()
 
 	if alreadyExists {
 		return existedIndex, nil
 	}
 
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	nextIdx := len(s.characters)
 	if nextIdx > int(s.maxIdx) { // нет места для нового символа
@@ -86,9 +86,9 @@ func (s *Alphabet[A]) MustAdd(char rune) A {
 
 // Has возвращает true если символ есть в алфавите
 func (s *Alphabet[A]) Has(char rune) bool {
-	s.mutex.RLock()
+	s.mu.RLock()
 	_, exists := s.index[char]
-	s.mutex.RUnlock()
+	s.mu.RUnlock()
 
 	return exists
 }
@@ -107,8 +107,8 @@ func (s *Alphabet[A]) MustGetByIdx(idx A) rune {
 // GetByIdx получает символ по заданному индексу в алфавите.
 // Возвращает ошибку если символ по индексу не найден.
 func (s *Alphabet[A]) GetByIdx(idx A) (rune, error) {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	idxLen := len(s.characters)
 	if idx < 0 || int(idx) >= idxLen {
@@ -122,8 +122,8 @@ func (s *Alphabet[A]) GetByIdx(idx A) (rune, error) {
 // Добавляет символ, если его не было в индексе.
 // Возвращает ошибку, если требуется добавить символ, а алфавит уже заполнен.
 func (s *Alphabet[A]) GetOrCreate(char rune) (A, error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if idx, alreadyExists := s.index[char]; alreadyExists {
 		return idx, nil
@@ -143,9 +143,9 @@ func (s *Alphabet[A]) GetOrCreate(char rune) (A, error) {
 // Get получает индекс символа в алфавите.
 // Возвращает ошибку, если символа нет в алфавите.
 func (s *Alphabet[A]) Get(char rune) (A, error) {
-	s.mutex.RLock()
+	s.mu.RLock()
 	idx, alreadyExists := s.index[char]
-	s.mutex.RUnlock()
+	s.mu.RUnlock()
 
 	if alreadyExists {
 		return idx, nil
@@ -156,9 +156,9 @@ func (s *Alphabet[A]) Get(char rune) (A, error) {
 
 // String возвращает алфавит одной строкой.
 func (s *Alphabet[A]) String() string {
-	s.mutex.RLock()
+	s.mu.RLock()
 	characters := s.characters
-	s.mutex.RUnlock()
+	s.mu.RUnlock()
 
 	return string(characters)
 }
@@ -181,10 +181,10 @@ func (s *Alphabet[A]) Reset(alphabetString string) error {
 		return ErrRepeatedCharacters
 	}
 
-	s.mutex.Lock()
+	s.mu.Lock()
 	s.characters = newChars
 	s.index = newIndex
-	s.mutex.Unlock()
+	s.mu.Unlock()
 
 	return nil
 }

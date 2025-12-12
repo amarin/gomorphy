@@ -48,7 +48,7 @@ func TestNew(t *testing.T) {
 	})
 }
 
-func TestIndexOf_Add_Get(t *testing.T) {
+func TestIndexOf_Add_Get_uint8(t *testing.T) {
 	i := New[uint8, fake]("any")
 	t.Run("1й элемент", func(t *testing.T) {
 		initialElem := fake('a')
@@ -67,6 +67,33 @@ func TestIndexOf_Add_Get(t *testing.T) {
 		idx, err := i.Add(initialElem)
 		require.NoError(t, err)
 		require.Equal(t, uint8(1), idx)
+		require.Equal(t, 2, i.Len())
+		elemPtr, err := i.Get(idx)
+		require.NoError(t, err)
+		require.NotNil(t, elemPtr)
+		require.Equal(t, initialElem, *elemPtr)
+	})
+}
+
+func TestIndexOf_Add_Get_uint16(t *testing.T) {
+	i := New[uint16, fake]("any")
+	t.Run("1й элемент", func(t *testing.T) {
+		initialElem := fake('a')
+		idx, err := i.Add(initialElem)
+		require.NoError(t, err)
+		require.Equal(t, uint16(0), idx)
+		require.Equal(t, 1, i.Len())
+		elemPtr, err := i.Get(idx)
+		require.NoError(t, err)
+		require.NotNil(t, elemPtr)
+		require.Equal(t, initialElem, *elemPtr)
+	})
+
+	t.Run("2й элемент", func(t *testing.T) {
+		initialElem := fake('b')
+		idx, err := i.Add(initialElem)
+		require.NoError(t, err)
+		require.Equal(t, uint16(1), idx)
 		require.Equal(t, 2, i.Len())
 		elemPtr, err := i.Get(idx)
 		require.NoError(t, err)
