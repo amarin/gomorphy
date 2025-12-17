@@ -33,15 +33,22 @@ type BinaryWriterTo interface {
 	BinaryWriteTo(writer io.Writer) error
 }
 
-type mainIndex interface {
+type indexInterface interface {
 	WordsCount() int
 	NodesCount() int
+}
+
+type oldIndex interface {
+	indexInterface
 	Optimize()
 	BinaryWriteTo(writer io.Writer) error
 }
 
-type SimpleIndex interface {
-	mainIndex
-	Add(word string, tags ...any) (int, error)
-	RegisterTag(tag.Tag) (int, error)
+type newIndexType interface {
+	indexInterface
+	io.ReaderFrom
+	io.WriterTo
+	Add(word string, tags ...tag.Name) (int, error)
+	RegisterTag(tag.Name) (int, error)
+	TagsCount() int
 }

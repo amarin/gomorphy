@@ -70,6 +70,23 @@ func (indexer *IndexOf[S, T, I]) Add(value T) (S, error) {
 	}
 }
 
+// Set устанавливает элемент по заданному индексу.
+// Добавляет пустые элементы по необходимости
+func (indexer *IndexOf[S, T, I]) Set(idx S, value T) error {
+	indexer.mu.Lock()
+	defer indexer.mu.Unlock()
+
+	if len(indexer.idx) <= int(idx) {
+		newIdx := make([]I, idx+1)
+		copy(newIdx, indexer.idx)
+		indexer.idx = newIdx
+	}
+
+	indexer.idx[idx] = &value
+
+	return nil
+}
+
 // MustAdd Добавляет элемент в конец списка. Паникует, если не удалось добавить.
 func (indexer *IndexOf[S, T, I]) MustAdd(value T) S {
 	idx, err := indexer.Add(value)

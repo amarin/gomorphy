@@ -42,9 +42,9 @@ type Parser struct {
 
 func newParser(indexInstance any) *Parser {
 	switch indexInstance.(type) {
-	case Index, SimpleIndex:
+	case Index, newIndexType:
 	default:
-		panic("unknown index type, must be either Index or SimpleIndex")
+		panic("unknown index type, must be either Index or newIndexType")
 	}
 
 	dictionary := &Dictionary{
@@ -70,7 +70,7 @@ func newParser(indexInstance any) *Parser {
 
 	parser.OnElement("", parser.mute)
 	parser.OnElement(".dictionary", parser.onDictionary)
-	parser.OnElement(".dictionary.grammemes", parser.mute)
+	parser.OnElement(".dictionary.grammemes", parser.onGrammemes)
 	parser.OnElement(".dictionary.grammemes.grammeme", parser.onGrammeme)
 	parser.OnElement(".dictionary.grammemes.grammeme.name", parser.onGrammemeName)
 	parser.OnElement(".dictionary.grammemes.grammeme.alias", parser.mute)
@@ -113,34 +113,54 @@ func (parser *Parser) onDictionary() *xmlstream.ElementProcessor {
 	}
 }
 
+func (parser *Parser) onGrammemes() *xmlstream.ElementProcessor {
+	return &xmlstream.ElementProcessor{
+		OnStart: func(element xml.StartElement) error {
+			parser.Info("parsing grammemes")
+			return nil
+		},
+		OnData: xmlstream.IgnoreElementData,
+		OnEnd: func(element xml.EndElement) error {
+			switch typed := parser.index.(type) {
+			case newIndexType:
+				parser.Infof("parsing grammemes: total %d tags registered", typed.TagsCount())
+			}
+			return nil
+		},
+	}
+}
+
 // onGrammeme обрабатывает тег `grammeme`.
 func (parser *Parser) onGrammeme() *xmlstream.ElementProcessor {
 	return &xmlstream.ElementProcessor{
 		OnStart: func(element xml.StartElement) (err error) {
 			var parentStr string
 
-			parser.currentGrammeme = new(tag.Tag)
-			if parentStr, err = getAttr("parent", element.Attr); err != nil {
+			parentStr, err = getAttr("parent", element.Attr)
+			switch {
+			case err != nil:
 				return fmt.Errorf("%w: required parent attr", Error)
+			case parentStr == "":
+				return nil
 			}
+
+			parser.currentGrammeme = new(tag.Tag)
 			parser.currentGrammeme.Parent = tag.Name(parentStr)
 
 			return nil
 		},
 		OnData: xmlstream.IgnoreElementData,
 		OnEnd: func(element xml.EndElement) error {
-			switch typed := parser.index.(type) {
-			case dag.Index:
-				_ = typed.TagID(parser.currentGrammeme.Name, parser.currentGrammeme.Parent)
-			case SimpleIndex:
-				_, err := typed.RegisterTag(*parser.currentGrammeme)
-				if err != nil {
-					return err
-				}
-			default:
-
-			}
-
+			//switch typed := parser.index.(type) {
+			//case dag.Index:
+			//	_ = typed.TagID(parser.currentGrammeme.Name, parser.currentGrammeme.Parent)
+			//case newIndexType:
+			//	_, err := typed.RegisterTag(*parser.currentGrammeme)
+			//	if err != nil {
+			//		return err
+			//	}
+			//}
+			//
 			parser.currentGrammeme = nil
 			return nil
 		},
@@ -150,8 +170,14 @@ func (parser *Parser) onGrammeme() *xmlstream.ElementProcessor {
 func (parser *Parser) onGrammemeName() *xmlstream.ElementProcessor {
 	return &xmlstream.ElementProcessor{
 		OnStart: xmlstream.IgnoreElementStart,
-		OnData: func(data string) error {
-			parser.currentGrammeme.Name = tag.Name(data)
+		OnData: func(data string) (err error) {
+			switch typed := parser.index.(type) {
+			case newIndexType:
+				parser.Infof("register tag %s", data)
+				if _, err = typed.RegisterTag(tag.Name(data)); err != nil {
+					return err
+				}
+			}
 			return nil
 		},
 		OnEnd: xmlstream.IgnoreElementEnd,
@@ -235,14 +261,14 @@ func (parser *Parser) onDictionaryLemmataLemma() *xmlstream.ElementProcessor {
 					default:
 						parser.Debugf("+ %v [%v]", variant.Form, variant.G)
 					}
-				case SimpleIndex:
-					nodeIdx, err := typedIndex.Add(variant.Form)
+				case newIndexType:
+					nodeIdx, err := typedIndex.Add(variant.Form, variant.GetTagsFromSet()...)
 					if err != nil {
 						return fmt.Errorf("index: %w", err)
 					}
 					parser.Debugf(
 						"IDX+ I%07d P%07d %#08x %v [%v] ",
-						nodeIdx, "0", "0", variant.Form, variant.G)
+						nodeIdx, 0, 0, variant.Form, variant.G)
 				}
 			}
 

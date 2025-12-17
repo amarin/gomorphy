@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	_ "net/http/pprof"
 	"os"
 	"path"
 
@@ -28,7 +29,7 @@ func main() {
 		"use local file only, skip downloading.",
 	)
 	debugLogging := flag.Bool(
-		"d",
+		"v",
 		false,
 		"switch on debug logging causes very noisy logging output",
 	)
@@ -51,6 +52,11 @@ func main() {
 	logger.WithLevel(logging.LevelDebug)
 	// init loader
 	loader := opencorpora.NewLoader("")
+
+	//// Start CPU profiling
+	//go func() {
+	//	http.ListenAndServe("localhost:8080", nil)
+	//}()
 
 	if err := loader.Update(*forceRecompile, *skipDownload); err != nil {
 		os.Exit(1)

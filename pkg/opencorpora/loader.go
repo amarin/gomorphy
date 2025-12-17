@@ -273,7 +273,7 @@ func (loader *Loader) LoadIndex() (mainIndex *index.Index, err error) {
 	return mainIndex, nil
 }
 
-func (loader *Loader) SaveIndex(mainIndex mainIndex, toFile string) (err error) {
+func (loader *Loader) SaveIndex(mainIndex indexInterface, toFile string) (err error) {
 	var writer *binutils.BinaryWriter
 
 	loader.Info("save compiled index")
@@ -308,17 +308,26 @@ func (loader *Loader) SaveIndex(mainIndex mainIndex, toFile string) (err error) 
 	idxSizeBefore := size.Of(mainIndex)
 	loader.Infof("indexed %d words %d nodes, %d bytes in memory", mainIndex.WordsCount(), mainIndex.NodesCount(), idxSizeBefore)
 	loader.Info("optimize index")
-	mainIndex.Optimize()
 
 	loader.Info("saving index")
-	if err = mainIndex.BinaryWriteTo(bufferedWriter); err != nil {
-		return fmt.Errorf("%w: save index: %v", Error, err)
+	switch typedIndex := mainIndex.(type) {
+	case newIndexType:
+		n, err := typedIndex.WriteTo(bufferedWriter)
+		if err != nil {
+			return fmt.Errorf("%w: write index: %v", Error, err)
+		}
+		loader.Info("written %d bytes", n)
+	case oldIndex:
+		typedIndex.Optimize()
+		if err = typedIndex.BinaryWriteTo(bufferedWriter); err != nil {
+			return fmt.Errorf("%w: save index: %v", Error, err)
+		}
 	}
 
 	return nil
 }
 
-func (loader *Loader) ParseUpdate(fromFile string, toFile string, mainIndex mainIndex) (err error) {
+func (loader *Loader) ParseUpdate(fromFile string, toFile string, mainIndex indexInterface) (err error) {
 	loader.Info("start parse")
 
 	parser := newParser(mainIndex)
@@ -389,9 +398,12 @@ func (loader *Loader) Update(forceRecompile bool, skipDownload bool) (err error)
 	}
 
 	if compileRequired {
-		//mainIndex := index.New()
-		mainIndex := simple.New()
-		if err = loader.ParseUpdate(loader.unpackedFilePath(), loader.compiledFilePath(), mainIndex); err != nil {
+		var indexInstance indexInterface
+		indexInstance, err = simple.Create(64, 65535, 255)
+		if err != nil {
+			loader.Errorf("create index: %v", err)
+		}
+		if err = loader.ParseUpdate(loader.unpackedFilePath(), loader.compiledFilePath(), indexInstance); err != nil {
 			loader.Errorf("compile: %v", err)
 			return err
 		}

@@ -4,9 +4,8 @@ import (
 	"encoding/binary"
 	"io"
 
-	"github.com/RoaringBitmap/roaring/v2"
-
 	"github.com/amarin/gomorphy/internal/storage"
+	"github.com/amarin/gomorphy/pkg/indexer"
 )
 
 const storageName = "tagSets"
@@ -34,8 +33,9 @@ func (s *Set[S, T]) storageConfig() storage.Config {
 
 func (s *Set[S, T]) writeSets(w io.Writer) (n int64, err error) {
 	bitmapBytes := int64(0)
-	for idx := range s.sets {
-		bitmapBytes, err = s.sets[idx].WriteTo(w)
+	for _, idx := range s.sets.Keys() {
+		nextSet := s.sets.MustGet(idx)
+		bitmapBytes, err = nextSet.WriteTo(w)
 		n += bitmapBytes
 
 		if err != nil {
@@ -49,12 +49,14 @@ func (s *Set[S, T]) writeSets(w io.Writer) (n int64, err error) {
 func (s *Set[S, T]) readSets(r io.Reader) (n int64, err error) {
 	bitmapBytes := int64(0)
 
-	for idx := range s.sets {
-		s.sets[idx] = roaring.NewBitmap()
-		bitmapBytes, err = s.sets[idx].ReadFrom(r)
+	for _, idx := range s.sets.Keys() {
+		nextSet := NewTags(uint(s.tags.Len()))
+		bitmapBytes, err = nextSet.ReadFrom(r)
 		n += bitmapBytes
-
 		if err != nil {
+			return n, err
+		}
+		if err = s.sets.Set(idx, *nextSet); err != nil {
 			return n, err
 		}
 	}
@@ -63,8 +65,8 @@ func (s *Set[S, T]) readSets(r io.Reader) (n int64, err error) {
 }
 
 func (s *Set[S, T]) writeLen(w io.Writer) (int64, error) {
-	selLen := len(s.sets)
-	err := binary.Write(w, binary.LittleEndian, s.Len())
+	selLen := s.sets.Len()
+	err := binary.Write(w, binary.LittleEndian, selLen)
 	if err != nil {
 		return 0, err
 	}
@@ -78,6 +80,6 @@ func (s *Set[S, T]) readLen(r io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	s.sets = make([]*roaring.Bitmap, selLen)
+	s.sets = indexer.New[S, Tags, *Tags]("tagsInSet")
 	return int64(binary.Size(selLen)), nil
 }

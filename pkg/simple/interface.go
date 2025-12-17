@@ -6,6 +6,7 @@ type Interface interface {
 	WordsCount() int
 	NodesCount() int
 	Optimize()
-	Add(word string, tags ...any) (int, error)
-	RegisterTag(tag.Tag) (int, error)
+	Add(word string, tags ...tag.Name) (int, error)
+	RegisterTag(tag.Name) (int, error)
+	TagsCount() int
 }

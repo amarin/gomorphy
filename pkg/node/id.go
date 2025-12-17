@@ -15,6 +15,10 @@ type ID[S size.Morphemes] struct {
 	id S
 }
 
+func NewID[S size.Morphemes](id S) *ID[S] {
+	return &ID[S]{id: id}
+}
+
 func (id *ID[S]) WriteTo(w io.Writer) (n int64, err error) {
 	switch s := id.size(); s {
 	case size.Uint8:

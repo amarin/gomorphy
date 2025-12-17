@@ -12,7 +12,6 @@ import (
 // Returns silently when logging subsystem ready or exits application with status code 1 in case logging init failed.
 func InitLogging(debugLogging bool) {
 	loggingOpts := []logging.Option{
-		logging.WithLevel(logging.LevelInfo),
 		logging.WithFormat(logging.FormatText),
 		logging.WithTarget(logging.StdErr),
 	}
