@@ -1,11 +1,13 @@
-package node
+package trie
 
 import (
 	"errors"
 	"sync"
 
+	"github.com/amarin/logging"
+
 	"github.com/amarin/gomorphy/pkg/indexer"
-	"github.com/amarin/gomorphy/pkg/size"
+	"github.com/amarin/gomorphy/pkg/node"
 )
 
 var (
@@ -14,36 +16,38 @@ var (
 	ErrUnexpectedAddedIndex = errors.New("unexpected added index")
 )
 
-// Graph хранит DAG символов в добавленных словах.
-type Graph[A size.Alphabet, M size.Morphemes] struct {
+// Trie хранит DAG символов в добавленных словах.
+type Trie[A alphabetSize, M wordsSize] struct {
 	mu           *sync.RWMutex
-	nodes        indexer.IndexOf[M, Node[A, M], *Node[A, M]]
+	nodes        indexer.IndexOf[M, node.Node[A, M], *node.Node[A, M]]
 	withAlphabet alphabetInterface[A]
+	log          logging.Logger
 }
 
 // NewGraph создаёт новый DAG.
-func NewGraph[A size.Alphabet, M size.Morphemes](useAlphabet alphabetInterface[A]) *Graph[A, M] {
-	graph := &Graph[A, M]{
+func NewGraph[A alphabetSize, M wordsSize](useAlphabet alphabetInterface[A]) *Trie[A, M] {
+	graph := &Trie[A, M]{
 		mu:           new(sync.RWMutex),
-		nodes:        *indexer.New[M, Node[A, M], *Node[A, M]]("dag"),
+		nodes:        *indexer.New[M, node.Node[A, M], *node.Node[A, M]]("dag"),
 		withAlphabet: useAlphabet,
+		log:          logging.NewNamedLogger("dag"),
 	}
 
 	// добавляем корневой узел
-	_, _ = graph.nodes.Add(*New[A, M](0, 0, 0))
+	_, _ = graph.nodes.Add(node.New[A, M]())
 
 	return graph
 }
 
-func (graph *Graph[A, M]) addWordDirect(word string) (nodeIdx M, err error) {
+func (graph *Trie[A, M]) addWordDirect(word string) (nodeIdx M, err error) {
 	var (
-		parentIdx = M(0)
-		parent    *Node[A, M]
-		addedIdx  M
+		currentParent = M(0)
+		parent        *node.Node[A, M]
+		addedIdx      M
 	)
 
 	for _, char := range []rune(word) {
-		if parent, err = graph.nodes.Get(parentIdx); err != nil {
+		if parent, err = graph.nodes.Get(currentParent); err != nil {
 			return 0, ErrNotFound
 		}
 
@@ -52,34 +56,24 @@ func (graph *Graph[A, M]) addWordDirect(word string) (nodeIdx M, err error) {
 			return 0, errors.Join(ErrAddWord, err)
 		}
 
-		graph.mu.Lock()
-
 		nextIdx, exists := parent.NextIdx(charIdx)
 		if !exists {
-			nextIdx = M(graph.nodes.Len())
-			if addedIdx, err = graph.nodes.Add(*parent.Next(nextIdx, charIdx)); err != nil {
+			newNode := node.New[A, M]()
+			if addedIdx, err = graph.nodes.Add(newNode); err != nil {
 				return 0, errors.Join(ErrAddWord, err)
 			}
 
-			if addedIdx != nextIdx {
-				return 0, ErrUnexpectedAddedIndex
-			}
-
+			parent.AddNext(charIdx, addedIdx)
 		}
 
-		parentIdx = nextIdx
-		if parent, err = graph.nodes.Get(parentIdx); err != nil {
-			return 0, errors.Join(ErrNotFound, err)
-		}
-
-		graph.mu.Unlock()
+		currentParent = nextIdx
 	}
 
-	return parentIdx, nil
+	return currentParent, nil
 }
 
-func (graph *Graph[A, M]) getWordDirect(word string) (parentIdx M, err error) {
-	var parent *Node[A, M]
+func (graph *Trie[A, M]) getWordDirect(word string) (parentIdx M, err error) {
+	var parent *node.Node[A, M]
 
 	parentIdx = M(0)
 
@@ -106,18 +100,18 @@ func (graph *Graph[A, M]) getWordDirect(word string) (parentIdx M, err error) {
 
 // Add добавляет слово `word` в хранилище, используя алфавит `useAlphabet`.
 // Возвращает идентификатор финального узла или ошибку добавления
-func (graph *Graph[A, M]) Add(word string) (M, error) {
+func (graph *Trie[A, M]) Add(word string) (M, error) {
 	return graph.addWordDirect(word)
 }
 
 // Get находит идентификатор финального узла для слова `word` в хранилище, используя алфавит `useAlphabet`.
 // Возвращает идентификатор финального узла или ошибку поиска слова
-func (graph *Graph[A, M]) Get(word string) (M, error) {
+func (graph *Trie[A, M]) Get(word string) (M, error) {
 	return graph.getWordDirect(word)
 }
 
 // NodesCount находит идентификатор финального узла для слова `word` в хранилище, используя алфавит `useAlphabet`.
 // Возвращает идентификатор финального узла или ошибку поиска слова
-func (graph *Graph[A, M]) NodesCount() int {
+func (graph *Trie[A, M]) NodesCount() int {
 	return graph.nodes.Len()
 }

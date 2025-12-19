@@ -7,7 +7,7 @@
 //
 
 // Package node is a generated GoMock package.
-package node
+package trie
 
 import (
 	"reflect"
