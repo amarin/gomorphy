@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -37,4 +39,27 @@ func (b staticBytes) ReadFrom(r io.Reader) (int64, error) {
 	}
 
 	return int64(ni), nil
+}
+
+type uintValue interface {
+	uint8 | uint16 | uint32 | uint64
+}
+
+var errUnexpectedUint = errors.New("unexpected uint")
+
+func WriteUintTo[T uintValue](v T, w io.Writer) (int64, error) {
+	err := binary.Write(w, binary.BigEndian, v)
+	if err != nil {
+		return 0, err
+	}
+	return int64(binary.Size(v)), nil
+}
+
+func ReadUintFrom[T uintValue](v *T, r io.Reader) (int64, error) {
+	err := binary.Read(r, binary.BigEndian, v)
+	if err != nil {
+		return 0, err
+	}
+
+	return int64(binary.Size(*v)), nil
 }
