@@ -26,105 +26,81 @@ func TestNode_Hex(t *testing.T) {
 	t.Run("a8w8", func(t *testing.T) {
 		nodeToWrite := New[uint8, uint8]()
 
+		nodeToWrite.SetCharId(0xAB)
 		nodeToWrite.SetNext(1, 1)
 		nodeToWrite.SetNext(2, 2)
 
-		buf := new(bytes.Buffer)
-		bytesWritten, err := nodeToWrite.WriteTo(buf)
-		require.NoError(t, err)
-		require.EqualValues(t, 6, bytesWritten)
-
 		hexValue, err := nodeToWrite.Hex()
 		require.NoError(t, err)
-		require.Equal(t, fmt.Sprintf("%X", buf.Bytes()), hexValue)
-		require.Equal(t, "000201010202", hexValue)
+		require.Equal(t, "AB000201010202", hexValue)
 	})
 
 	t.Run("a16w8", func(t *testing.T) {
 		nodeToWrite := New[uint16, uint8]()
 
+		nodeToWrite.SetCharId(0xABCD)
 		nodeToWrite.SetNext(1, 1)
 		nodeToWrite.SetNext(2, 2)
 
-		buf := new(bytes.Buffer)
-		bytesWritten, err := nodeToWrite.WriteTo(buf)
-		require.NoError(t, err)
-		require.EqualValues(t, 9, bytesWritten)
-
 		hexValue, err := nodeToWrite.Hex()
 		require.NoError(t, err)
-		require.Equal(t, fmt.Sprintf("%X", buf.Bytes()), hexValue)
-		require.Equal(t, "000002000101000202", hexValue)
+		require.Equal(t, "ABCD000002000101000202", hexValue)
 	})
 
 	t.Run("a8w16", func(t *testing.T) {
 		nodeToWrite := New[uint8, uint16]()
 		nodeToWrite.SetParent(13)
 
+		nodeToWrite.SetCharId(0xEF)
 		nodeToWrite.SetNext(1, 1)
 		nodeToWrite.SetNext(2, 2)
 
-		buf := new(bytes.Buffer)
-		bytesWritten, err := nodeToWrite.WriteTo(buf)
-		require.NoError(t, err)
-		require.EqualValues(t, 9, bytesWritten)
-
 		hexValue, err := nodeToWrite.Hex()
 		require.NoError(t, err)
-		require.Equal(t, fmt.Sprintf("%X", buf.Bytes()), hexValue)
-		require.Equal(t, "000D02010001020002", hexValue)
+		require.Equal(t, "EF000D02010001020002", hexValue)
 	})
 
 	t.Run("a16w16", func(t *testing.T) {
 		nodeToWrite := New[uint16, uint16]()
 		nodeToWrite.SetParent(255)
 
+		nodeToWrite.SetCharId(0xABCD)
 		nodeToWrite.SetNext(1, 1)
 		nodeToWrite.SetNext(2, 2)
 
 		buf := new(bytes.Buffer)
 		bytesWritten, err := nodeToWrite.WriteTo(buf)
 		require.NoError(t, err)
-		require.EqualValues(t, 12, bytesWritten)
+		require.EqualValues(t, 14, bytesWritten)
 
 		hexValue, err := nodeToWrite.Hex()
 		require.NoError(t, err)
 		require.Equal(t, fmt.Sprintf("%X", buf.Bytes()), hexValue)
-		require.Equal(t, "00FF00020001000100020002", hexValue)
+		require.Equal(t, "ABCD00FF00020001000100020002", hexValue)
 	})
 	t.Run("a8w32", func(t *testing.T) {
 		nodeToWrite := New[uint8, uint32]()
-		nodeToWrite.SetParent(0xABCDEF01)
 
+		nodeToWrite.SetParent(0xABCDEF01)
+		nodeToWrite.SetCharId(0x77)
 		nodeToWrite.SetNext(1, 1)
 		nodeToWrite.SetNext(2, 2)
 
-		buf := new(bytes.Buffer)
-		bytesWritten, err := nodeToWrite.WriteTo(buf)
-		require.NoError(t, err)
-		require.EqualValues(t, 15, bytesWritten)
-
 		hexValue, err := nodeToWrite.Hex()
 		require.NoError(t, err)
-		require.Equal(t, fmt.Sprintf("%X", buf.Bytes()), hexValue)
-		require.Equal(t, "ABCDEF010201000000010200000002", hexValue)
+		require.Equal(t, "77ABCDEF010201000000010200000002", hexValue)
 	})
 	t.Run("a16w32", func(t *testing.T) {
 		nodeToWrite := New[uint16, uint32]()
 		nodeToWrite.SetParent(0xA0A0A0A0)
 
+		nodeToWrite.SetCharId(0xABCD)
 		nodeToWrite.SetNext(1, 1)
 		nodeToWrite.SetNext(2, 2)
 
-		buf := new(bytes.Buffer)
-		bytesWritten, err := nodeToWrite.WriteTo(buf)
-		require.NoError(t, err)
-		require.EqualValues(t, 18, bytesWritten)
-
 		hexValue, err := nodeToWrite.Hex()
 		require.NoError(t, err)
-		require.Equal(t, fmt.Sprintf("%X", buf.Bytes()), hexValue)
-		require.Equal(t, "A0A0A0A00002000100000001000200000002", hexValue)
+		require.Equal(t, "ABCDA0A0A0A00002000100000001000200000002", hexValue)
 	})
 }
 

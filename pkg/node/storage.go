@@ -14,6 +14,12 @@ func (node *Node[A, M]) WriteTo(w io.Writer) (bytesWritten int64, err error) {
 
 	bytesWritten = 0
 
+	partBytes, err = storage.WriteUintTo(node.charId, w)
+	bytesWritten += partBytes
+	if err != nil {
+		return bytesWritten, err
+	}
+
 	partBytes, err = storage.WriteUintTo(node.parent, w)
 	bytesWritten += partBytes
 	if err != nil {
@@ -21,14 +27,14 @@ func (node *Node[A, M]) WriteTo(w io.Writer) (bytesWritten int64, err error) {
 	}
 
 	// writing len of map
-	lenOfMap := A(len(node.children))
+	lenOfMap := A(len(node.arcMap))
 	partBytes, err = storage.WriteUintTo(lenOfMap, w)
 	bytesWritten += partBytes
 	if err != nil {
 		return bytesWritten, err
 	}
 
-	keys := slices.Collect(maps.Keys(node.children))
+	keys := slices.Collect(maps.Keys(node.arcMap))
 	slices.Sort(keys)
 
 	// write map pairs
@@ -40,7 +46,7 @@ func (node *Node[A, M]) WriteTo(w io.Writer) (bytesWritten int64, err error) {
 			return bytesWritten, err
 		}
 		// writing child wordIdx
-		partBytes, err = storage.WriteUintTo(node.children[k], w)
+		partBytes, err = storage.WriteUintTo(node.arcMap[k], w)
 		bytesWritten += partBytes
 		if err != nil {
 			return bytesWritten, err
@@ -60,6 +66,14 @@ func (node *Node[A, M]) ReadFrom(r io.Reader) (bytesTaken int64, err error) {
 	)
 
 	bytesTaken = 0
+
+	// read charId
+	partBytes, err = storage.ReadUintFrom(&currentK, r)
+	bytesTaken += partBytes
+	if err != nil {
+		return bytesTaken, err
+	}
+	node.charId = currentK
 
 	// read parent
 	partBytes, err = storage.ReadUintFrom(&currentV, r)
@@ -91,7 +105,7 @@ func (node *Node[A, M]) ReadFrom(r io.Reader) (bytesTaken int64, err error) {
 			return bytesTaken, err
 		}
 
-		node.children[currentK] = currentV
+		node.arcMap[currentK] = currentV
 	}
 
 	return bytesTaken, nil
