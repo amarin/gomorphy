@@ -24,162 +24,166 @@ func getSizeText(v any) string {
 
 func TestNode_Hex(t *testing.T) {
 	t.Run("a8w8", func(t *testing.T) {
-		nodeToWrite := make(Node[uint8, uint8])
+		nodeToWrite := New[uint8, uint8]()
 
-		nodeToWrite.AddNext(1, 1)
-		nodeToWrite.AddNext(2, 2)
+		nodeToWrite.SetNext(1, 1)
+		nodeToWrite.SetNext(2, 2)
 
 		buf := new(bytes.Buffer)
 		bytesWritten, err := nodeToWrite.WriteTo(buf)
 		require.NoError(t, err)
-		require.EqualValues(t, 5, bytesWritten)
+		require.EqualValues(t, 6, bytesWritten)
 
 		hexValue, err := nodeToWrite.Hex()
 		require.NoError(t, err)
 		require.Equal(t, fmt.Sprintf("%X", buf.Bytes()), hexValue)
-		require.Equal(t, "0201010202", hexValue)
+		require.Equal(t, "000201010202", hexValue)
 	})
 
 	t.Run("a16w8", func(t *testing.T) {
-		nodeToWrite := make(Node[uint16, uint8])
+		nodeToWrite := New[uint16, uint8]()
 
-		nodeToWrite.AddNext(1, 1)
-		nodeToWrite.AddNext(2, 2)
+		nodeToWrite.SetNext(1, 1)
+		nodeToWrite.SetNext(2, 2)
 
 		buf := new(bytes.Buffer)
 		bytesWritten, err := nodeToWrite.WriteTo(buf)
 		require.NoError(t, err)
-		require.EqualValues(t, 8, bytesWritten)
+		require.EqualValues(t, 9, bytesWritten)
 
 		hexValue, err := nodeToWrite.Hex()
 		require.NoError(t, err)
 		require.Equal(t, fmt.Sprintf("%X", buf.Bytes()), hexValue)
-		require.Equal(t, "0002000101000202", hexValue)
+		require.Equal(t, "000002000101000202", hexValue)
 	})
 
 	t.Run("a8w16", func(t *testing.T) {
-		nodeToWrite := make(Node[uint8, uint16])
+		nodeToWrite := New[uint8, uint16]()
+		nodeToWrite.SetParent(13)
 
-		nodeToWrite.AddNext(1, 1)
-		nodeToWrite.AddNext(2, 2)
+		nodeToWrite.SetNext(1, 1)
+		nodeToWrite.SetNext(2, 2)
 
 		buf := new(bytes.Buffer)
 		bytesWritten, err := nodeToWrite.WriteTo(buf)
 		require.NoError(t, err)
-		require.EqualValues(t, 7, bytesWritten)
+		require.EqualValues(t, 9, bytesWritten)
 
 		hexValue, err := nodeToWrite.Hex()
 		require.NoError(t, err)
 		require.Equal(t, fmt.Sprintf("%X", buf.Bytes()), hexValue)
-		require.Equal(t, "02010001020002", hexValue)
+		require.Equal(t, "000D02010001020002", hexValue)
 	})
 
 	t.Run("a16w16", func(t *testing.T) {
-		nodeToWrite := make(Node[uint16, uint16])
+		nodeToWrite := New[uint16, uint16]()
+		nodeToWrite.SetParent(255)
 
-		nodeToWrite.AddNext(1, 1)
-		nodeToWrite.AddNext(2, 2)
+		nodeToWrite.SetNext(1, 1)
+		nodeToWrite.SetNext(2, 2)
 
 		buf := new(bytes.Buffer)
 		bytesWritten, err := nodeToWrite.WriteTo(buf)
 		require.NoError(t, err)
-		require.EqualValues(t, 10, bytesWritten)
+		require.EqualValues(t, 12, bytesWritten)
 
 		hexValue, err := nodeToWrite.Hex()
 		require.NoError(t, err)
 		require.Equal(t, fmt.Sprintf("%X", buf.Bytes()), hexValue)
-		require.Equal(t, "00020001000100020002", hexValue)
+		require.Equal(t, "00FF00020001000100020002", hexValue)
 	})
 	t.Run("a8w32", func(t *testing.T) {
-		nodeToWrite := make(Node[uint8, uint32])
+		nodeToWrite := New[uint8, uint32]()
+		nodeToWrite.SetParent(0xABCDEF01)
 
-		nodeToWrite.AddNext(1, 1)
-		nodeToWrite.AddNext(2, 2)
+		nodeToWrite.SetNext(1, 1)
+		nodeToWrite.SetNext(2, 2)
 
 		buf := new(bytes.Buffer)
 		bytesWritten, err := nodeToWrite.WriteTo(buf)
 		require.NoError(t, err)
-		require.EqualValues(t, 11, bytesWritten)
+		require.EqualValues(t, 15, bytesWritten)
 
 		hexValue, err := nodeToWrite.Hex()
 		require.NoError(t, err)
 		require.Equal(t, fmt.Sprintf("%X", buf.Bytes()), hexValue)
-		require.Equal(t, "0201000000010200000002", hexValue)
+		require.Equal(t, "ABCDEF010201000000010200000002", hexValue)
 	})
 	t.Run("a16w32", func(t *testing.T) {
-		nodeToWrite := make(Node[uint16, uint32])
+		nodeToWrite := New[uint16, uint32]()
+		nodeToWrite.SetParent(0xA0A0A0A0)
 
-		nodeToWrite.AddNext(1, 1)
-		nodeToWrite.AddNext(2, 2)
+		nodeToWrite.SetNext(1, 1)
+		nodeToWrite.SetNext(2, 2)
 
 		buf := new(bytes.Buffer)
 		bytesWritten, err := nodeToWrite.WriteTo(buf)
 		require.NoError(t, err)
-		require.EqualValues(t, 14, bytesWritten)
+		require.EqualValues(t, 18, bytesWritten)
 
 		hexValue, err := nodeToWrite.Hex()
 		require.NoError(t, err)
 		require.Equal(t, fmt.Sprintf("%X", buf.Bytes()), hexValue)
-		require.Equal(t, "0002000100000001000200000002", hexValue)
+		require.Equal(t, "A0A0A0A00002000100000001000200000002", hexValue)
 	})
 }
 
 func TestNode_HasNext(t *testing.T) {
 	t.Run("a8w8", func(t *testing.T) {
-		nodeToRead := make(Node[uint8, uint8])
+		nodeToRead := New[uint8, uint8]()
 
-		nodeToRead.AddNext(1, 1)
+		nodeToRead.SetNext(1, 1)
 		require.True(t, nodeToRead.HasNext(1))
 		require.False(t, nodeToRead.HasNext(2))
-		nodeToRead.AddNext(2, 2)
+		nodeToRead.SetNext(2, 2)
 		require.True(t, nodeToRead.HasNext(2))
 	})
 
 	t.Run("a16w8", func(t *testing.T) {
-		nodeToRead := make(Node[uint16, uint8])
+		nodeToRead := New[uint16, uint8]()
 
-		nodeToRead.AddNext(1, 1)
+		nodeToRead.SetNext(1, 1)
 		require.True(t, nodeToRead.HasNext(1))
 		require.False(t, nodeToRead.HasNext(2))
-		nodeToRead.AddNext(2, 2)
+		nodeToRead.SetNext(2, 2)
 		require.True(t, nodeToRead.HasNext(2))
 	})
 
 	t.Run("a8w16", func(t *testing.T) {
-		nodeToRead := make(Node[uint8, uint16])
+		nodeToRead := New[uint8, uint16]()
 
-		nodeToRead.AddNext(1, 1)
+		nodeToRead.SetNext(1, 1)
 		require.True(t, nodeToRead.HasNext(1))
 		require.False(t, nodeToRead.HasNext(2))
-		nodeToRead.AddNext(2, 2)
+		nodeToRead.SetNext(2, 2)
 		require.True(t, nodeToRead.HasNext(2))
 	})
 
 	t.Run("a16w16", func(t *testing.T) {
-		nodeToRead := make(Node[uint16, uint16])
+		nodeToRead := New[uint16, uint16]()
 
-		nodeToRead.AddNext(1, 1)
+		nodeToRead.SetNext(1, 1)
 		require.True(t, nodeToRead.HasNext(1))
 		require.False(t, nodeToRead.HasNext(2))
-		nodeToRead.AddNext(2, 2)
+		nodeToRead.SetNext(2, 2)
 		require.True(t, nodeToRead.HasNext(2))
 	})
 	t.Run("a8w32", func(t *testing.T) {
-		nodeToRead := make(Node[uint8, uint32])
+		nodeToRead := New[uint8, uint32]()
 
-		nodeToRead.AddNext(1, 1)
+		nodeToRead.SetNext(1, 1)
 		require.True(t, nodeToRead.HasNext(1))
 		require.False(t, nodeToRead.HasNext(2))
-		nodeToRead.AddNext(2, 2)
+		nodeToRead.SetNext(2, 2)
 		require.True(t, nodeToRead.HasNext(2))
 	})
 	t.Run("a16w32", func(t *testing.T) {
-		nodeToRead := make(Node[uint16, uint32])
+		nodeToRead := New[uint16, uint32]()
 
-		nodeToRead.AddNext(1, 1)
+		nodeToRead.SetNext(1, 1)
 		require.True(t, nodeToRead.HasNext(1))
 		require.False(t, nodeToRead.HasNext(2))
-		nodeToRead.AddNext(2, 2)
+		nodeToRead.SetNext(2, 2)
 		require.True(t, nodeToRead.HasNext(2))
 	})
 }
@@ -187,82 +191,82 @@ func TestNode_HasNext(t *testing.T) {
 func TestNode_NextIdx(t *testing.T) {
 	t.Run("a8w8", func(t *testing.T) {
 		c, w := uint8(math.MaxUint8), uint8(math.MaxUint8)
-		nodeToRead := make(Node[uint8, uint8])
-		next, found := nodeToRead.NextIdx(c)
+		nodeToRead := New[uint8, uint8]()
+		next, found := nodeToRead.GetNext(c)
 
 		require.False(t, found)
 		require.EqualValues(t, 0, next)
 
-		nodeToRead.AddNext(c, w)
-		next, found = nodeToRead.NextIdx(c)
+		nodeToRead.SetNext(c, w)
+		next, found = nodeToRead.GetNext(c)
 		require.True(t, found)
 		require.EqualValues(t, w, next)
 	})
 
 	t.Run("a16w8", func(t *testing.T) {
 		c, w := uint16(math.MaxUint16), uint8(math.MaxUint8)
-		nodeToRead := make(Node[uint16, uint8])
-		next, found := nodeToRead.NextIdx(c)
+		nodeToRead := New[uint16, uint8]()
+		next, found := nodeToRead.GetNext(c)
 
 		require.False(t, found)
 		require.EqualValues(t, 0, next)
 
-		nodeToRead.AddNext(c, w)
-		next, found = nodeToRead.NextIdx(c)
+		nodeToRead.SetNext(c, w)
+		next, found = nodeToRead.GetNext(c)
 		require.True(t, found)
 		require.EqualValues(t, w, next)
 	})
 
 	t.Run("a8w16", func(t *testing.T) {
 		c, w := uint8(math.MaxUint8), uint16(math.MaxUint16)
-		nodeToRead := make(Node[uint8, uint16])
-		next, found := nodeToRead.NextIdx(c)
+		nodeToRead := New[uint8, uint16]()
+		next, found := nodeToRead.GetNext(c)
 
 		require.False(t, found)
 		require.EqualValues(t, 0, next)
 
-		nodeToRead.AddNext(c, w)
-		next, found = nodeToRead.NextIdx(c)
+		nodeToRead.SetNext(c, w)
+		next, found = nodeToRead.GetNext(c)
 		require.True(t, found)
 		require.EqualValues(t, w, next)
 	})
 
 	t.Run("a16w16", func(t *testing.T) {
 		c, w := uint16(math.MaxUint16), uint16(math.MaxUint16)
-		nodeToRead := make(Node[uint16, uint16])
-		next, found := nodeToRead.NextIdx(c)
+		nodeToRead := New[uint16, uint16]()
+		next, found := nodeToRead.GetNext(c)
 
 		require.False(t, found)
 		require.EqualValues(t, 0, next)
 
-		nodeToRead.AddNext(c, w)
-		next, found = nodeToRead.NextIdx(c)
+		nodeToRead.SetNext(c, w)
+		next, found = nodeToRead.GetNext(c)
 		require.True(t, found)
 		require.EqualValues(t, w, next)
 	})
 	t.Run("a8w32", func(t *testing.T) {
 		c, w := uint8(math.MaxUint8), uint32(math.MaxUint32)
-		nodeToRead := make(Node[uint8, uint32])
-		next, found := nodeToRead.NextIdx(c)
+		nodeToRead := New[uint8, uint32]()
+		next, found := nodeToRead.GetNext(c)
 
 		require.False(t, found)
 		require.EqualValues(t, 0, next)
 
-		nodeToRead.AddNext(c, w)
-		next, found = nodeToRead.NextIdx(c)
+		nodeToRead.SetNext(c, w)
+		next, found = nodeToRead.GetNext(c)
 		require.True(t, found)
 		require.EqualValues(t, w, next)
 	})
 	t.Run("a16w32", func(t *testing.T) {
 		c, w := uint16(math.MaxUint16), uint32(math.MaxUint32)
-		nodeToRead := make(Node[uint16, uint32])
-		next, found := nodeToRead.NextIdx(c)
+		nodeToRead := New[uint16, uint32]()
+		next, found := nodeToRead.GetNext(c)
 
 		require.False(t, found)
 		require.EqualValues(t, 0, next)
 
-		nodeToRead.AddNext(c, w)
-		next, found = nodeToRead.NextIdx(c)
+		nodeToRead.SetNext(c, w)
+		next, found = nodeToRead.GetNext(c)
 		require.True(t, found)
 		require.EqualValues(t, w, next)
 	})

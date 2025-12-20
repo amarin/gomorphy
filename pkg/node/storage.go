@@ -9,20 +9,26 @@ import (
 )
 
 // WriteTo writes node binary representation into target io.Writer.
-func (node Node[A, M]) WriteTo(w io.Writer) (bytesWritten int64, err error) {
+func (node *Node[A, M]) WriteTo(w io.Writer) (bytesWritten int64, err error) {
 	var partBytes int64
 
 	bytesWritten = 0
 
+	partBytes, err = storage.WriteUintTo(node.parent, w)
+	bytesWritten += partBytes
+	if err != nil {
+		return bytesWritten, err
+	}
+
 	// writing len of map
-	lenOfMap := A(len(node))
+	lenOfMap := A(len(node.children))
 	partBytes, err = storage.WriteUintTo(lenOfMap, w)
 	bytesWritten += partBytes
 	if err != nil {
 		return bytesWritten, err
 	}
 
-	keys := slices.Collect(maps.Keys(node))
+	keys := slices.Collect(maps.Keys(node.children))
 	slices.Sort(keys)
 
 	// write map pairs
@@ -34,7 +40,7 @@ func (node Node[A, M]) WriteTo(w io.Writer) (bytesWritten int64, err error) {
 			return bytesWritten, err
 		}
 		// writing child wordIdx
-		partBytes, err = storage.WriteUintTo((node)[k], w)
+		partBytes, err = storage.WriteUintTo(node.children[k], w)
 		bytesWritten += partBytes
 		if err != nil {
 			return bytesWritten, err
@@ -45,7 +51,7 @@ func (node Node[A, M]) WriteTo(w io.Writer) (bytesWritten int64, err error) {
 }
 
 // ReadFrom reads node data from specified io.Reader.
-func (node Node[A, M]) ReadFrom(r io.Reader) (bytesTaken int64, err error) {
+func (node *Node[A, M]) ReadFrom(r io.Reader) (bytesTaken int64, err error) {
 	var (
 		partBytes int64
 		lenOfMap  A = 0
@@ -54,6 +60,14 @@ func (node Node[A, M]) ReadFrom(r io.Reader) (bytesTaken int64, err error) {
 	)
 
 	bytesTaken = 0
+
+	// read parent
+	partBytes, err = storage.ReadUintFrom(&currentV, r)
+	bytesTaken += partBytes
+	if err != nil {
+		return bytesTaken, err
+	}
+	node.parent = currentV
 
 	// read map len
 	partBytes, err = storage.ReadUintFrom(&lenOfMap, r)
@@ -77,7 +91,7 @@ func (node Node[A, M]) ReadFrom(r io.Reader) (bytesTaken int64, err error) {
 			return bytesTaken, err
 		}
 
-		(node)[currentK] = currentV
+		node.children[currentK] = currentV
 	}
 
 	return bytesTaken, nil

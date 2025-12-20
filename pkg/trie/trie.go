@@ -2,68 +2,54 @@ package trie
 
 import (
 	"errors"
-	"sync"
-
-	"github.com/amarin/logging"
 
 	"github.com/amarin/gomorphy/pkg/indexer"
 	"github.com/amarin/gomorphy/pkg/node"
 )
 
 var (
-	ErrAddWord              = errors.New("add word")
-	ErrNotFound             = errors.New("not found")
-	ErrUnexpectedAddedIndex = errors.New("unexpected added index")
+	ErrAddWord  = errors.New("add word")
+	ErrNotFound = errors.New("not found")
 )
 
-// Trie хранит DAG символов в добавленных словах.
+// Trie stores sequences of characters of alphabet power A to provide words indexes of type M.
+// Implements trie structure&
 type Trie[A alphabetSize, M wordsSize] struct {
-	mu           *sync.RWMutex
-	nodes        indexer.IndexOf[M, node.Node[A, M], *node.Node[A, M]]
-	withAlphabet alphabetInterface[A]
-	log          logging.Logger
+	indexer.IndexOf[M, node.Node[A, M], *node.Node[A, M]]
 }
 
-// NewGraph создаёт новый DAG.
-func NewGraph[A alphabetSize, M wordsSize](useAlphabet alphabetInterface[A]) *Trie[A, M] {
+// New creates new trie for alphabet power A and words power M.
+func New[A alphabetSize, M wordsSize]() *Trie[A, M] {
 	graph := &Trie[A, M]{
-		mu:           new(sync.RWMutex),
-		nodes:        *indexer.New[M, node.Node[A, M], *node.Node[A, M]]("dag"),
-		withAlphabet: useAlphabet,
-		log:          logging.NewNamedLogger("dag"),
+		IndexOf: *indexer.New[M, node.Node[A, M], *node.Node[A, M]]("dag"),
 	}
 
-	// добавляем корневой узел
-	_, _ = graph.nodes.Add(node.New[A, M]())
+	// adding trie root
+	_, _ = graph.IndexOf.Add(node.New[A, M]())
 
 	return graph
 }
 
-func (graph *Trie[A, M]) addWordDirect(word string) (nodeIdx M, err error) {
+func (graph *Trie[A, M]) addWordDirect(word []A) (nodeIdx M, err error) {
 	var (
 		currentParent = M(0)
 		parent        *node.Node[A, M]
-		addedIdx      M
+		nextIdx       M
+		exists        bool
 	)
 
-	for _, char := range []rune(word) {
-		if parent, err = graph.nodes.Get(currentParent); err != nil {
+	for _, charIdx := range word {
+		if parent, err = graph.IndexOf.Get(currentParent); err != nil {
 			return 0, ErrNotFound
 		}
 
-		charIdx, err := graph.withAlphabet.GetOrCreate(char)
-		if err != nil {
-			return 0, errors.Join(ErrAddWord, err)
-		}
-
-		nextIdx, exists := parent.NextIdx(charIdx)
-		if !exists {
+		if nextIdx, exists = parent.GetNext(charIdx); !exists {
 			newNode := node.New[A, M]()
-			if addedIdx, err = graph.nodes.Add(newNode); err != nil {
+			if nextIdx, err = graph.IndexOf.Add(newNode); err != nil {
 				return 0, errors.Join(ErrAddWord, err)
 			}
 
-			parent.AddNext(charIdx, addedIdx)
+			parent.SetNext(charIdx, nextIdx)
 		}
 
 		currentParent = nextIdx
@@ -72,23 +58,22 @@ func (graph *Trie[A, M]) addWordDirect(word string) (nodeIdx M, err error) {
 	return currentParent, nil
 }
 
-func (graph *Trie[A, M]) getWordDirect(word string) (parentIdx M, err error) {
-	var parent *node.Node[A, M]
+func (graph *Trie[A, M]) getWordDirect(word []A) (parentIdx M, err error) {
+	var (
+		parent  *node.Node[A, M]
+		nextIdx M
+		exists  bool
+		charIdx A
+	)
 
 	parentIdx = M(0)
 
-	for _, char := range []rune(word) {
-		charIdx, err := graph.withAlphabet.Get(char)
-		if err != nil {
-			return 0, errors.Join(ErrNotFound, err) // символ не в алфавите
-		}
-
-		if parent, err = graph.nodes.Get(parentIdx); err != nil {
+	for _, charIdx = range word {
+		if parent, err = graph.IndexOf.Get(parentIdx); err != nil {
 			return 0, errors.Join(ErrNotFound, err) // слово не в индексе
 		}
 
-		nextIdx, exists := parent.NextIdx(charIdx)
-		if !exists {
+		if nextIdx, exists = parent.GetNext(charIdx); !exists {
 			return 0, ErrNotFound
 		}
 
@@ -100,18 +85,25 @@ func (graph *Trie[A, M]) getWordDirect(word string) (parentIdx M, err error) {
 
 // Add добавляет слово `word` в хранилище, используя алфавит `useAlphabet`.
 // Возвращает идентификатор финального узла или ошибку добавления
-func (graph *Trie[A, M]) Add(word string) (M, error) {
+func (graph *Trie[A, M]) Add(word []A) (M, error) {
 	return graph.addWordDirect(word)
 }
 
 // Get находит идентификатор финального узла для слова `word` в хранилище, используя алфавит `useAlphabet`.
 // Возвращает идентификатор финального узла или ошибку поиска слова
-func (graph *Trie[A, M]) Get(word string) (M, error) {
+func (graph *Trie[A, M]) Get(word []A) (M, error) {
+	return graph.getWordDirect(word)
+}
+
+// Get находит идентификатор финального узла для слова `word` в хранилище, используя алфавит `useAlphabet`.
+// Возвращает идентификатор финального узла или ошибку поиска слова
+func (graph *Trie[A, M]) GetNodes(word M) ([]A, error) {
+	item, err := graph.IndexOf.Get(word)
 	return graph.getWordDirect(word)
 }
 
 // NodesCount находит идентификатор финального узла для слова `word` в хранилище, используя алфавит `useAlphabet`.
 // Возвращает идентификатор финального узла или ошибку поиска слова
 func (graph *Trie[A, M]) NodesCount() int {
-	return graph.nodes.Len()
+	return graph.IndexOf.Len()
 }

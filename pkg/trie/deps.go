@@ -7,7 +7,7 @@ import (
 	"github.com/amarin/gomorphy/pkg/size"
 )
 
-type alphabetInterface[A size.Alphabet] interface {
+type Alphabet[A size.Alphabet] interface {
 	io.ReaderFrom
 	io.WriterTo
 

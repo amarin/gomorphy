@@ -9,16 +9,16 @@ import (
 
 func TestNode_Read_Write(t *testing.T) {
 	t.Run("a8w8", func(t *testing.T) {
-		nodeToWrite := make(Node[uint8, uint8])
+		nodeToWrite := New[uint8, uint8]()
 		nodeToRead := New[uint8, uint8]()
 
-		nodeToWrite.AddNext(1, 1)
-		nodeToWrite.AddNext(2, 2)
+		nodeToWrite.SetNext(1, 1)
+		nodeToWrite.SetNext(2, 2)
 
 		buf := new(bytes.Buffer)
 		bytesWritten, err := nodeToWrite.WriteTo(buf)
 		require.NoError(t, err)
-		require.EqualValues(t, 5, bytesWritten)
+		require.EqualValues(t, 6, bytesWritten)
 
 		bytesRead, err := nodeToRead.ReadFrom(buf)
 		require.NoError(t, err)
@@ -30,16 +30,16 @@ func TestNode_Read_Write(t *testing.T) {
 	})
 
 	t.Run("a16w8", func(t *testing.T) {
-		nodeToWrite := make(Node[uint16, uint8])
+		nodeToWrite := New[uint16, uint8]()
 		nodeToRead := New[uint16, uint8]()
 
-		nodeToWrite.AddNext(1, 1)
-		nodeToWrite.AddNext(2, 2)
+		nodeToWrite.SetNext(1, 1)
+		nodeToWrite.SetNext(2, 2)
 
 		buf := new(bytes.Buffer)
 		bytesWritten, err := nodeToWrite.WriteTo(buf)
 		require.NoError(t, err)
-		require.EqualValues(t, 8, bytesWritten)
+		require.EqualValues(t, 9, bytesWritten)
 
 		bytesRead, err := nodeToRead.ReadFrom(buf)
 		require.NoError(t, err)
@@ -51,16 +51,16 @@ func TestNode_Read_Write(t *testing.T) {
 	})
 
 	t.Run("a8w16", func(t *testing.T) {
-		nodeToWrite := make(Node[uint8, uint16])
+		nodeToWrite := New[uint8, uint16]()
 		nodeToRead := New[uint8, uint16]()
 
-		nodeToWrite.AddNext(1, 1)
-		nodeToWrite.AddNext(2, 2)
+		nodeToWrite.SetNext(1, 1)
+		nodeToWrite.SetNext(2, 2)
 
 		buf := new(bytes.Buffer)
 		bytesWritten, err := nodeToWrite.WriteTo(buf)
 		require.NoError(t, err)
-		require.EqualValues(t, 7, bytesWritten)
+		require.EqualValues(t, 9, bytesWritten)
 
 		bytesRead, err := nodeToRead.ReadFrom(buf)
 		require.NoError(t, err)
@@ -72,16 +72,16 @@ func TestNode_Read_Write(t *testing.T) {
 	})
 
 	t.Run("a16w16", func(t *testing.T) {
-		nodeToWrite := make(Node[uint16, uint16])
+		nodeToWrite := New[uint16, uint16]()
 		nodeToRead := New[uint16, uint16]()
 
-		nodeToWrite.AddNext(1, 1)
-		nodeToWrite.AddNext(2, 2)
+		nodeToWrite.SetNext(1, 1)
+		nodeToWrite.SetNext(2, 2)
 
 		buf := new(bytes.Buffer)
 		bytesWritten, err := nodeToWrite.WriteTo(buf)
 		require.NoError(t, err)
-		require.EqualValues(t, 10, bytesWritten)
+		require.EqualValues(t, 12, bytesWritten)
 
 		bytesRead, err := nodeToRead.ReadFrom(buf)
 		require.NoError(t, err)
@@ -92,16 +92,16 @@ func TestNode_Read_Write(t *testing.T) {
 		require.True(t, nodeToRead.HasNext(2))
 	})
 	t.Run("a8w32", func(t *testing.T) {
-		nodeToWrite := make(Node[uint8, uint32])
+		nodeToWrite := New[uint8, uint32]()
 		nodeToRead := New[uint8, uint32]()
 
-		nodeToWrite.AddNext(1, 1)
-		nodeToWrite.AddNext(2, 2)
+		nodeToWrite.SetNext(1, 1)
+		nodeToWrite.SetNext(2, 2)
 
 		buf := new(bytes.Buffer)
 		bytesWritten, err := nodeToWrite.WriteTo(buf)
 		require.NoError(t, err)
-		require.EqualValues(t, 11, bytesWritten)
+		require.EqualValues(t, 15, bytesWritten)
 
 		bytesRead, err := nodeToRead.ReadFrom(buf)
 		require.NoError(t, err)
@@ -112,16 +112,16 @@ func TestNode_Read_Write(t *testing.T) {
 		require.True(t, nodeToRead.HasNext(2))
 	})
 	t.Run("a16w32", func(t *testing.T) {
-		nodeToWrite := make(Node[uint16, uint32])
+		nodeToWrite := New[uint16, uint32]()
 		nodeToRead := New[uint16, uint32]()
 
-		nodeToWrite.AddNext(1, 1)
-		nodeToWrite.AddNext(2, 2)
+		nodeToWrite.SetNext(1, 1)
+		nodeToWrite.SetNext(2, 2)
 
 		buf := new(bytes.Buffer)
 		bytesWritten, err := nodeToWrite.WriteTo(buf)
 		require.NoError(t, err)
-		require.EqualValues(t, 14, bytesWritten)
+		require.EqualValues(t, 18, bytesWritten)
 
 		bytesRead, err := nodeToRead.ReadFrom(buf)
 		require.NoError(t, err)

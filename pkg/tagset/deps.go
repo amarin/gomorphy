@@ -1,9 +1,9 @@
 package tagset
 
-type tagSetSize interface {
+type tagSetPower interface {
 	uint8 | uint16 | uint32
 }
 
-type tagsSize interface {
-	uint8 | uint16 | uint32
+type tagsPower interface {
+	uint8 | uint16
 }
