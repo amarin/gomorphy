@@ -15,7 +15,8 @@ type Snapshot struct {
 	AncodeOff   []uint32 // ancode id -> [start,end) into AncodeGrams
 	AncodeGrams []uint32 // flat grammeme-id lists grouped by ancode
 
-	LemmaTexts []uint32 // dense lemma id -> text id
+	LemmaTexts   []uint32 // dense lemma id -> text id
+	LemmaAncodes []uint32 // dense lemma id -> base-form ancode id
 
 	PairTexts    []uint32 // pair id -> text id
 	PairAncodes  []uint32 // pair id -> ancode id
@@ -53,6 +54,12 @@ func (s *Snapshot) Text(textID uint32) []byte {
 // LemmaText returns the base-form text of a lemma.
 func (s *Snapshot) LemmaText(lemma uint32) []byte {
 	return s.Text(s.LemmaTexts[lemma])
+}
+
+// LemmaBaseGrams returns the constant grammeme ids of a lemma (POS and
+// other tags shared by all its wordforms).
+func (s *Snapshot) LemmaBaseGrams(lemma uint32) []uint32 {
+	return s.Ancode(s.LemmaAncodes[lemma])
 }
 
 // AncodeGrams returns the grammeme ids of an ancode.

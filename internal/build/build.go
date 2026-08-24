@@ -25,6 +25,7 @@ func (b *Builder) Build() *Snapshot {
 	snap.PairTexts = slices.Clone(b.pairTexts)
 	snap.PairAncodes = slices.Clone(b.pairAncodes)
 	snap.LemmaTexts = slices.Clone(b.lemmaTexts)
+	snap.LemmaAncodes = slices.Clone(b.lemmaAncodes)
 
 	snap.Exact, snap.ExactMask = buildExactHash(
 		len(b.nodes),

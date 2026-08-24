@@ -291,3 +291,104 @@ func TestBuilderReconstruction(t *testing.T) {
 		}
 	}
 }
+
+// mustBuildHomonyms creates a dictionary with classic Russian homonyms:
+// "стекла" (стекло/стечь), "пила" (пила/пить) and the unique "кот".
+func mustBuildHomonyms(t *testing.T) *dictionary.Dictionary {
+	t.Helper()
+
+	b := dictionary.NewBuilder()
+
+	add := func(lemma, form string, lGr, fGr []string) {
+		id, err := b.AddLemma(lemma, lGr...)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if err := b.AddForm(id, form, fGr...); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	add("стекло", "стекла", []string{"NOUN", "inan", "neut"}, []string{"sing", "gent"})
+	add("стечь", "стекла", []string{"VERB", "impf", "intr"}, []string{"past", "neut"})
+	add("пила", "пилу", []string{"NOUN", "inan", "femn"}, []string{"sing", "accs"})
+	add("пить", "пила", []string{"VERB", "impf", "tran"}, []string{"past", "femn"})
+	add("кот", "кота", []string{"NOUN", "anim", "masc"}, []string{"sing", "gent"})
+
+	return b.Compile()
+}
+
+func TestHomonymLemmas(t *testing.T) {
+	d := mustBuildHomonyms(t)
+
+	defer func() { _ = d.Close() }()
+
+	for _, tc := range []struct {
+		word     string
+		wantRefs int
+		texts    []string // expected citation texts among refs
+	}{
+		{"стекла", 2, []string{"стекло", "стечь"}},
+		{"пила", 2, []string{"пила", "пить"}},
+		{"кот", 1, []string{"кот"}},
+	} {
+		refs, err := d.Lemmas(tc.word)
+		if err != nil {
+			t.Fatalf("%q: %v", tc.word, err)
+		}
+
+		if len(refs) < tc.wantRefs {
+			t.Errorf("%q: want >=%d lemmas, got %d: %+v", tc.word, tc.wantRefs, len(refs), refs)
+
+			continue
+		}
+
+		gotTexts := make(map[string]bool)
+		for _, r := range refs {
+			gotTexts[r.Text] = true
+
+			if len(r.Grammemes) == 0 {
+				t.Errorf("%q: lemma %q has empty base grammemes", tc.word, r.Text)
+			}
+		}
+
+		for _, want := range tc.texts {
+			if !gotTexts[want] {
+				t.Errorf("%q: lemma %q missing among %v", tc.word, want, gotTexts)
+			}
+		}
+	}
+}
+
+func TestFullGrammarMerge(t *testing.T) {
+	d := mustBuildHomonyms(t)
+
+	defer func() { _ = d.Close() }()
+
+	forms, err := d.Lookup("кота")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(forms) != 1 {
+		t.Fatalf("want 1 form, got %+v", forms)
+	}
+
+	f := forms[0]
+
+	want := []string{"NOUN", "anim", "masc", "sing", "gent"}
+	if len(f.Grammemes) != len(want) {
+		t.Fatalf("grammemes %+v, want %v", f.Grammemes, want)
+	}
+
+	for i := range want {
+		if f.Grammemes[i] != want[i] {
+			t.Fatalf("grammemes %+v, want %v", f.Grammemes, want)
+		}
+	}
+
+	if f.Ancode != "NOUN,anim,masc,sing,gent" {
+		t.Errorf("ancode %q", f.Ancode)
+	}
+}

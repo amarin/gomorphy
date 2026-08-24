@@ -86,46 +86,42 @@ func (d *Dictionary) Builder() (*Builder, error) {
 		}
 	}
 
-	lemmaSeen := make([]bool, s.LemmaCount())
+	// Restore lemmas with their base ancodes first so dense ids match,
+	// then re-attach every (text, ancode) wordform pair.
+	for lemma := uint32(0); lemma < uint32(s.LemmaCount()); lemma++ {
+		base := s.LemmaBaseGrams(lemma)
+
+		names := make([]string, len(base))
+		for i, gid := range base {
+			names[i] = s.GrammemeNames[gid]
+		}
+
+		if _, err := b.inner.AddLemma(string(s.LemmaText(lemma)), names...); err != nil {
+			return nil, fmt.Errorf("dictionary: rebuild lemmas: %w", err)
+		}
+	}
 
 	for pairID := uint32(0); pairID < uint32(s.PairCount()); pairID++ {
-		grammemes := gramNames(s, pairID)
 		text := string(s.Text(s.PairTexts[pairID]))
+		grams := s.Ancode(s.PairAncodes[pairID])
+
+		names := make([]string, len(grams))
+		for i, gid := range grams {
+			names[i] = s.GrammemeNames[gid]
+		}
 
 		for _, lemma := range s.PairLemmasOf(pairID) {
-			if int(lemma) >= len(lemmaSeen) {
+			if int(lemma) >= s.LemmaCount() {
 				return nil, fmt.Errorf("dictionary: lemma %d out of range", lemma)
 			}
 
-			if !lemmaSeen[lemma] {
-				lemmaSeen[lemma] = true
-
-				if _, err := b.inner.AddLemma(string(s.LemmaText(lemma)), grammemes...); err != nil {
-					return nil, fmt.Errorf("dictionary: rebuild lemmas: %w", err)
-				}
-			}
-
-			// Duplicate attachments collapse into the same pair; only the
-			// surface forms differing from the citation text matter here.
-			if text != string(s.LemmaText(lemma)) {
-				if err := b.inner.AddForm(int(lemma), text, grammemes...); err != nil {
-					return nil, fmt.Errorf("dictionary: rebuild forms: %w", err)
-				}
+			// Attaching the citation form again collapses into the same
+			// pair created by AddLemma above.
+			if err := b.inner.AddForm(int(lemma), text, names...); err != nil {
+				return nil, fmt.Errorf("dictionary: rebuild forms: %w", err)
 			}
 		}
 	}
 
 	return b, nil
-}
-
-// gramNames decomposes the ancode of a pair into grammeme name strings.
-func gramNames(s *build.Snapshot, pairID uint32) []string {
-	gramIDs := s.Ancode(s.PairAncodes[pairID])
-
-	names := make([]string, 0, len(gramIDs))
-	for _, id := range gramIDs {
-		names = append(names, s.GrammemeNames[id])
-	}
-
-	return names
 }

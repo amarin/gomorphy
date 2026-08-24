@@ -40,19 +40,23 @@ var (
 	ErrNotFound = errors.New("dictionary: not found")
 )
 
-// Wordform is one dictionary reading of a word: surface text with its
-// grammatical description and owning lemma. Value type, safe to copy.
+// Wordform is one dictionary reading of a word: surface text with its full
+// grammatical characterization and owning lemma. Value type, safe to copy.
+//
+// Grammemes is the merged parse: the lemma's constant tags (POS etc.)
+// followed by the wordform's own tags. Ancode is Grammemes comma-joined.
 type Wordform struct {
 	Text      string   // surface form, e.g. "кота"
-	Ancode    string   // comma-joined grammeme names, e.g. "NOUN,anim,masc,gent"
-	Grammemes []string // decomposed grammemes of Ancode, order significant
+	Ancode    string   // full parse joined, e.g. "NOUN,anim,masc,sing,gent"
+	Grammemes []string // decomposed full parse, order significant
 	LemmaID   uint32   // dense lemma identifier
 }
 
-// LemmaRef identifies a lemma: dense id plus its citation text.
+// LemmaRef identifies a lemma: dense id, citation text and base grammemes.
 type LemmaRef struct {
-	ID   uint32
-	Text string
+	ID        uint32
+	Text      string
+	Grammemes []string
 }
 
 // FuzzyMatch is a fuzzy-search hit (FT6, implemented in stage 9).

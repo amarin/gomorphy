@@ -35,6 +35,8 @@ type Builder struct {
 	ancodeKeys [][]uint32        // ancode id -> grammeme ids (ascending)
 
 	lemmaTexts []uint32 // dense lemma id -> text id
+	// lemmaAncodes holds the base-form ancode of each lemma (dense id).
+	lemmaAncodes []uint32
 
 	pairIdx     map[uint64]uint32 // (textID<<32|ancodeID) -> pair id
 	pairTexts   []uint32
@@ -90,14 +92,16 @@ func (b *Builder) AddLemma(text string, grammemes ...string) (int, error) {
 		return 0, ErrEmptyText
 	}
 
-	lemma := len(b.lemmaTexts)
-	textID := b.internText(text)
-	b.lemmaTexts = append(b.lemmaTexts, textID)
-
 	ancode, err := b.ensureAncode(grammemes)
 	if err != nil {
 		return 0, err
 	}
+
+	lemma := len(b.lemmaTexts)
+	textID := b.internText(text)
+
+	b.lemmaTexts = append(b.lemmaTexts, textID)
+	b.lemmaAncodes = append(b.lemmaAncodes, ancode)
 
 	if err := b.attachPair(textID, ancode, uint32(lemma)); err != nil {
 		return 0, err

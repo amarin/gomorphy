@@ -181,6 +181,10 @@ func loadFromRegion(reg []byte) (*Snapshot, error) {
 		return nil, err
 	}
 
+	if snap.LemmaAncodes, err = rawU32Count(secLemmasAncodes, int(lemmas)); err != nil {
+		return nil, err
+	}
+
 	if snap.PairTexts, err = rawU32Count(secPairTexts, int(pairs)); err != nil {
 		return nil, err
 	}
@@ -255,6 +259,8 @@ func validate(s *Snapshot) error {
 		return fmt.Errorf("trie: %d labels vs %d targets", len(s.TransLabel), len(s.TransTarget))
 	case s.PairCount() > 0 && len(s.PairLemmaOff) != s.PairCount()+1:
 		return fmt.Errorf("pair lemma offsets: got %d windows", len(s.PairLemmaOff)-1)
+	case len(s.LemmaAncodes) != s.LemmaCount():
+		return fmt.Errorf("lemma ancodes: %d for %d lemmas", len(s.LemmaAncodes), s.LemmaCount())
 	default:
 		return nil
 	}

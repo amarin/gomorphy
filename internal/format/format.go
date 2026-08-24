@@ -19,7 +19,7 @@ import (
 
 const (
 	Magic   = "GMRF"
-	Version = uint32(1)
+	Version = uint32(2)
 
 	headerSize    = 4 + 4 + 8
 	trailerSize   = 8

@@ -98,12 +98,11 @@ func TestSmokeFrequentWords(t *testing.T) {
 		lemma    string // one expected lemma text
 		grams    []string
 	}{
-		// NOTE: in OpenCorpora dict.xml wordforms carry only their own <g>
-		// refs (case/number); POS and other constant tags live on the lemma,
-		// so Lookup returns e.g. sing,gent for "кота", not NOUN,anim,masc,gent.
-		{"кота", 1, "кот", []string{"sing", "gent"}},
-		{"коту", 1, "кот", []string{"sing", "datv"}},
-		{"домами", 1, "дом", []string{"plur", "ablt"}},
+		// Wordform.Grammemes is the full parse: lemma constant tags followed
+		// by the form's own tags, as produced by OpenCorpora dict.xml.
+		{"кота", 1, "кот", []string{"NOUN", "anim", "masc", "sing", "gent"}},
+		{"коту", 1, "кот", []string{"NOUN", "anim", "masc", "sing", "datv"}},
+		{"домами", 1, "дом", []string{"NOUN", "inan", "masc", "plur", "ablt"}},
 		{"бежал", 2, "", nil},  // омонимия: бегу/бежал леммы
 		{"стекла", 2, "", nil}, // омонимия: стекло / течь
 		{"пила", 2, "", nil},   // омонимия: пила / пить

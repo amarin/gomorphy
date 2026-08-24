@@ -17,6 +17,7 @@ const (
 	secAncodeOffs    = "ancodes.offs"
 	secAncodeGrams   = "ancodes.grams"
 	secLemmas        = "lemmas"
+	secLemmasAncodes = "lemmas.ancodes"
 	secPairTexts     = "pairs.text"
 	secPairAncodes   = "pairs.ancode"
 	secPairLemmaOffs = "pair.lemmas.offs"
@@ -109,6 +110,7 @@ func (s *Snapshot) SaveTo(path string) error {
 		{secAncodeOffs, padTo8(mustDelta32(s.AncodeOff))},
 		{secAncodeGrams, padTo8(putU32s(nil, s.AncodeGrams))},
 		{secLemmas, padTo8(putU32s(nil, s.LemmaTexts))},
+		{secLemmasAncodes, padTo8(putU32s(nil, s.LemmaAncodes))},
 		{secPairTexts, padTo8(putU32s(nil, s.PairTexts))},
 		{secPairAncodes, padTo8(putU32s(nil, s.PairAncodes))},
 		{secPairLemmaOffs, padTo8(mustDelta32(s.PairLemmaOff))},
