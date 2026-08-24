@@ -38,6 +38,9 @@ var (
 
 	// ErrNotFound is returned when a word has no dictionary entry.
 	ErrNotFound = errors.New("dictionary: not found")
+
+	// ErrInvalidMaxDist is returned by Fuzzy when maxDist is negative.
+	ErrInvalidMaxDist = errors.New("dictionary: negative maxDist")
 )
 
 // Wordform is one dictionary reading of a word: surface text with its full
@@ -59,7 +62,8 @@ type LemmaRef struct {
 	Grammemes []string
 }
 
-// FuzzyMatch is a fuzzy-search hit (FT6, implemented in stage 9).
+// FuzzyMatch is a fuzzy-search hit (FT6): a dictionary word within the
+// requested edit distance of the query.
 type FuzzyMatch struct {
 	Text     string
 	Distance int

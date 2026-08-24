@@ -96,16 +96,6 @@ func TestLemmas(t *testing.T) {
 	}
 }
 
-func TestFuzzyStub(t *testing.T) {
-	d, _ := mustBuildDict(t)
-
-	defer func() { _ = d.Close() }()
-
-	if _, err := d.Fuzzy("кот", 2); !errors.Is(err, dictionary.ErrNotImplemented) {
-		t.Fatalf("want ErrNotImplemented, got %v", err)
-	}
-}
-
 func TestNewEmptyAndSaveOpen(t *testing.T) {
 	d := dictionary.NewEmpty()
 

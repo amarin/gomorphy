@@ -104,6 +104,16 @@ func (s *Snapshot) Step(state uint32, c byte) (uint32, bool) {
 	return 0, false
 }
 
+// Edges returns parallel label/target views of all outgoing transitions of
+// a state, sorted by label. The slices alias internal arrays and must be
+// treated as read-only.
+func (s *Snapshot) Edges(state uint32) ([]byte, []uint32) {
+	lo := s.StateOff[state]
+	hi := s.StateOff[state+1]
+
+	return s.TransLabel[lo:hi:hi], s.TransTarget[lo:hi:hi]
+}
+
 // Walk traverses the trie along text and reports whether every transition
 // exists. It does not require the terminal state to be final.
 func (s *Snapshot) Walk(text []byte) (uint32, bool) {

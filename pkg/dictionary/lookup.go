@@ -142,13 +142,3 @@ func (d *Dictionary) Lemmas(word string) ([]LemmaRef, error) {
 
 	return refs, nil
 }
-
-// Fuzzy finds words within edit distance maxDist of word (FT6).
-// Stub until stage 9.
-func (d *Dictionary) Fuzzy(word string, maxDist int) ([]FuzzyMatch, error) {
-	if err := d.checkClosed(); err != nil {
-		return nil, err
-	}
-
-	return nil, ErrNotImplemented
-}
