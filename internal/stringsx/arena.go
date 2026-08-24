@@ -51,3 +51,9 @@ func (a *Arena) Len() int {
 func (a *Arena) Size() int {
 	return len(a.data)
 }
+
+// Data returns the raw payload of the arena.
+func (a *Arena) Data() []byte { return a.data }
+
+// Offsets returns string boundary offsets; len = Len()+1.
+func (a *Arena) Offsets() []uint32 { return a.offsets }
