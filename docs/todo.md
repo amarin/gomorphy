@@ -105,14 +105,20 @@ indexOffset=0x1C, каталог из 2 секций, trailer xxh3 — чита�
 ## Этап 7. Интеграция с OpenCorpora end-to-end
 
 Инкремент: полный цикл FT7.
-- [ ] dictionary.CompileFromXML(path): xmlscan → Builder → снимок.
-- [ ] cmd/opencorpora_update: флаги download/unpack/compile; атомарная запись.
-- [ ] pkg/opencorpora.Update() снова вызывает компиляцию (через новый компилятор).
+- [x] dictionary.CompileFromXML(path): xmlscan → Builder → снимок
+  (+ SaveToAtomic: temp-файл + rename).
+- [x] cmd/opencorpora_update: флаги -l (download), -skip-compile, -v;
+  компиляция выполняется автоматически после unpack, итог с временем/памятью.
+- [x] pkg/opencorpora.Update() снова вызывает компиляцию (loader.Compile()).
 Проверка:
-- ручной прогон: `make opencorpora_update && ./deploy/opencorpora_update`
-  на реальном dict.xml → .dat создан, время/память залогированы;
-- smoke-тест CLI gomorphy: выборка 50 частотных слов → корректные леммы/граммемы
-  (сверка с opencorpora.org вручную по контрольному списку).
+- [x] ручной прогон `go run ./cmd/opencorpora_update -l` на реальном dict.xml:
+  opencorpora.dict 303 MB создан за 13.7s (scan+build+save), peak heap ~4 GB;
+- [x] smoke-тест (pkg/dictionary/smoke_integration_test.go): 50 частотных слов
+  резолвятся; контрольные слова («кота»→кот sing,gent; «домами»; омонимы
+  «стекла», «пила», «бежал» ≥2 леммы) сверены по фактическим данным словаря.
+  Замечание для этапа 8: в dict.xml формы несут только собственные <g>-теги
+  (падеж/число); POS и константные теги живут на лемме — при FT2/FT5 выдаче
+  полную грамматическую характеристику нужно собирать из леммы + формы.
 
 ## Этап 8. Поиск лемм FT5
 

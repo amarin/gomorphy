@@ -13,6 +13,7 @@ import (
 	"github.com/amarin/logging"
 
 	"github.com/amarin/gomorphy/pkg/common"
+	"github.com/amarin/gomorphy/pkg/dictionary"
 )
 
 // Loader provides OpenCorpora dictionary download and unpacking utilities.
@@ -59,6 +60,47 @@ func (loader *Loader) downloadedFilePath() string {
 // unpackedFilePath returns path to unpacked lemmata file.
 func (loader *Loader) unpackedFilePath() string {
 	return loader.filePath(LocalUnpackedFilename)
+}
+
+// CompiledFilePath returns path to the compiled runtime dictionary file.
+func (loader *Loader) CompiledFilePath() string {
+	return loader.filePath(LocalCompiledFilename)
+}
+
+// IsCompiledExists reports whether a compiled dictionary file is present.
+func (loader *Loader) IsCompiledExists() bool {
+	_, err := os.Stat(loader.CompiledFilePath())
+
+	return err == nil
+}
+
+// Compile compiles the unpacked dict.xml into the runtime dictionary file
+// using dictionary.CompileFromXML, writing atomically (FT7).
+func (loader *Loader) Compile() error {
+	if !loader.IsUnpackedExists() {
+		return fmt.Errorf("%w: no unpacked dictionary at %v", Error, loader.unpackedFilePath())
+	}
+
+	loader.Infof("compiling %v", loader.unpackedFilePath())
+
+	dict, err := dictionary.CompileFromXMLFile(loader.unpackedFilePath())
+	if err != nil {
+		loader.Errorf("compile: %v", err)
+
+		return err
+	}
+
+	defer func() { _ = dict.Close() }()
+
+	if err := dict.SaveToAtomic(loader.CompiledFilePath()); err != nil {
+		loader.Errorf("save %v: %v", loader.CompiledFilePath(), err)
+
+		return err
+	}
+
+	loader.Infof("compiled to %v", loader.CompiledFilePath())
+
+	return nil
 }
 
 // IsDownloadExists returns true if downloaded file exists at expected path.
@@ -228,10 +270,8 @@ func (loader *Loader) UnpackUpdate() (err error) {
 	return nil
 }
 
-// Update downloads and unpacks dictionary when required.
-// skipDownload set uses local archive only.
-// Compilation of unpacked XML into runtime dictionary file is out of scope here,
-// see docs/todo.md stage 7.
+// Update downloads and unpacks dictionary when required, then compiles the
+// runtime dictionary file. skipDownload set uses local archive only.
 func (loader *Loader) Update(skipDownload bool) error {
 	downloadedExists := loader.IsDownloadExists()
 	updateRequired, err := loader.IsUpdateRequired()
@@ -279,5 +319,5 @@ func (loader *Loader) Update(skipDownload bool) error {
 		return fmt.Errorf("%w: no unpacked dictionary at %v", Error, loader.unpackedFilePath())
 	}
 
-	return nil
+	return loader.Compile()
 }

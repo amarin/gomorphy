@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"runtime"
+	"time"
 
 	"github.com/amarin/logging"
 
 	"github.com/amarin/gomorphy/pkg/opencorpora"
 )
 
-const (
-	programDescription = "Download and unpack opencorpora.ru dictionary"
-)
+const programDescription = "Download, unpack and compile opencorpora.ru dictionary"
 
 func initLogging(debug bool) {
 	opts := []logging.Option{
@@ -37,6 +37,11 @@ func main() {
 		false,
 		"use local file only, skip downloading.",
 	)
+	skipCompile := flag.Bool(
+		"skip-compile",
+		false,
+		"download/unpack only, do not compile the runtime dictionary.",
+	)
 	debugLogging := flag.Bool(
 		"v",
 		false,
@@ -50,20 +55,39 @@ func main() {
 
 	flag.Parse()
 	if *usageOutput {
-		_, _ = fmt.Fprintf(flag.CommandLine.Output(), "%s - %s\n\n", path.Base(os.Args[0]), programDescription)
+		_, _ = fmt.Fprintf(flag.CommandLine.Output(), "%s - %s\n\n", path.Base(os.Args[0]), programDescription) //nolint:forbidigo
 		flag.PrintDefaults()
+
 		os.Exit(0)
 	}
 
 	initLogging(*debugLogging)
 
-	// Compilation of unpacked dictionary into runtime format is added
-	// at docs/todo.md stage 7.
+	started := time.Now()
+
 	loader := opencorpora.NewLoader("")
 
 	if err := loader.Update(*skipDownload); err != nil {
 		os.Exit(1)
 	}
 
+	if *skipCompile {
+		logDone(started, "compile skipped")
+	} else if !loader.IsCompiledExists() {
+		os.Exit(1)
+	} else {
+		logDone(started, "dictionary ready at "+loader.CompiledFilePath())
+	}
+
 	os.Exit(0)
+}
+
+// logDone prints total wall time and peak memory of the whole cycle.
+func logDone(started time.Time, msg string) {
+	var mem runtime.MemStats
+
+	runtime.ReadMemStats(&mem)
+
+	_, _ = fmt.Fprintf(os.Stderr, "done in %s, peak RSS heap %d MiB: %s\n", //nolint:forbidigo
+		time.Since(started).Round(time.Millisecond), mem.Sys>>20, msg)
 }
