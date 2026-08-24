@@ -29,15 +29,15 @@ const defaultBufSize = 1 << 18
 // Scanner reads dict.xml from r and emits events to h.
 // It is not safe for concurrent use.
 type Scanner struct {
-	r io.Reader
-	h Handler
+	r   io.Reader
+	h   Handler
 	buf []byte
 	pos int
 	end int
 
-	tag  []byte
-	text []byte
-	ents []byte
+	tag       []byte
+	text      []byte
+	ents      []byte
 	tmpParent []byte
 	tmpName   []byte
 	attrs     []byte

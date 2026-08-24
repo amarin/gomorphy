@@ -61,11 +61,6 @@ func (loader *Loader) unpackedFilePath() string {
 	return loader.filePath(LocalUnpackedFilename)
 }
 
-// compiledFilePath returns path to compiled lemmata file.
-func (loader *Loader) compiledFilePath() string {
-	return loader.filePath(LocalCompiledFilename)
-}
-
 // IsDownloadExists returns true if downloaded file exists at expected path.
 func (loader *Loader) IsDownloadExists() bool {
 	loader.Info("check if downloaded file exists")

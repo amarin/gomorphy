@@ -131,10 +131,10 @@ func TestParseDelta32_Overflow(t *testing.T) {
 
 func TestOpen_SectionsRoundtrip(t *testing.T) {
 	f := buildFile(t, format.Version, map[string][]byte{
-		"texts":    bytes.Repeat([]byte("abracadabra"), 100),
-		"offsets":  format.AppendDelta32(nil, []uint32{0, 10, 20, 100500}),
-		"empty":    {},
-		"unicode":  []byte("ёжик в тумане"),
+		"texts":   bytes.Repeat([]byte("abracadabra"), 100),
+		"offsets": format.AppendDelta32(nil, []uint32{0, 10, 20, 100500}),
+		"empty":   {},
+		"unicode": []byte("ёжик в тумане"),
 	})
 
 	r, err := format.Open(f, int64(len(f.buf)))

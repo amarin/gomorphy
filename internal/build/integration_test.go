@@ -229,3 +229,76 @@ func TestIntegrationFullBuild(t *testing.T) {
 		t.Logf("%q -> lemma %q (%d postings)", w, snap.LemmaText(first[0]), len(snap.PostingsOf(state)))
 	}
 }
+
+func TestIntegrationSaveOpenFull(t *testing.T) {
+	f := openDict(t)
+
+	defer f.Close()
+
+	b := build.NewBuilderWithCapacity(3_100_000, 400_000, 5_500_000)
+	feed := &xmlFeed{b: b, rawPairs: map[string]struct{}{}, rawAncodes: map[string]struct{}{}}
+
+	if err := xmlscan.New(f, feed).Scan(); err != nil {
+		t.Fatal(err)
+	}
+
+	snap := b.Build()
+
+	path := filepath.Join(t.TempDir(), "full.gmrf")
+
+	start := time.Now()
+	if err := snap.SaveTo(path); err != nil {
+		t.Fatal(err)
+	}
+
+	saveDur := time.Since(start)
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	openStart := time.Now()
+
+	loaded, region, err := build.OpenFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer region.Close()
+
+	openDur := time.Since(openStart)
+
+	t.Logf("file=%d bytes (%.1f MB) save=%s open=%s",
+		info.Size(), float64(info.Size())/(1<<20), saveDur, openDur)
+	t.Logf("FT4 guidance: 110-120 MB uncompressed; compression is out of stage-5 scope")
+
+	// Rough section breakdown to guide future size work.
+	for _, e := range []struct {
+		name string
+		n    int
+		w    int
+	}{
+		{"texts.data", snap.TextCount(), 0},
+		{"exact", snap.TextCount(), 16},
+		{"pairs.text+ancode", snap.PairCount(), 8},
+		{"pair.lemmas", snap.PairCount(), 4},
+		{"trie targets", snap.StateCount(), 3},
+	} {
+		_ = e
+	}
+
+	t.Logf("dominant sections: texts.data ~%.0f MB, exact ~%.0f MB, pairs raw ~%.0f MB",
+		float64(len(snap.TextData))/(1<<20),
+		float64(16*snap.TextCount())/(1<<20),
+		float64(12*snap.PairCount())/(1<<20))
+
+	for _, w := range []string{"кот", "дом", "быть", "стекло"} {
+		stateA, okA := snap.LookupWord([]byte(w))
+		stateB, okB := loaded.LookupWord([]byte(w))
+
+		if okA != okB || stateA != stateB {
+			t.Errorf("word %q: built (%v,%v) != loaded (%v,%v)", w, okA, stateA, okB, stateB)
+		}
+	}
+}

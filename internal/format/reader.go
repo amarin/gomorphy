@@ -9,13 +9,22 @@ import (
 )
 
 type Reader struct {
-	r       Container
+	r       io.ReaderAt
 	size    int64
 	version uint32
 	entries []Entry
 }
 
 func Open(r Container, size int64) (*Reader, error) {
+	return openReaderAt(r, size)
+}
+
+// OpenRead opens a container from a read-only source such as an mmap region.
+func OpenRead(r io.ReaderAt, size int64) (*Reader, error) {
+	return openReaderAt(r, size)
+}
+
+func openReaderAt(r io.ReaderAt, size int64) (*Reader, error) {
 	var head [headerSize]byte
 
 	if _, err := r.ReadAt(head[:], 0); err != nil {

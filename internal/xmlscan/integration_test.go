@@ -135,4 +135,3 @@ func TestIntegrationFullCounts(t *testing.T) {
 		t.Errorf("lines (lemma words + form words): got %d, want %d", got, wantLines)
 	}
 }
-
