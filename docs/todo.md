@@ -92,12 +92,15 @@ indexOffset=0x1C, каталог из 2 секций, trailer xxh3 — чита�
 ## Этап 6. Публичный фасад pkg/dictionary (FT7–FT9)
 
 Инкремент: библиотечный API.
-- [ ] Open/NewEmpty/Lookup/Lemmas/Fuzzy(заглушка до этапа 9)/SaveTo/Builder.
-- [ ] Конкурентность: чтение из N горутин; два независимых экземпляра одновременно.
+- [x] Open/NewEmpty/Lookup/Lemmas/Fuzzy(заглушка до этапа 9)/SaveTo/Builder
+  (Builder — фасад над build.Builder: NewBuilder + AddGrammeme/AddLemma/
+  AddForm/Compile; Dictionary.Builder() реконструирует наполнение из снимка).
+- [x] Конкурентность: чтение из N горутин; два независимых экземпляра одновременно.
 Проверка:
-- `go test ./pkg/dictionary -race`: конкурентное чтение, параллельные экземпляры;
-- пример использования в doc.go (godoc-пример compiles);
-- отсутствие глобальных переменных: `grep`-проверка code review чеклистом.
+- [x] `go test ./pkg/dictionary -race`: конкурентное чтение, параллельные экземпляры;
+- [x] пример использования в example_test.go (godoc-пример с Output);
+- [x] отсутствие глобальных переменных: только immutable-snapshot поля,
+  закрытие через atomic.Bool (ErrClosed), пакетного состояния нет.
 
 ## Этап 7. Интеграция с OpenCorpora end-to-end
 

@@ -57,6 +57,10 @@ func loadFromRegion(reg []byte) (*Snapshot, error) {
 			return nil, err
 		}
 
+		if len(b) == 0 {
+			return nil, nil
+		}
+
 		if len(b)%4 != 0 {
 			return nil, fmt.Errorf("section %s: size %d not multiple of 4", name, len(b))
 		}
@@ -82,6 +86,10 @@ func loadFromRegion(reg []byte) (*Snapshot, error) {
 		b, err := raw(name)
 		if err != nil {
 			return nil, err
+		}
+
+		if len(b) == 0 {
+			return nil, nil
 		}
 
 		if len(b)%8 != 0 {
