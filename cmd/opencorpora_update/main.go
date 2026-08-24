@@ -3,26 +3,35 @@ package main
 import (
 	"flag"
 	"fmt"
-	_ "net/http/pprof"
 	"os"
 	"path"
 
 	"github.com/amarin/logging"
 
-	"github.com/amarin/gomorphy/internal/app"
 	"github.com/amarin/gomorphy/pkg/opencorpora"
 )
 
 const (
-	programDescription = "Load and/or build compiled index from downloaded opencorpora.ru dictionary"
+	programDescription = "Download and unpack opencorpora.ru dictionary"
 )
 
+func initLogging(debug bool) {
+	opts := []logging.Option{
+		logging.WithFormat(logging.FormatText),
+		logging.WithTarget(logging.StdErr),
+	}
+	if debug {
+		opts = append(opts, logging.WithLevel(logging.LevelDebug))
+	} else {
+		opts = append(opts, logging.WithLevel(logging.LevelInfo))
+	}
+	if err := logging.Init(opts...); err != nil {
+		fmt.Printf("logging: init: %v\n", err)
+		os.Exit(1)
+	}
+}
+
 func main() {
-	forceRecompile := flag.Bool(
-		"f",
-		true,
-		"force rebuild index from previously downloaded data even if compiled index already present",
-	)
 	skipDownload := flag.Bool(
 		"l",
 		false,
@@ -46,19 +55,13 @@ func main() {
 		os.Exit(0)
 	}
 
-	app.InitLogging(*debugLogging)
+	initLogging(*debugLogging)
 
-	logger := logging.NewNamedLogger("opencorpora")
-	logger.WithLevel(logging.LevelDebug)
-	// init loader
+	// Compilation of unpacked dictionary into runtime format is added
+	// at docs/todo.md stage 7.
 	loader := opencorpora.NewLoader("")
 
-	//// Start CPU profiling
-	//go func() {
-	//	http.ListenAndServe("localhost:8080", nil)
-	//}()
-
-	if err := loader.Update(*forceRecompile, *skipDownload); err != nil {
+	if err := loader.Update(*skipDownload); err != nil {
 		os.Exit(1)
 	}
 

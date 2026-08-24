@@ -1,1 +1,0 @@
-package opencorpora_test

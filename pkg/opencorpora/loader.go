@@ -1,7 +1,6 @@
 package opencorpora
 
 import (
-	"bufio"
 	"compress/bzip2"
 	"errors"
 	"fmt"
@@ -9,20 +8,15 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"runtime/debug"
 	"time"
 
-	"github.com/amarin/binutils"
-	"github.com/amarin/libxml"
 	"github.com/amarin/logging"
 
-	"github.com/amarin/gomorphy/internal/index"
 	"github.com/amarin/gomorphy/pkg/common"
-	"github.com/amarin/gomorphy/pkg/simple"
-	"github.com/amarin/gomorphy/pkg/size"
 )
 
-// Loader provides OpenCorpora dictionary parsing utilities.
+// Loader provides OpenCorpora dictionary download and unpacking utilities.
+// Compilation into runtime format is performed by pkg/dictionary, see docs/todo.md stage 7.
 type Loader struct {
 	logging.Logger
 	dataPath string
@@ -57,7 +51,7 @@ func (loader *Loader) filePath(fileName string) string {
 	return path.Join(loader.DataPath(), fileName)
 }
 
-// unpackedFilePath returns path to unpacked lemmata file.
+// downloadedFilePath returns path to downloaded archive file.
 func (loader *Loader) downloadedFilePath() string {
 	return loader.filePath(LocalSourceFilename)
 }
@@ -177,7 +171,7 @@ func (loader *Loader) DownloadUpdate() (updated bool, err error) {
 	}
 
 	// Get the response bytes from the url
-	response, err := http.Get(RemoteURL)
+	response, err := http.Get(RemoteURL) // nolint:gosec,noctx
 	if err != nil {
 		return false, err
 	}
@@ -200,7 +194,7 @@ func (loader *Loader) DownloadUpdate() (updated bool, err error) {
 		}
 	}()
 
-	if _, err = io.Copy(file, response.Body); err != nil {
+	if _, err = io.Copy(file, response.Body); err != nil { // nolint:gosec
 		return false, err
 	}
 
@@ -218,7 +212,7 @@ func (loader *Loader) UnpackUpdate() (err error) {
 		return err
 	}
 
-	if source, err = os.Open(loader.downloadedFilePath()); err != nil {
+	if source, err = os.Open(loader.downloadedFilePath()); err != nil { // nolint:gosec
 		return err
 	}
 
@@ -226,7 +220,7 @@ func (loader *Loader) UnpackUpdate() (err error) {
 
 	bzipSource = bzip2.NewReader(source)
 
-	if target, err = os.Create(loader.unpackedFilePath()); err != nil {
+	if target, err = os.Create(loader.unpackedFilePath()); err != nil { // nolint:gosec
 		return err
 	}
 
@@ -239,176 +233,55 @@ func (loader *Loader) UnpackUpdate() (err error) {
 	return nil
 }
 
-func (loader *Loader) LoadIndex() (mainIndex *index.Index, err error) {
-	var reader *binutils.BinaryReader
-
-	fromFile := loader.compiledFilePath()
-
-	loader.Debugf("opening %v", fromFile)
-	if reader, err = binutils.OpenFile(fromFile); err != nil {
-		return nil, fmt.Errorf("%w: open index: %v", Error, err)
+// Update downloads and unpacks dictionary when required.
+// skipDownload set uses local archive only.
+// Compilation of unpacked XML into runtime dictionary file is out of scope here,
+// see docs/todo.md stage 7.
+func (loader *Loader) Update(skipDownload bool) error {
+	downloadedExists := loader.IsDownloadExists()
+	updateRequired, err := loader.IsUpdateRequired()
+	if err != nil {
+		loader.Warnf("check updates: %v", err)
 	}
 
-	defer func() {
-		loader.Debugf("loading finished %v", fromFile)
-		if closeErr := reader.Close(); err != nil {
-			loader.Warnf("close index: %v", closeErr)
-		}
-
-		if err != nil {
-			loader.Error(err.Error())
-		} else {
-			loader.Infof("compiled index loaded from %v", fromFile)
-		}
-	}()
-
-	loader.Debug("create index instance")
-	mainIndex = index.New()
-
-	loader.Debug("load index data")
-	if err = mainIndex.BinaryReadFrom(reader); err != nil {
-		return nil, fmt.Errorf("%w: read index: %v", Error, err)
-	}
-
-	return mainIndex, nil
-}
-
-func (loader *Loader) SaveIndex(mainIndex indexInterface, toFile string) (err error) {
-	var writer *binutils.BinaryWriter
-
-	loader.Info("save compiled index")
-
-	if writer, err = binutils.CreateFile(toFile); err != nil {
-		return fmt.Errorf("%w: create index: %v", Error, err)
-	}
-
-	bufferedWriter := bufio.NewWriter(writer)
-
-	defer func() {
-		loader.Debugf("finishing %v", toFile)
-		if err = bufferedWriter.Flush(); err != nil {
-			loader.Warn(err.Error())
-		}
-
-		if closeErr := writer.Close(); err != nil {
-			loader.Warnf("close index: %v", closeErr)
-		}
-
-		if err != nil {
-			loader.Error(err.Error())
-
-			if removeErr := os.Remove(toFile); removeErr != nil {
-				loader.Warnf("remove incomplete index: %v", removeErr)
-			}
-		} else {
-			loader.Infof("compiled index saved at %v", toFile)
-		}
-	}()
-
-	idxSizeBefore := size.Of(mainIndex)
-	loader.Infof("indexed %d words %d nodes, %d bytes in memory", mainIndex.WordsCount(), mainIndex.NodesCount(), idxSizeBefore)
-	loader.Info("optimize index")
-
-	loader.Info("saving index")
-	switch typedIndex := mainIndex.(type) {
-	case newIndexType:
-		n, err := typedIndex.WriteTo(bufferedWriter)
-		if err != nil {
-			return fmt.Errorf("%w: write index: %v", Error, err)
-		}
-		loader.Info("written %d bytes", n)
-	case oldIndex:
-		typedIndex.Optimize()
-		if err = typedIndex.BinaryWriteTo(bufferedWriter); err != nil {
-			return fmt.Errorf("%w: save index: %v", Error, err)
-		}
-	}
-
-	return nil
-}
-
-func (loader *Loader) ParseUpdate(fromFile string, toFile string, mainIndex indexInterface) (err error) {
-	loader.Info("start parse")
-
-	parser := newParser(mainIndex)
-	// parser.SetMaxLemmas(1000)
-
-	defer func() {
-		if p := recover(); p != nil {
-			debug.PrintStack()
-			err = fmt.Errorf("%w: panic: %v", Error, p)
-		}
-	}()
-
-	err = libxml.ParseXMLFile(fromFile, parser)
-	if err != nil && !errors.Is(err, ErrControlledStop) {
-		return fmt.Errorf("parse: %w", err)
-	}
-
-	return loader.SaveIndex(mainIndex, toFile)
-}
-
-func (loader *Loader) Update(forceRecompile bool, skipDownload bool) (err error) {
-	var (
-		updated, updateRequired, downloadedExists, unpackedExists bool
-	)
-
-	loader.Info("check OpenCorpora updates")
-
-	downloadedExists = loader.IsDownloadExists()
-	updateRequired, err = loader.IsUpdateRequired()
-	unpackedExists = loader.IsUnpackedExists()
-
-	downloadRequired := (updateRequired || !downloadedExists) && !skipDownload
+	downloadRequired := !skipDownload && (updateRequired || !downloadedExists)
 	unpackRequired := false
-	compileRequired := forceRecompile || unpackedExists
 
 	if downloadRequired {
 		loader.Info("update required, downloading")
-		updated, err = loader.DownloadUpdate()
 
+		updated, err := loader.DownloadUpdate()
 		switch {
 		case err != nil:
 			loader.Errorf("download: %v", err)
 			return err
 		case !updated:
 			loader.Warn("files not updated, no errors")
-			return nil
 		default:
-			loader.Info("downloaded, unpacking")
-			unpackRequired = true
+			loader.Info("downloaded")
 		}
 	} else {
 		loader.Info("skip download")
 	}
 
-	if unpackRequired {
-		err = loader.UnpackUpdate()
+	if !loader.IsUnpackedExists() && loader.IsDownloadExists() {
+		unpackRequired = true
+	}
 
-		switch {
-		case err != nil:
+	if unpackRequired {
+		loader.Info("unpacking")
+
+		if err := loader.UnpackUpdate(); err != nil {
 			loader.Errorf("unpack: %v", err)
 			return err
-		default:
-			loader.Info("updated file unpacked updated, compile")
-			compileRequired = true
 		}
+		loader.Info("unpacked")
 	} else {
 		loader.Info("skip unpack")
 	}
 
-	if compileRequired {
-		var indexInstance indexInterface
-		indexInstance, err = simple.Create(64, 65535, 255)
-		if err != nil {
-			loader.Errorf("create index: %v", err)
-		}
-		if err = loader.ParseUpdate(loader.unpackedFilePath(), loader.compiledFilePath(), indexInstance); err != nil {
-			loader.Errorf("compile: %v", err)
-			return err
-		}
-	} else {
-		loader.Info("skip compile")
+	if !loader.IsUnpackedExists() {
+		return fmt.Errorf("%w: no unpacked dictionary at %v", Error, loader.unpackedFilePath())
 	}
 
 	return nil
