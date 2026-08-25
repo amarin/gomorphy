@@ -6,6 +6,7 @@ module github.com/amarin/gomorphy
 
 require (
 	github.com/amarin/logging v0.1.2
+	github.com/chzyer/readline v1.5.1
 	github.com/stretchr/testify v1.11.1
 	github.com/zeebo/xxh3 v1.1.0
 )

@@ -7,7 +7,7 @@ zero-allocation lookups.
 
 ## Features
 
-- **Exact lookup** — all grammatical readings of a wordform (POS, case, number, …)
+- **Exact lookup** — all grammatical readings of a wordform (POS, case, number, ...)
 - **Lemma resolution** — initial form + base tags for any wordform
 - **Fuzzy search** — Levenshtein automaton over a CSR trie, rune-level metrics
 - **Nearest-N** — iterative distance widening to find the true N closest words
@@ -16,69 +16,25 @@ zero-allocation lookups.
 
 ## Quick start
 
-### Install
-
 ```bash
+# Install
 go install github.com/amarin/gomorphy/cmd/gomorphy@latest
 go install github.com/amarin/gomorphy/cmd/opencorpora_update@latest
-```
 
-### Download and compile the dictionary
+# Download and compile dictionary
+opencorpora_update -l
 
-```bash
-opencorpora_update -l        # download + unpack + compile
-# produces .data/opencorpora/opencorpora.dict (~300 MB)
-```
-
-### Query
-
-```bash
+# Query
 gomorphy -dict .data/opencorpora/opencorpora.dict lookup кота
-# кота  NOUN,anim,masc,sing,gent  lemma#140411
-# кота  NOUN,anim,masc,sing,accs  lemma#140411
-
-gomorphy -dict .data/opencorpora/opencorpora.dict lemmas кота
-# #140411  кот  NOUN,anim,masc
-
-gomorphy -dict .data/opencorpora/opencorpora.dict fuzzy кот 1
-# 0  кот
-# 1  код
-# 1  крот
-# …
-
-gomorphy -dict .data/opencorpora/opencorpora.dict top кот 5
-# 0  кот
-# 1  бот
-# 1  вот
-# 1  гот
-# 1  дот
 ```
 
-## Library usage
+## Documentation
 
-```go
-import "github.com/amarin/gomorphy/pkg/dictionary"
-
-d, err := dictionary.Open("opencorpora.dict")
-if err != nil {
-    log.Fatal(err)
-}
-defer d.Close()
-
-forms, err := d.Lookup("кота")   // []Wordform
-lemmas, err := d.Lemmas("кота")  // []LemmaRef
-near, err := d.Fuzzy("кот", 2)   // []FuzzyMatch
-top5, err := d.FuzzyTop("кот", 5) // N nearest by edit distance
-```
-
-## Building from source
-
-```bash
-make build          # compile CLI binaries
-make lint           # golangci-lint
-make test           # go test -race ./...
-go test -tags integration -run TestFuzzyFullDict ./pkg/dictionary/
-```
+| Document | Description |
+|----------|-------------|
+| [docs/installation.md](docs/installation.md) | Установка библиотеки и CLI-утилит |
+| [docs/cli.md](docs/cli.md) | Использование CLI: lookup, lemmas, fuzzy, top |
+| [docs/library.md](docs/library.md) | Программное использование: подключение словаря, поиск, создание собственных словарей |
 
 ## Project structure
 
@@ -93,6 +49,14 @@ internal/intern        string interning table (zero-alloc on hit)
 internal/stringsx      byte arena + offset table
 internal/mmapx         mmap reader
 pkg/opencorpora        OpenCorpora download/unpack
+```
+
+## Building from source
+
+```bash
+make build          # compile CLI binaries
+make lint           # golangci-lint
+make test           # go test -race ./...
 ```
 
 ## License
