@@ -150,6 +150,12 @@ indexOffset=0x1C, каталог из 2 секций, trailer xxh3 — чита�
 - [x] Метрика по рунам, не по байтам: многобайтовые руны перечисляются
   цепочками байт через utf8.FullRune (Snapshot.Edges отдаёт окна CSR);
   «дом/дым» = 1 подстановка, «ежик/ёжик» = 1 подстановка.
+- [x] FuzzyTop(word, maxWords): выборка «ближайшие N слов» через итеративное
+  расширение дистанции. walkTrie вынесен как общий обход; FuzzyTop(…,0) —
+  точный пробник, отрицательные — ErrInvalidMaxWords. Тесты:
+  TestFuzzyTopZeroIsExactProbe, TestFuzzyTopNearestN (сверка с refLev-оракулом,
+  монотонный префикс, large request), TestFuzzyMatchesBruteforceOracle,
+  TestFuzzyTopFullDict (интеграционный).
 Проверка:
 - [x] unit-тесты (pkg/dictionary/fuzzy_test.go): «кот» k=1 → {код, крот},
   k=2 → +{год, дом}; «ёж/ёжик»; порог k=0 вырождается в точный поиск
@@ -157,7 +163,10 @@ indexOffset=0x1C, каталог из 2 секций, trailer xxh3 — чита�
 - [x] integration (fuzzy_integration_test.go): «слон→клон», «стул→стол»,
   k=0 согласован с Lookup; группировка по дистанции на полном словаре;
 - [x] benchmark: k=2 на полном словаре — 981 совпадение за ~0.7ms
-  (BenchmarkFuzzyK2), бюджет < 1 c перекрыт на три порядка.
+  (BenchmarkFuzzyK2), бюджет < 1c перекрыт на три порядка.
+- [x] Проверить и дописать при необходимости тесты (TestFuzzyTopFullDict и TestFuzzyTopNearestN,
+  TestFuzzyTopZeroIsExactProbe, TestFuzzyTopNearestN, TestFuzzyMatchesBruteforceOracle) (изменённые файлы
+  смотреть по git status), удостовериться что функционал работает.
 
 ## Этап 10. Финализация
 

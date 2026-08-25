@@ -25,10 +25,74 @@ func (d *Dictionary) Fuzzy(word string, maxDist int) ([]FuzzyMatch, error) {
 		return nil, ErrInvalidMaxDist
 	}
 
+	out := walkTrie(d.snap, word, maxDist)
+	if len(out) == 0 {
+		return nil, ErrNotFound
+	}
+
+	sortMatches(out)
+
+	return out, nil
+}
+
+// FuzzyTop returns up to maxWords dictionary words nearest to word (FT6),
+// ordered by (distance, text) so the cut at the boundary is deterministic.
+// The threshold widens iteratively from distance zero until enough words
+// are collected or the dictionary is exhausted — the result is always the
+// true nearest neighbourhood, not whatever happened to fall under some k.
+//
+// maxWords=0 degenerates into an exact-match probe: the word itself when
+// present, ErrNotFound otherwise. Negative values are rejected with
+// ErrInvalidMaxWords.
+func (d *Dictionary) FuzzyTop(word string, maxWords int) ([]FuzzyMatch, error) {
+	if err := d.checkClosed(); err != nil {
+		return nil, err
+	}
+
+	if maxWords < 0 {
+		return nil, ErrInvalidMaxWords
+	}
+
+	if maxWords == 0 {
+		return d.Fuzzy(word, 0)
+	}
+
+	total := d.snap.TextCount()
+	found := make([]FuzzyMatch, 0, min(maxWords, total))
+	seen := make(map[string]struct{}, maxWords)
+
+	for dist := 0; len(found) < maxWords && len(seen) < total; dist++ {
+		for _, m := range walkTrie(d.snap, word, dist) {
+			if _, dup := seen[m.Text]; dup {
+				continue
+			}
+
+			seen[m.Text] = struct{}{}
+			found = append(found, m)
+
+			if len(found) == maxWords {
+				break
+			}
+		}
+	}
+
+	if len(found) == 0 {
+		return nil, ErrNotFound
+	}
+
+	sortMatches(found)
+
+	return found, nil
+}
+
+// walkTrie runs one banded-DP pass over the trie and returns unsorted hits
+// within k. Every hit carries its exact distance (≤ k), so successive
+// widening passes in FuzzyTop only surface genuinely new words.
+func walkTrie(s *build.Snapshot, word string, k int) []FuzzyMatch {
 	f := fuzzySearch{
-		s:    d.snap,
+		s:    s,
 		q:    []rune(word),
-		k:    maxDist,
+		k:    k,
 		path: make([]byte, 0, 32),
 	}
 
@@ -39,19 +103,17 @@ func (d *Dictionary) Fuzzy(word string, maxDist int) ([]FuzzyMatch, error) {
 
 	f.visit(0, 0, row)
 
-	if len(f.out) == 0 {
-		return nil, ErrNotFound
-	}
+	return f.out
+}
 
-	sort.Slice(f.out, func(i, j int) bool {
-		if f.out[i].Distance != f.out[j].Distance {
-			return f.out[i].Distance < f.out[j].Distance
+func sortMatches(out []FuzzyMatch) {
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Distance != out[j].Distance {
+			return out[i].Distance < out[j].Distance
 		}
 
-		return f.out[i].Text < f.out[j].Text
+		return out[i].Text < out[j].Text
 	})
-
-	return f.out, nil
 }
 
 // fuzzySearch carries the state of one Fuzzy walk. rows[depth] holds the DP

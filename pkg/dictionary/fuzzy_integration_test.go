@@ -160,6 +160,58 @@ func findCompiledDictPath() string {
 	}
 }
 
+// TestFuzzyTopFullDict checks the nearest-N variant on the real dictionary:
+// exact probe, monotone prefix property and the stage budget.
+func TestFuzzyTopFullDict(t *testing.T) {
+	d := openCompiledDict(t)
+
+	defer func() { _ = d.Close() }()
+
+	t.Run("maxWords=0 is an exact probe", func(t *testing.T) {
+		got, err := d.FuzzyTop("таутога", 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(got) != 1 || got[0].Text != "таутога" || got[0].Distance != 0 {
+			t.Fatalf("FuzzyTop(таутога, 0) = %v", got)
+		}
+
+		if _, err := d.FuzzyTop("qqqqzzzz", 0); err == nil {
+			t.Error("nonsense word unexpectedly matched")
+		}
+	})
+
+	t.Run("top-20 is sorted and prefixes top-50", func(t *testing.T) {
+		start := time.Now()
+
+		top20, err := d.FuzzyTop("человек", 20)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		top50, err := d.FuzzyTop("человек", 50)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		t.Logf("FuzzyTop(человек): 20 in %s, 50 in %s",
+			time.Since(start)/2, time.Since(start))
+
+		distMap(t, top20)
+
+		if len(top20) != 20 {
+			t.Fatalf("got %d matches, want 20", len(top20))
+		}
+
+		for i := range top20 {
+			if top20[i] != top50[i] {
+				t.Fatalf("prefix mismatch at %d: %v vs %v", i, top20[i], top50[i])
+			}
+		}
+	})
+}
+
 // BenchmarkFuzzyK2 measures a full-dictionary k=2 query (stage-9 budget).
 func BenchmarkFuzzyK2(b *testing.B) {
 	d, cleanup, err := openBenchDict()

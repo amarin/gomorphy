@@ -41,6 +41,9 @@ var (
 
 	// ErrInvalidMaxDist is returned by Fuzzy when maxDist is negative.
 	ErrInvalidMaxDist = errors.New("dictionary: negative maxDist")
+
+	// ErrInvalidMaxWords is returned by FuzzyTop when maxWords is negative.
+	ErrInvalidMaxWords = errors.New("dictionary: negative maxWords")
 )
 
 // Wordform is one dictionary reading of a word: surface text with its full
