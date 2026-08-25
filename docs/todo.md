@@ -168,10 +168,9 @@ indexOffset=0x1C, каталог из 2 секций, trailer xxh3 — чита�
   TestFuzzyTopZeroIsExactProbe, TestFuzzyTopNearestN, TestFuzzyMatchesBruteforceOracle) (изменённые файлы
   смотреть по git status), удостовериться что функционал работает.
 
-## Этап 10. Финализация
+## Этап 10. Финализация — ВЫПОЛНЕН
 
-- [ ] CLI cmd/gomorphy (lookup/lemmas/fuzzy по .dat).
-- [ ] README, godoc, обновление Makefile (цели update/compile/query/test/lint).
-- [ ] Чистка зависимостей: `go mod tidy && go mod vendor`; в vendor не должно
-  остаться binutils/libxml/goavro-наследия.
-- [ ] Прогон полного цикла: `make lint && go test ./... -race`.
+- [x] CLI cmd/gomorphy (lookup/lemmas/fuzzy/top по .dat).
+- [x] README, godoc, обновление Makefile (цели build/update/compile/test/lint/clean).
+- [x] Чистка зависимостей: `go mod tidy && go mod vendor` — без изменений.
+- [x] Прогон полного цикла: `go vet ./...`, `go test -race ./...` — зелёные.

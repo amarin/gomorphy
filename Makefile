@@ -1,84 +1,41 @@
-# see example at https://github.com/akiyosi/goneovim/blob/master/Makefile
-
-#SHELL:=/bin/bash
-#export SHELL
-
-TAG := $(shell git describe --tags --abbrev=0)
-VERSION := $(shell git describe --tags)
-VERSION_HASH := $(shell git rev-parse HEAD)
-PRODUCER := com.amarin.gomorphy
-
-ORIGIN:=imgdesk
-ORIGIN_MAC:=$(ORIGIN).app
-PACKAGES=pkg
-
-# deployment directory
-DEPLOYMENT_PREFIX:=./deploy
-
-# Go parameters
 GOCMD=GO111MODULE=on go
-DEPCMD=$(GOCMD) mod
 GOBUILD=$(GOCMD) build
-GOCLEAN=$(GOCMD) clean
 GOTEST=$(GOCMD) test
-GOGET=$(GOCMD) get
 
-# Detect GOOS. By default build release for current OS. Redefine GOOS to cross-build.
-GOOS ?= $(shell go env GOOS)
+DEPLOYMENT_PREFIX=./deploy
 
-.PHONY: clean debug run build build-docker-linux build-docker-windows
-
-# If the first argument is "run"...
-ifeq (debug,$(firstword $(MAKECMDGOALS)))
-  # use the rest as arguments for "run"
-  DEBUG_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
-  # ...and turn them into do-nothing targets
-  $(eval $(DEBUG_ARGS):;@:)
-endif
+.PHONY: all build lint tidy deps race test update compile clean help
 
 all: build
 
-lint: ## Lint the files
+build: ## Build CLI binaries
+	@mkdir -p $(DEPLOYMENT_PREFIX)
+	$(GOBUILD) -o $(DEPLOYMENT_PREFIX)/gomorphy ./cmd/gomorphy
+	$(GOBUILD) -o $(DEPLOYMENT_PREFIX)/opencorpora_update ./cmd/opencorpora_update
+
+update: ## Download and compile OpenCorpora dictionary
+	$(DEPLOYMENT_PREFIX)/opencorpora_update -l
+
+compile: ## Compile existing dict.xml to .dat
+	$(DEPLOYMENT_PREFIX)/opencorpora_update -l -v
+
+test: ## Run all unit tests with race detector
+	$(GOTEST) -race -count=1 ./...
+
+test-integration: ## Run integration tests (requires compiled dictionary)
+	$(GOTEST) -race -tags integration -count=1 -run 'Integration|FullDict' ./pkg/dictionary/
+
+lint: ## Run golangci-lint
 	@golangci-lint run
 
-tidy: ## Fix dependencies records in go.mod
+tidy: ## Tidy go.mod
 	@go mod tidy
 
-deps: tidy ## Get the dependencies
-	$(DEPCMD) vendor
+deps: tidy ## Vendor dependencies
+	@go mod vendor
 
-race: deps ## Run data race detector
-	@go test -race -short ${PKG_LIST}
+clean: ## Remove build artifacts
+	rm -rf $(DEPLOYMENT_PREFIX)
 
-msan: deps ## Run memory sanitizer
-	@go test -msan -short ${PKG_LIST}
-
-make_deploy:
-	@echo "make deployment at ./$(DEPLOYMENT_PREFIX)"
-	@mkdir -p ./$(DEPLOYMENT_PREFIX)
-
-opencorpora_update: make_deploy
-	@echo "build $@ at $(DEPLOYMENT_PREFIX)"
-	${GOBUILD} -o $(DEPLOYMENT_PREFIX)/opencorpora_update ./cmd/opencorpora_update/main.go
-
-build: opencorpora_update ## build executable for target os
-
-debug:
-	@export GO111MODULE=off
-	cd $(CMDMAINPATH)
-	test -f ../../$(PACKAGES)/moc.go & $(CMD_QT_MOC)
-	dlv debug --build-flags -race -- $(DEBUG_ARGS)
-
-run:
-	@export GO111MODULE=off
-	cd $(CMDMAINPATH)
-	test -f ../../$(PACKAGES)/moc.go & $(CMD_QT_MOC)
-	go run $(CMDMAINPATH)/main.go
-
-clean:
-	@export GO111MODULE=off
-	rm -fr $(CMDMAINPATH)/deploy/*
-	rm -fr $(PACKAGES)/*moc*
-
-help: ## Display this help screen
-	@grep -h -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+help: ## Display this help
+	@grep -h -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
