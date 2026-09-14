@@ -52,15 +52,10 @@ func (loader *Loader) filePath(fileName string) string {
 // IsUnpackedExists returns true if the unpacked dict.xml exists.
 func (loader *Loader) IsUnpackedExists() bool {
 	loader.Info("check if unpacked file exists")
-	expectedFile := loader.unpackedFilePath()
+	expectedFile := loader.UnpackedFilePath()
 	loader.Debugf("check file %v", expectedFile)
 	_, err := os.Stat(expectedFile)
 	return err == nil
-}
-
-// UnpackedFilePath returns the path to the unpacked file (internal alias).
-func (loader *Loader) unpackedFilePath() string {
-	return loader.filePath(LocalUnpackedFilename)
 }
 
 // IsDownloadExists returns true if the downloaded archive exists.
@@ -69,16 +64,12 @@ func (loader *Loader) IsDownloadExists() bool {
 	expectedFile := loader.downloadedFilePath()
 	loader.Debugf("check file %v", expectedFile)
 	fileStat, err := os.Stat(expectedFile)
-	switch {
-	case err != nil && errors.Is(err, os.ErrNotExist):
+	if err != nil {
 		return false
-	case err != nil:
-		return false
-	default:
-		loader.Debugf("exists: %s: modified %s: size %d",
-			expectedFile, fileStat.ModTime().Format("2006-01-02T15:04:05Z07:00"), fileStat.Size())
-		return true
 	}
+	loader.Debugf("exists: %s: modified %s: size %d",
+		expectedFile, fileStat.ModTime().Format("2006-01-02T15:04:05Z07:00"), fileStat.Size())
+	return true
 }
 
 func (loader *Loader) downloadedFilePath() string {
@@ -91,8 +82,11 @@ func (loader *Loader) IsUpdateRequired() (bool, error) {
 	expectedFile := loader.downloadedFilePath()
 	loader.Debugf("check file %v", expectedFile)
 	fileStat, err := os.Stat(expectedFile)
-	if err != nil && errors.Is(err, os.ErrNotExist) {
-		return true, nil
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return true, nil
+		}
+		return false, err
 	}
 
 	loader.Debugf("check remote %v", RemoteURL)
@@ -101,6 +95,7 @@ func (loader *Loader) IsUpdateRequired() (bool, error) {
 		loader.Warnf("remote %v: error: %v", RemoteURL, err)
 		return false, err
 	}
+	defer response.Body.Close()
 
 	if response.StatusCode != 200 {
 		return false, fmt.Errorf("unexpected response code %v", response.StatusCode)
@@ -167,7 +162,7 @@ func (loader *Loader) UnpackUpdate() error {
 
 	bzipSource := bzip2.NewReader(source)
 
-	target, err := os.Create(loader.unpackedFilePath())
+	target, err := os.Create(loader.UnpackedFilePath())
 	if err != nil {
 		return err
 	}
@@ -220,7 +215,7 @@ func (loader *Loader) Sync(skipDownload bool) error {
 	}
 
 	if !loader.IsUnpackedExists() {
-		return fmt.Errorf("%w: no unpacked dictionary at %v", Error, loader.unpackedFilePath())
+		return fmt.Errorf("%w: no unpacked dictionary at %v", Error, loader.UnpackedFilePath())
 	}
 
 	return nil
