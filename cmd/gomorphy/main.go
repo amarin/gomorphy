@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/amarin/gomorphy/pkg/common"
 	"github.com/amarin/gomorphy/pkg/morphology"
 	"github.com/chzyer/readline"
 )
@@ -75,10 +76,10 @@ func main() {
 	if flag.Arg(0) == "import" {
 		importArgs := flag.Args()[1:]
 		out := *outPath
-		if o := findOutFlag(importArgs); o != "" {
+		if o := common.FindOutFlag(importArgs); o != "" {
 			out = o
 		}
-		runImport(stripOutFlag(importArgs), out)
+		runImport(common.StripOutFlag(importArgs), out)
 		return
 	}
 
@@ -130,36 +131,6 @@ func main() {
 	}
 }
 
-// findOutFlag ищет -o <path> (или -o=<path>) в positional args — flag-пакет
-// останавливает парсинг на первом нефлаге, поэтому после подкоманды
-// флаги приходится доставать вручную.
-func findOutFlag(args []string) string {
-	for i := 0; i < len(args); i++ {
-		if args[i] == "-o" && i+1 < len(args) {
-			return args[i+1]
-		}
-		if strings.HasPrefix(args[i], "-o=") {
-			return strings.TrimPrefix(args[i], "-o=")
-		}
-	}
-	return ""
-}
-
-func stripOutFlag(args []string) []string {
-	out := make([]string, 0, len(args))
-	for i := 0; i < len(args); i++ {
-		if args[i] == "-o" {
-			i++
-			continue
-		}
-		if strings.HasPrefix(args[i], "-o=") {
-			continue
-		}
-		out = append(out, args[i])
-	}
-	return out
-}
-
 func runImport(args []string, out string) {
 	if len(args) < 2 {
 		fmt.Fprintln(os.Stderr, "error: usage: gomorphy import <source> <path> -o <out.dat>")
@@ -171,33 +142,33 @@ func runImport(args []string, out string) {
 
 	switch source {
 	case "pymorphy2":
-		d, err := morphology.OpenPyMorphy(path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: import pymorphy2: %v\n", err)
-			os.Exit(1)
-		}
-		if err := d.SaveTo(out); err != nil {
-			fmt.Fprintf(os.Stderr, "error: write %s: %v\n", out, err)
-			os.Exit(1)
-		}
-		fmt.Printf("saved %s\n", out)
-
+		importAndSave(source, out, func() (*morphology.Dictionary, error) {
+			return morphology.OpenPyMorphy(path)
+		})
 	case "opencorpora":
-		d, err := morphology.CompileFromXMLFile(path, nil)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: import opencorpora: %v\n", err)
-			os.Exit(1)
-		}
-		if err := d.SaveTo(out); err != nil {
-			fmt.Fprintf(os.Stderr, "error: write %s: %v\n", out, err)
-			os.Exit(1)
-		}
-		fmt.Printf("saved %s\n", out)
-
+		importAndSave(source, out, func() (*morphology.Dictionary, error) {
+			return morphology.CompileFromXMLFile(path, nil)
+		})
 	default:
 		fmt.Fprintf(os.Stderr, "error: unknown import source %q (use pymorphy2 or opencorpora)\n", source)
 		os.Exit(1)
 	}
+}
+
+// importAndSave runs load (a source-specific import/compile call), then
+// saves the resulting dictionary to out. source is only used for error
+// messages.
+func importAndSave(source, out string, load func() (*morphology.Dictionary, error)) {
+	d, err := load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: import %s: %v\n", source, err)
+		os.Exit(1)
+	}
+	if err := d.SaveTo(out); err != nil {
+		fmt.Fprintf(os.Stderr, "error: write %s: %v\n", out, err)
+		os.Exit(1)
+	}
+	fmt.Printf("saved %s\n", out)
 }
 
 func runConsole(d *morphology.Dictionary) {
@@ -214,7 +185,7 @@ func runConsole(d *morphology.Dictionary) {
 		os.Exit(1)
 	}
 
-	defer rl.Close()
+	defer func() { _ = rl.Close() }()
 
 	for {
 		line, err := rl.Readline()

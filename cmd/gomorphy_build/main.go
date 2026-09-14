@@ -27,12 +27,11 @@ import (
 	"github.com/amarin/gomorphy/pkg/opencorpora"
 )
 
-const programVersion = "0.1.0"
-
 var (
-	debug     = flag.Bool("d", false, "enable debug logging")
-	skipDL    = flag.Bool("l", false, "use local file only, skip downloading")
-	output    = flag.String("o", "", "output .dat path (default: auto)")
+	debug       = flag.Bool("d", false, "enable debug logging")
+	skipDL      = flag.Bool("l", false, "use local file only, skip downloading")
+	output      = flag.String("o", "", "output .dat path (default: auto)")
+	showVersion = flag.Bool("version", false, "print version and exit")
 )
 
 func main() {
@@ -50,6 +49,7 @@ Flags:
   -d          debug logging
   -l          skip downloading (local only)
   -o <path>   output file path (default depends on command)
+  -version    print version and exit
 
 Examples:
   gomorphy_build update          # download + unpack + compile
@@ -61,12 +61,20 @@ Examples:
 
 	flag.Parse()
 
+	if *showVersion {
+		fmt.Println(morphology.Version)
+		return
+	}
+
 	if flag.NArg() == 0 {
 		flag.Usage()
 		os.Exit(1)
 	}
 
 	command := flag.Arg(0)
+	if o := common.FindOutFlag(flag.Args()[1:]); o != "" {
+		*output = o
+	}
 
 	switch command {
 	case "update":
@@ -176,87 +184,12 @@ func resolveOutputPath(dataPath string) string {
 }
 
 // compileAndSave runs the GMOR compilation with a background progress printer.
-// The progress callback updates atomic values; a goroutine prints every 10s.
 func compileAndSave(xmlPath, datPath string, started time.Time) error {
-	var (
-		processed      int64
-		total          int64
-		phase          int64 // 0=insert, 1=compile
-	)
+	pp := newProgressPrinter(started)
+	go pp.run()
 
-	progress := func(a, b int) {
-		atomic.StoreInt64(&processed, int64(a))
-		atomic.StoreInt64(&total, int64(b))
-		if b > 0 && int64(a) >= int64(b)-100 {
-			atomic.StoreInt64(&phase, 1)
-		}
-	}
-
-	// Start background printer goroutine.
-	stop := make(chan struct{})
-	go func() {
-		ticker := time.NewTicker(10 * time.Second)
-		defer ticker.Stop()
-		lastProcessed := int64(0)
-		lastReport := time.Now()
-		for {
-			select {
-			case <-stop:
-				return
-			case <-ticker.C:
-				elapsed := time.Since(started)
-				elapsedRounded := elapsed.Round(time.Second)
-				p := atomic.LoadInt64(&processed)
-				t := atomic.LoadInt64(&total)
-				currentPhase := atomic.LoadInt64(&phase)
-
-				rate := float64(0)
-				if p != lastProcessed {
-					dt := time.Since(lastReport).Seconds()
-					if dt > 0 {
-						rate = float64(p-lastProcessed) / dt
-					}
-				}
-				lastProcessed = p
-				lastReport = time.Now()
-
-				var msg string
-				var eta string
-				if t > 0 {
-					pct := int(p * 100 / t)
-					remainingKeys := t - p
-					var remaining time.Duration
-					if rate > 0 && remainingKeys > 0 {
-						remaining = time.Duration(float64(remainingKeys)/rate) * time.Second
-					}
-
-					if currentPhase == 0 {
-						msg = fmt.Sprintf("  [build] %d/%d (%d%%), %d keys/s, elapsed %s",
-							p, t, pct, int64(rate), elapsedRounded)
-					} else {
-						msg = fmt.Sprintf("  [compile] %d/%d (%d%%), %d nodes/s, elapsed %s",
-							p, t, pct, int64(rate), elapsedRounded)
-					}
-
-					if remaining > 0 && remaining < elapsed*3 {
-						eta = fmt.Sprintf(" eta %s", remaining.Round(time.Second))
-					} else if rate > 0 {
-						eta = fmt.Sprintf(" eta ~%s", remaining.Round(time.Second))
-					}
-					msg += eta
-				} else {
-					msg = fmt.Sprintf("  [build] processing, elapsed %s", elapsedRounded)
-				}
-				fmt.Fprintf(os.Stderr, "\r%s\r", msg)
-				os.Stderr.Sync()
-			}
-		}
-	}()
-
-	// Run compile (blocks until done).
-	d, err := morphology.CompileFromXMLFile(xmlPath, progress)
-	close(stop)
-	fmt.Fprint(os.Stderr, "\n") // finish the progress line
+	d, err := morphology.CompileFromXMLFile(xmlPath, pp.update)
+	pp.stop()
 
 	if err != nil {
 		return fmt.Errorf("compile: %w", err)
@@ -267,6 +200,108 @@ func compileAndSave(xmlPath, datPath string, started time.Time) error {
 	}
 
 	return nil
+}
+
+// progressPrinter prints a "[phase] processed/total (pct%), rate, elapsed,
+// eta" line to stderr every 10s from a background goroutine (run), driven
+// by progress reports from the compiler (update).
+type progressPrinter struct {
+	started time.Time
+
+	processed int64
+	total     int64
+	phase     int64 // 0=insert, 1=compile
+
+	stopCh chan struct{}
+
+	// touched only by run's own goroutine, never concurrently.
+	lastProcessed int64
+	lastReport    time.Time
+}
+
+func newProgressPrinter(started time.Time) *progressPrinter {
+	return &progressPrinter{started: started, stopCh: make(chan struct{}), lastReport: started}
+}
+
+// update is the progress callback passed to the compiler: records the
+// latest counters and flips to the "compile" phase once insertion is
+// nearly done. Safe for concurrent use with run.
+func (p *progressPrinter) update(processed, total int) {
+	atomic.StoreInt64(&p.processed, int64(processed))
+	atomic.StoreInt64(&p.total, int64(total))
+	if total > 0 && int64(processed) >= int64(total)-100 {
+		atomic.StoreInt64(&p.phase, 1)
+	}
+}
+
+// run prints a progress line every 10s until stop is called. Meant to run
+// in its own goroutine.
+func (p *progressPrinter) run() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-p.stopCh:
+			return
+		case <-ticker.C:
+			p.printLine()
+		}
+	}
+}
+
+func (p *progressPrinter) printLine() {
+	elapsed := time.Since(p.started)
+	elapsedRounded := elapsed.Round(time.Second)
+	processed := atomic.LoadInt64(&p.processed)
+	total := atomic.LoadInt64(&p.total)
+	phase := atomic.LoadInt64(&p.phase)
+
+	rate := float64(0)
+	if processed != p.lastProcessed {
+		dt := time.Since(p.lastReport).Seconds()
+		if dt > 0 {
+			rate = float64(processed-p.lastProcessed) / dt
+		}
+	}
+	p.lastProcessed = processed
+	p.lastReport = time.Now()
+
+	var msg, eta string
+	if total > 0 {
+		pct := int(processed * 100 / total)
+		remainingKeys := total - processed
+		var remaining time.Duration
+		if rate > 0 && remainingKeys > 0 {
+			remaining = time.Duration(float64(remainingKeys)/rate) * time.Second
+		}
+
+		if phase == 0 {
+			msg = fmt.Sprintf("  [build] %d/%d (%d%%), %d keys/s, elapsed %s",
+				processed, total, pct, int64(rate), elapsedRounded)
+		} else {
+			msg = fmt.Sprintf("  [compile] %d/%d (%d%%), %d nodes/s, elapsed %s",
+				processed, total, pct, int64(rate), elapsedRounded)
+		}
+
+		if remaining > 0 && remaining < elapsed*3 {
+			eta = fmt.Sprintf(" eta %s", remaining.Round(time.Second))
+		} else if rate > 0 {
+			eta = fmt.Sprintf(" eta ~%s", remaining.Round(time.Second))
+		}
+		msg += eta
+	} else {
+		msg = fmt.Sprintf("  [build] processing, elapsed %s", elapsedRounded)
+	}
+	fmt.Fprintf(os.Stderr, "\r%s\r", msg)
+	_ = os.Stderr.Sync()
+}
+
+// stop halts the background goroutine and prints a trailing newline to
+// finish the progress line.
+func (p *progressPrinter) stop() {
+	close(p.stopCh)
+	fmt.Fprint(os.Stderr, "\n")
 }
 
 func logDone(started time.Time, msg string) {
