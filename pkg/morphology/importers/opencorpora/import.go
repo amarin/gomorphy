@@ -65,11 +65,11 @@ func encodeU16s(u []uint16) []byte {
 //
 // Pipeline:
 //
-//	1. xmlscan собирает все леммы с словоформами.
-//	2. Для каждой леммы вычисляется LCP-stem всех словоформ.
-//	3. Каждая словоформа → (suffix_id, tag_id) в парадигму.
-//	4. Парадигмы дедуплицируются через map[paradigmKey] → paradigmID.
-//	5. Строится DAWG из ключей (stem + suffix, value=paraID<<16|formIdx).
+//  1. xmlscan собирает все леммы с словоформами.
+//  2. Для каждой леммы вычисляется LCP-stem всех словоформ.
+//  3. Каждая словоформа → (suffix_id, tag_id) в парадигму.
+//  4. Парадигмы дедуплицируются через map[paradigmKey] → paradigmID.
+//  5. Строится DAWG из ключей (stem + suffix, value=paraID<<16|formIdx).
 //
 // progress — необязательный callback для вывода прогресса.
 // Вызывается каждые 10 секунд: (processed_keys, total_keys) при сборке DAWG.
@@ -124,19 +124,28 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 
 			sid, ok := suffixTexts[suffix]
 			if !ok {
+				if len(suffixList) >= 1<<16 {
+					return nil, fmt.Errorf("opencorpora: too many unique suffixes (max 65536)")
+				}
 				sid = uint16(len(suffixList))
 				suffixTexts[suffix] = sid
 				suffixList = append(suffixList, suffix)
 			}
 			suffixIDs = append(suffixIDs, sid)
 
-			tid := tagSet.Add(frm.gramm)
+			tid, err := tagSet.Add(frm.gramm)
+			if err != nil {
+				return nil, fmt.Errorf("opencorpora: %w", err)
+			}
 			tagIDs = append(tagIDs, tid)
 		}
 
 		hash := paradigmKeyHash(suffixIDs, tagIDs)
 		paraID, ok := paradigmsDedup[hash]
 		if !ok {
+			if len(paradigms) >= 1<<16 {
+				return nil, fmt.Errorf("opencorpora: too many unique paradigms (max 65536)")
+			}
 			paraID = uint16(len(paradigms))
 			paradigmsDedup[hash] = paraID
 
@@ -189,12 +198,16 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 
 // xmlHandler implements xmlscan.Handler to collect lemmas and forms.
 type xmlHandler struct {
-	tagSet    *internal.TagSet
-	lemmas    *[]lemmaEntry
-	curForm   *formGrams
-	err       error
-	curGrams  []string
-	lGrams    []string // gramms from <l g="..."> — used as fallback for <f> without <g>
+	tagSet   *internal.TagSet
+	lemmas   *[]lemmaEntry
+	curForm  *formGrams
+	err      error
+	curGrams []string
+	// lGrams is declared but never populated or read — it predates the fix
+	// for the OpenCorpora tag bug (docs/code-review-pre-1.0.md), where
+	// lemma-level grammemes never reach any form's tag. Whoever designs that
+	// fix should decide whether a field like this is still needed.
+	lGrams []string
 }
 
 func (h *xmlHandler) OnGrammeme(_ []byte, name []byte) error {
@@ -290,6 +303,6 @@ func CompileFromXMLFile(path string, progress Progress) (*internal.Dictionary, e
 	if err != nil {
 		return nil, fmt.Errorf("opencorpora: open %s: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return CompileFromXML(f, progress)
 }

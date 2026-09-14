@@ -144,27 +144,62 @@ func SaveContainer(path string, sections []Section) error {
 		return err
 	}
 
-	catalogLen := 2 + len(sections)*entrySize
-	placed := make([]struct{ offset int64 }, len(sections))
+	catalogLen, placed := layoutSections(sections)
+
+	dir := filepath.Dir(path)
+	if dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("format: mkdir %s: %w", dir, err)
+		}
+	}
+
+	// Write to a temp file and rename into place on success, so a failure
+	// partway through (disk full, process killed) never leaves a truncated
+	// file at path — Open() would reject it by checksum, but a broken file
+	// sitting where a working one is expected is still a bad experience.
+	f, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("format: create temp file: %w", err)
+	}
+	tmpPath := f.Name()
+	defer func() {
+		_ = f.Close()
+		_ = os.Remove(tmpPath) // no-op once renamed to path
+	}()
+
+	if err := writeSections(f, sections, placed, catalogLen); err != nil {
+		return err
+	}
+	if err := finalizeChecksum(f); err != nil {
+		return err
+	}
+
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("format: close temp file: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("format: rename %s -> %s: %w", tmpPath, path, err)
+	}
+	return nil
+}
+
+// layoutSections computes each section's byte offset (8-aligned, right
+// after the header+catalog) and the total catalog length.
+func layoutSections(sections []Section) (catalogLen int, placed []struct{ offset int64 }) {
+	catalogLen = 2 + len(sections)*entrySize
+	placed = make([]struct{ offset int64 }, len(sections))
 	pos := int64(headerSize + catalogLen)
 	for i, s := range sections {
 		pos = align8(pos)
 		placed[i].offset = pos
 		pos += int64(len(s.Data))
 	}
+	return catalogLen, placed
+}
 
-	if dir := filepath.Dir(path); dir != "." {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return fmt.Errorf("format: mkdir %s: %w", dir, err)
-		}
-	}
-
-	f, err := os.Create(path)
-	if err != nil {
-		return fmt.Errorf("format: create %s: %w", path, err)
-	}
-	defer func() { _ = f.Close() }()
-
+// writeSections writes the header+catalog followed by each section's
+// padding and data, per the layout computed by layoutSections.
+func writeSections(f *os.File, sections []Section, placed []struct{ offset int64 }, catalogLen int) error {
 	if err := writeContainerHead(f, sections, placed); err != nil {
 		return err
 	}
@@ -182,7 +217,12 @@ func SaveContainer(path string, sections []Section) error {
 		}
 		cur += int64(len(s.Data))
 	}
+	return nil
+}
 
+// finalizeChecksum computes the checksum over the data just written,
+// patches it into the header, and syncs the file to disk.
+func finalizeChecksum(f *os.File) error {
 	sum, err := checksumFile(f, headerSize)
 	if err != nil {
 		return fmt.Errorf("format: checksum: %w", err)
@@ -195,7 +235,10 @@ func SaveContainer(path string, sections []Section) error {
 	if _, err := f.Write(chk[:]); err != nil {
 		return fmt.Errorf("format: write checksum: %w", err)
 	}
-	return f.Sync()
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("format: sync: %w", err)
+	}
+	return nil
 }
 
 // OpenContainer валидирует файл GMOR по байтам (magic, version, checksum,
@@ -413,7 +456,9 @@ func DecodeTagSet(data []byte) (*TagSet, error) {
 	}
 	ts := NewTagSet(v.Name)
 	for _, name := range v.Tags {
-		ts.Add(name)
+		if _, err := ts.Add(name); err != nil {
+			return nil, wrap(ErrMalformedFile, "tagset: "+err.Error())
+		}
 	}
 	return ts, nil
 }

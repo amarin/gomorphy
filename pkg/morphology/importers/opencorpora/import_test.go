@@ -1,6 +1,7 @@
 package opencorpora_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -138,9 +139,32 @@ func TestImportFromXMLNoForms(t *testing.T) {
 
 	items := d.Words.SimilarItems("есть", d.CharPolicy)
 	assert.Greater(t, len(items), 0, "есть должно быть найдено")
-	
+
 	items2 := d.Words.SimilarItems("пустая", d.CharPolicy)
 	assert.Equal(t, 0, len(items2), "пустая не должна быть найдена")
+}
+
+// TestImportFromXMLTooManySuffixes guards the suffix-id overflow check: the
+// real OpenCorpora dict.xml has 65835 unique suffixes, one more than
+// uint16 can address (65536) — see the critical finding added to
+// docs/code-review-pre-1.0.md. Without the check, the id silently wraps
+// (uint16(65536) == 0) and collides with the first suffix ever registered
+// instead of failing loudly.
+func TestImportFromXMLTooManySuffixes(t *testing.T) {
+	const uniqueSuffixes = 1 << 16 // one more than fits in uint16 (0..65535)
+
+	var xml strings.Builder
+	xml.WriteString(`<?xml version="1.0" encoding="UTF-8"?><dictionary><lemmata>`)
+	for i := 0; i < uniqueSuffixes; i++ {
+		// Two forms sharing stem "слово": one bare (suffix ""), one with a
+		// suffix unique to this lemma — pushes suffixList past the limit.
+		fmt.Fprintf(&xml, `<lemma id="%d"><l t="слово"/><f t="слово"/><f t="слово%06d"/></lemma>`, i, i)
+	}
+	xml.WriteString(`</lemmata></dictionary>`)
+
+	_, err := opencorpora.CompileFromXML(strings.NewReader(xml.String()), nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "too many unique suffixes")
 }
 
 func TestImportFromXMLPropertyTest(t *testing.T) {

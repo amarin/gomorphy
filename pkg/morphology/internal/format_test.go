@@ -151,6 +151,46 @@ func TestSaveContainerTooManySections(t *testing.T) {
 	require.Error(t, SaveContainer(filepath.Join(t.TempDir(), "x.dat"), sections))
 }
 
+// TestSaveContainerNoLeftoverTempFile guards the atomic-write path: a
+// successful save must leave only the final file behind, no ".tmp-*"
+// sibling from the temp-file-then-rename sequence.
+func TestSaveContainerNoLeftoverTempFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dict.dat")
+	require.NoError(t, SaveContainer(path, []Section{{Name: "meta", Data: []byte("ru")}}))
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "expected only the final file in %s, got %v", dir, entries)
+	assert.Equal(t, "dict.dat", entries[0].Name())
+}
+
+// TestSaveContainerAtomicOnFailure guards against a crashed/failed write
+// clobbering whatever was already at path: SaveContainer writes to a temp
+// file and renames it into place only on success, so a failure (here: path
+// is a non-empty directory, which os.Rename cannot replace) must leave the
+// existing path untouched and not strand a temp file next to it.
+func TestSaveContainerAtomicOnFailure(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dict.dat")
+
+	require.NoError(t, os.Mkdir(path, 0o755))
+	sentinel := filepath.Join(path, "sentinel")
+	require.NoError(t, os.WriteFile(sentinel, []byte("keep me"), 0o644))
+
+	err := SaveContainer(path, []Section{{Name: "meta", Data: []byte("ru")}})
+	require.Error(t, err)
+
+	info, statErr := os.Stat(path)
+	require.NoError(t, statErr)
+	assert.True(t, info.IsDir(), "path must still be the original directory")
+	assert.FileExists(t, sentinel, "pre-existing content under path must survive a failed save")
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "no leftover temp file expected in %s, got %v", dir, entries)
+}
+
 func TestMetaRoundtrip(t *testing.T) {
 	policy := RussianCharPolicy()
 	data := EncodeMeta("ru", policy)
@@ -198,8 +238,10 @@ func TestStringsTruncated(t *testing.T) {
 
 func TestTagSetRoundtrip(t *testing.T) {
 	ts := NewTagSet("opencorpora-int")
-	ts.Add("NOUN,anim,masc,sing,nomn")
-	ts.Add("VERB,impf,trans")
+	_, err := ts.Add("NOUN,anim,masc,sing,nomn")
+	require.NoError(t, err)
+	_, err = ts.Add("VERB,impf,trans")
+	require.NoError(t, err)
 	id, _ := ts.ID("VERB,impf,trans")
 
 	got, err := DecodeTagSet(EncodeTagSet(ts))

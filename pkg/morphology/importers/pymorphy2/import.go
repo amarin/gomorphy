@@ -36,7 +36,9 @@ func ImportFromDir(dir string) (*internal.Dictionary, error) {
 		return nil, fmt.Errorf("pymorphy2: gramtab: %w", err)
 	}
 	for _, tag := range tags {
-		d.TagSet.Add(tag)
+		if _, err := d.TagSet.Add(tag); err != nil {
+			return nil, fmt.Errorf("pymorphy2: gramtab: %w", err)
+		}
 	}
 
 	prefixes, err := readStringArray(filepath.Join(dir, "paradigm-prefixes.json"))
@@ -105,7 +107,7 @@ func readDAWGFile(path string) (*internal.DAWG, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return internal.ReadDAWG(f)
 }
 

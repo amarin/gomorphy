@@ -10,8 +10,10 @@ import (
 
 func TestDictionaryConstruction(t *testing.T) {
 	ts := NewTagSet("opencorpora")
-	ts.Add("NOUN")
-	ts.Add("anim")
+	_, err := ts.Add("NOUN")
+	require.NoError(t, err)
+	_, err = ts.Add("anim")
+	require.NoError(t, err)
 
 	paradigm := NewParadigm([]uint16{5, 6}, []uint16{0, 1}, []uint16{0, 0})
 	words, _ := testdawg.Build(map[string]uint32{"кот": 0})

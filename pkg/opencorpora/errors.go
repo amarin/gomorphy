@@ -4,4 +4,6 @@ import (
 	"errors"
 )
 
-var Error = errors.New("opencorpora")
+// ErrOpenCorpora is the sentinel error wrapped by package opencorpora's
+// failure modes (see errors.Is).
+var ErrOpenCorpora = errors.New("opencorpora")

@@ -95,7 +95,7 @@ func (loader *Loader) IsUpdateRequired() (bool, error) {
 		loader.Warnf("remote %v: error: %v", RemoteURL, err)
 		return false, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode != 200 {
 		return false, fmt.Errorf("unexpected response code %v", response.StatusCode)
@@ -133,13 +133,13 @@ func (loader *Loader) DownloadUpdate() (updated bool, err error) {
 	if err != nil {
 		return false, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	file, err := os.Create(loader.downloadedFilePath())
 	if err != nil {
 		return false, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	if _, err = io.Copy(file, response.Body); err != nil {
 		return false, err
@@ -158,7 +158,7 @@ func (loader *Loader) UnpackUpdate() error {
 	if err != nil {
 		return err
 	}
-	defer source.Close()
+	defer func() { _ = source.Close() }()
 
 	bzipSource := bzip2.NewReader(source)
 
@@ -166,7 +166,7 @@ func (loader *Loader) UnpackUpdate() error {
 	if err != nil {
 		return err
 	}
-	defer target.Close()
+	defer func() { _ = target.Close() }()
 
 	if _, err = io.Copy(target, bzipSource); err != nil {
 		return err
@@ -215,7 +215,7 @@ func (loader *Loader) Sync(skipDownload bool) error {
 	}
 
 	if !loader.IsUnpackedExists() {
-		return fmt.Errorf("%w: no unpacked dictionary at %v", Error, loader.UnpackedFilePath())
+		return fmt.Errorf("%w: no unpacked dictionary at %v", ErrOpenCorpora, loader.UnpackedFilePath())
 	}
 
 	return nil
