@@ -28,18 +28,26 @@
 - [Этап 9. Нечёткий поиск FT6](implementation/stage-9-fuzzy.md)
 - [Этап 10. Финализация](implementation/stage-10-finalize.md)
 
-## Этапы новой реализации (план)
+## Этапы новой реализации (paradigm + DAWG; 11-15 выполнены, 17 частично, 16/18 — план)
 
+- [Обоснование редизайна хранилища](implementation/redesign-rationale.md)
 - [Этап 11. Внутренний формат: TagSet + Paradigm + DAWG reader](implementation/stage-11-internal-format.md)
 - [Этап 12. Импорт PyMorphy2](implementation/stage-12-import-pymorphy2.md)
 - [Этап 13. Публичный API: Parse, Lemma, Fuzzy](implementation/stage-13-public-api.md)
 - [Этап 14. Сериализация: единый формат на диске](implementation/stage-14-serialization.md)
 - [Этап 15. Импорт OpenCorpora](implementation/stage-15-import-opencorpora.md)
-- [Этап 16. Импорт UniMorph](implementation/stage-16-import-unimorph.md)
-- [Этап 17. Сужение типов ID и zstd](implementation/stage-17-optimize.md)
-- [Этап 18. Финализация: CLI, документация, тесты](implementation/stage-18-finalize.md)
+- [Этап 16. Импорт UniMorph (план)](implementation/stage-16-import-unimorph.md)
+- [Ускорение сборки DAWG (free-list)](implementation/dawg-freelist-optimization.md)
+- [Исправление минимизации DAWG (баг в chainSig)](implementation/dawg-minimization-fix.md)
+- [Этап 17. Сужение типов ID + формат-задел под сжатие](implementation/stage-17-optimize.md)
+- [Секция info: метаданные сборки словаря](implementation/info-section.md)
+- [Этап 18. Финализация: CLI, документация, тесты (план)](implementation/stage-18-finalize.md)
 - [Этап 19. Тематические словари: TSV-импорт, CLI-батчи, навыки, решение по MCP](todo.md)
 - [Этап 20. База синонимов: группы, теги, sidecar-файл](todo.md)
+
+## Ревью и находки
+
+- [Ревью кода перед 1.0.0](code-review-pre-1.0.md)
 
 ## Решения
 
