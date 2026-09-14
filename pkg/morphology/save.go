@@ -8,8 +8,9 @@ import (
 )
 
 // SaveTo записывает словарь в файл GMOR — единый дисковый формат.
-// Секции: meta, info, tagset, suffixes, prefixes, paradigms, words.dawg,
-// prediction-N, probability (если есть).
+// Секции: meta, info, tagset, prefixes, suffixes-N, paradigms-N,
+// words.dawg-N (по одному набору на шард, N от 0), prediction-N,
+// probability (если есть).
 func (x *Dictionary) SaveTo(path string) error {
 	if x == nil || x.d == nil {
 		return fmt.Errorf("morphology: nil dictionary")
@@ -26,7 +27,7 @@ func (x *Dictionary) SaveTo(path string) error {
 	info.LibraryVersion = Version
 
 	// Сжатие пока не реализовано (см. docs/todo.md, "Этап 17") — все секции
-	// пишутся как есть. words.dawg всегда останется CompressionNone: она
+	// пишутся как есть. words.dawg-N всегда останется CompressionNone: она
 	// алиасится из mmap без копирования, а сжатая секция требует полной
 	// декомпрессии в память при загрузке.
 	const noCompression = internal.CompressionNone
@@ -34,10 +35,22 @@ func (x *Dictionary) SaveTo(path string) error {
 		{Name: "meta", Data: internal.EncodeMeta(x.d.Language, x.d.CharPolicy), Flags: noCompression},
 		{Name: "info", Data: internal.EncodeBuildInfo(&info), Flags: noCompression},
 		{Name: "tagset", Data: internal.EncodeTagSet(x.d.TagSet), Flags: noCompression},
-		{Name: "suffixes", Data: internal.EncodeStrings(x.d.Suffixes), Flags: noCompression},
 		{Name: "prefixes", Data: internal.EncodeStrings(x.d.Prefixes), Flags: noCompression},
-		{Name: "paradigms", Data: internal.EncodeParadigms(x.d.Paradigms), Flags: noCompression},
-		{Name: "words.dawg", Data: x.d.Words.Bytes(), Flags: internal.CompressionNone},
+	}
+	for i, suffixes := range x.d.Suffixes {
+		sections = append(sections, internal.Section{
+			Name: fmt.Sprintf("suffixes-%d", i), Data: internal.EncodeStrings(suffixes), Flags: noCompression,
+		})
+	}
+	for i, paradigms := range x.d.Paradigms {
+		sections = append(sections, internal.Section{
+			Name: fmt.Sprintf("paradigms-%d", i), Data: internal.EncodeParadigms(paradigms), Flags: noCompression,
+		})
+	}
+	for i, words := range x.d.Words {
+		sections = append(sections, internal.Section{
+			Name: fmt.Sprintf("words.dawg-%d", i), Data: words.Bytes(), Flags: internal.CompressionNone,
+		})
 	}
 	for i, pred := range x.d.Prediction {
 		if pred == nil {

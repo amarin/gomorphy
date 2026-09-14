@@ -97,15 +97,6 @@ func parseContainer(cont *internal.Container) (*internal.Dictionary, error) {
 		return nil, err
 	}
 
-	data, _, err = cont.Section("suffixes")
-	if err != nil {
-		return nil, err
-	}
-	suffixes, err := internal.DecodeStrings(data)
-	if err != nil {
-		return nil, err
-	}
-
 	data, _, err = cont.Section("prefixes")
 	if err != nil {
 		return nil, err
@@ -115,22 +106,52 @@ func parseContainer(cont *internal.Container) (*internal.Dictionary, error) {
 		return nil, err
 	}
 
-	data, _, err = cont.Section("paradigms")
-	if err != nil {
-		return nil, err
+	var suffixes [][]string
+	for i := 0; ; i++ {
+		data, _, err := cont.Section(fmt.Sprintf("suffixes-%d", i))
+		if err != nil {
+			break
+		}
+		s, err := internal.DecodeStrings(data)
+		if err != nil {
+			return nil, err
+		}
+		suffixes = append(suffixes, s)
 	}
-	paradigms, err := internal.DecodeParadigms(data)
-	if err != nil {
-		return nil, err
+	if len(suffixes) == 0 {
+		return nil, fmt.Errorf("morphology: no suffixes-N sections found")
 	}
 
-	data, _, err = cont.Section("words.dawg")
-	if err != nil {
-		return nil, err
+	var paradigms [][]internal.Paradigm
+	for i := 0; ; i++ {
+		data, _, err := cont.Section(fmt.Sprintf("paradigms-%d", i))
+		if err != nil {
+			break
+		}
+		p, err := internal.DecodeParadigms(data)
+		if err != nil {
+			return nil, err
+		}
+		paradigms = append(paradigms, p)
 	}
-	words, err := internal.ParseDAWG(data)
-	if err != nil {
-		return nil, err
+	if len(paradigms) != len(suffixes) {
+		return nil, fmt.Errorf("morphology: %d suffixes-N sections but %d paradigms-N sections", len(suffixes), len(paradigms))
+	}
+
+	var words []*internal.DAWG
+	for i := 0; ; i++ {
+		data, _, err := cont.Section(fmt.Sprintf("words.dawg-%d", i))
+		if err != nil {
+			break
+		}
+		w, err := internal.ParseDAWG(data)
+		if err != nil {
+			return nil, err
+		}
+		words = append(words, w)
+	}
+	if len(words) != len(suffixes) {
+		return nil, fmt.Errorf("morphology: %d suffixes-N sections but %d words.dawg-N sections", len(suffixes), len(words))
 	}
 
 	d := internal.NewDictionary(language, tagSet, suffixes, prefixes, paradigms, words, policy)

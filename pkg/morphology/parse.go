@@ -5,6 +5,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/amarin/gomorphy/pkg/morphology/internal"
 )
@@ -14,8 +15,9 @@ type Reading struct {
 	Word   string  // словоформа как в словаре (с «ё»)
 	Normal string  // начальная форма (лемма)
 	Tag    string  // граммемный тег, например "NOUN,anim,masc,sing,nomn"
-	Para   uint16  // id парадигмы
+	Para   uint16  // id парадигмы — уникален только вместе с Shard
 	Form   uint16  // индекс формы в парадигме
+	Shard  int     // индекс шарда словаря; всегда 0 для нешардированных словарей
 	Prob   float64 // вероятность разбора (0, если probability недоступен)
 }
 
@@ -24,7 +26,7 @@ type Reading struct {
 // чтения по prediction-DAWG (окончания). Возвращает nil, если разборы
 // не найдены. Вход приводится к нижнему регистру.
 func (x *Dictionary) Parse(word string) []Reading {
-	if x == nil || x.d == nil || x.d.Words == nil {
+	if x == nil || x.d == nil || len(x.d.Words) == 0 {
 		return nil
 	}
 	word = strings.ToLower(word)
@@ -35,30 +37,33 @@ func (x *Dictionary) Parse(word string) []Reading {
 	return x.predict(word)
 }
 
-// exact собирает чтения слова, найденного в словаре, с учётом подмен
-// CharPolicy (е→ё) и сортирует по вероятности.
-func (x *Dictionary) exact(word string) []Reading {
-	items := x.d.Words.SimilarItems(word, x.d.CharPolicy)
-	if len(items) == 0 {
-		return nil
-	}
+// shardExactResult — результат exactInShard для одного шарда.
+type shardExactResult struct {
+	readings []Reading
+	hasProb  bool
+}
 
-	readings := make([]Reading, 0, len(items))
+// exact собирает чтения слова, найденного в словаре, с учётом подмен
+// CharPolicy (е→ё) и сортирует по вероятности. Шарды опрашиваются
+// параллельно (по горутине на шард), результаты склеиваются.
+func (x *Dictionary) exact(word string) []Reading {
+	results := make([]shardExactResult, len(x.d.Words))
+
+	var wg sync.WaitGroup
+	for shard, dawg := range x.d.Words {
+		wg.Add(1)
+		go func(shard int, dawg *internal.DAWG) {
+			defer wg.Done()
+			results[shard] = x.exactInShard(shard, dawg, word)
+		}(shard, dawg)
+	}
+	wg.Wait()
+
+	var readings []Reading
 	hasProb := false
-	for _, it := range items {
-		for _, v := range it.Values {
-			r, ok := x.reading(it.Key, v)
-			if !ok {
-				continue
-			}
-			if x.d.Probability != nil {
-				r.Prob = float64(x.d.Probability.Find(it.Key+":"+r.Tag)) / 1e6
-				if r.Prob > 0 {
-					hasProb = true
-				}
-			}
-			readings = append(readings, r)
-		}
+	for _, r := range results {
+		readings = append(readings, r.readings...)
+		hasProb = hasProb || r.hasProb
 	}
 
 	if hasProb {
@@ -67,6 +72,35 @@ func (x *Dictionary) exact(word string) []Reading {
 		})
 	}
 	return readings
+}
+
+// exactInShard собирает чтения слова из одного шарда. Вызывается
+// параллельно с другими шардами из exact — только чтение, общего
+// изменяемого состояния между горутинами нет.
+func (x *Dictionary) exactInShard(shard int, dawg *internal.DAWG, word string) shardExactResult {
+	items := dawg.SimilarItems(word, x.d.CharPolicy)
+	if len(items) == 0 {
+		return shardExactResult{}
+	}
+
+	var res shardExactResult
+	res.readings = make([]Reading, 0, len(items))
+	for _, it := range items {
+		for _, v := range it.Values {
+			r, ok := x.reading(shard, it.Key, v)
+			if !ok {
+				continue
+			}
+			if x.d.Probability != nil {
+				r.Prob = float64(x.d.Probability.Find(it.Key+":"+r.Tag)) / 1e6
+				if r.Prob > 0 {
+					res.hasProb = true
+				}
+			}
+			res.readings = append(res.readings, r)
+		}
+	}
+	return res
 }
 
 // predict ищет чтения для несловарного слова по окончаниям в prediction-DAWG
@@ -102,7 +136,13 @@ func (x *Dictionary) predict(word string) []Reading {
 // long, specific suffix match over a short, common one when it exists.
 // seen dedups (word, lemma, tag) triples across all prefixes tried by the
 // caller and is mutated in place.
+//
+// Predictions always resolve against shard 0: the prediction-DAWG feature
+// currently exists only for pymorphy2 imports, which are never sharded
+// (see docs/superpowers/specs/2026-09-14-suffix-sharding-design.md).
 func (x *Dictionary) predictForPrefix(id int, splits [][2]string, seen map[string]bool) []Reading {
+	const predictionShard = 0
+
 	var readings []Reading
 	totalCount := 0
 
@@ -117,7 +157,7 @@ func (x *Dictionary) predictForPrefix(id int, splits [][2]string, seen map[strin
 				paraNum := binary.BigEndian.Uint16(v[2:4])
 				form := binary.BigEndian.Uint16(v[4:6])
 
-				para, ok := x.paradigm(paraNum)
+				para, ok := x.paradigm(predictionShard, paraNum)
 				if !ok || form >= uint16(para.Len()) {
 					continue
 				}
@@ -126,7 +166,7 @@ func (x *Dictionary) predictForPrefix(id int, splits [][2]string, seen map[strin
 				}
 				totalCount += count
 
-				r := x.readingForm(wordStart+it.Key, paraNum, form)
+				r := x.readingForm(predictionShard, wordStart+it.Key, paraNum, form)
 				key := r.Word + "\x00" + r.Normal + "\x00" + r.Tag
 				if seen[key] {
 					continue
@@ -142,30 +182,31 @@ func (x *Dictionary) predictForPrefix(id int, splits [][2]string, seen map[strin
 	return readings
 }
 
-// reading декодирует payload-запись words.dawg (4 байта BE: para, form).
-func (x *Dictionary) reading(word string, value []byte) (Reading, bool) {
+// reading декодирует payload-запись words.dawg (4 байта BE: para, form) в
+// указанном шарде.
+func (x *Dictionary) reading(shard int, word string, value []byte) (Reading, bool) {
 	if len(value) < 4 {
 		return Reading{}, false
 	}
 	para := binary.BigEndian.Uint16(value[:2])
 	form := binary.BigEndian.Uint16(value[2:4])
-	return x.readingForm(word, para, form), true
+	return x.readingForm(shard, word, para, form), true
 }
 
-// readingForm строит Reading по парадигме и форме (норма = prefix₀ + stem + suffix₀
-// для form≠0, иначе — само слово).
-func (x *Dictionary) readingForm(word string, paraNum, form uint16) Reading {
-	para, ok := x.paradigm(paraNum)
+// readingForm строит Reading по парадигме и форме в указанном шарде
+// (норма = prefix₀ + stem + suffix₀ для form≠0, иначе — само слово).
+func (x *Dictionary) readingForm(shard int, word string, paraNum, form uint16) Reading {
+	para, ok := x.paradigm(shard, paraNum)
 	if !ok || int(form) >= para.Len() {
-		return Reading{Word: word, Para: paraNum, Form: form}
+		return Reading{Word: word, Para: paraNum, Form: form, Shard: shard}
 	}
 
-	prefix, suffix := x.paradigmAffix(para, int(form))
+	prefix, suffix := x.paradigmAffix(shard, para, int(form))
 	norm := word
 	if form != 0 {
 		stem := strings.TrimPrefix(word, prefix)
 		stem = strings.TrimSuffix(stem, suffix)
-		p0, s0 := x.paradigmAffix(para, 0)
+		p0, s0 := x.paradigmAffix(shard, para, 0)
 		norm = p0 + stem + s0
 	}
 
@@ -175,26 +216,36 @@ func (x *Dictionary) readingForm(word string, paraNum, form uint16) Reading {
 		Tag:    x.paradigmTag(para, int(form)),
 		Para:   paraNum,
 		Form:   form,
+		Shard:  shard,
 	}
 }
 
-func (x *Dictionary) paradigm(id uint16) (internal.Paradigm, bool) {
-	if int(id) < len(x.d.Paradigms) {
-		return x.d.Paradigms[id], true
+func (x *Dictionary) paradigm(shard int, id uint16) (internal.Paradigm, bool) {
+	if shard < 0 || shard >= len(x.d.Paradigms) {
+		return internal.Paradigm{}, false
+	}
+	if int(id) < len(x.d.Paradigms[shard]) {
+		return x.d.Paradigms[shard][id], true
 	}
 	return internal.Paradigm{}, false
 }
 
-// paradigmAffix возвращает префикс и суффикс формы парадигмы (пустые при
-// выходе за границы).
-func (x *Dictionary) paradigmAffix(para internal.Paradigm, form int) (prefix, suffix string) {
+// paradigmAffix возвращает префикс и суффикс формы парадигмы для
+// указанного шарда (пустые при выходе за границы). Prefixes общий для
+// всех шардов; Suffixes — свой на шард.
+func (x *Dictionary) paradigmAffix(shard int, para internal.Paradigm, form int) (prefix, suffix string) {
 	if form >= para.Len() {
 		return "", ""
 	}
-	return strAt(x.d.Prefixes, para.Prefix(form)), strAt(x.d.Suffixes, para.Suffix(form))
+	var suffixes []string
+	if shard >= 0 && shard < len(x.d.Suffixes) {
+		suffixes = x.d.Suffixes[shard]
+	}
+	return strAt(x.d.Prefixes, para.Prefix(form)), strAt(suffixes, para.Suffix(form))
 }
 
-// paradigmTag возвращает имя тега формы парадигмы.
+// paradigmTag возвращает имя тега формы парадигмы. TagSet общий для всех
+// шардов, поэтому шард не нужен.
 func (x *Dictionary) paradigmTag(para internal.Paradigm, form int) string {
 	if form >= para.Len() {
 		return ""
@@ -212,8 +263,23 @@ func strAt(ar []string, i uint16) string {
 	return ""
 }
 
-// suffixSplits делит слово по рунам на пары (префикс, окончание) для суффиксов
-// длиной 1..min(max, len). Возвращает false для пустого слова.
+// productive — граммема не входит в nonproductiveGrammemes.
+func productive(tag string) bool {
+	if tag == "" {
+		return false
+	}
+	for part := range strings.SplitSeq(tag, ",") {
+		if slices.Contains(nonproductiveGrammemes, part) {
+			return false
+		}
+	}
+	return true
+}
+
+// nonproductiveGrammemes — граммемы, для которых предсказание не даёт
+// продуктивных разборов (pymorphy2).
+var nonproductiveGrammemes = []string{"NUMR", "NPRO", "PRED", "PREP", "CONJ", "PRCL", "INTJ", "Apro"}
+
 func suffixSplits(word string, max int) ([][2]string, bool) {
 	rr := []rune(word)
 	n := len(rr)
@@ -228,20 +294,4 @@ func suffixSplits(word string, max int) ([][2]string, bool) {
 		out = append(out, [2]string{string(rr[:n-i]), string(rr[n-i:])})
 	}
 	return out, true
-}
-
-// nonproductiveGrammemes — граммемы, для которых предсказание не даёт
-// продуктивных разборов (pymorphy2).
-var nonproductiveGrammemes = []string{"NUMR", "NPRO", "PRED", "PREP", "CONJ", "PRCL", "INTJ", "Apro"}
-
-func productive(tag string) bool {
-	if tag == "" {
-		return false
-	}
-	for part := range strings.SplitSeq(tag, ",") {
-		if slices.Contains(nonproductiveGrammemes, part) {
-			return false
-		}
-	}
-	return true
 }
