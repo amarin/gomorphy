@@ -109,6 +109,11 @@ func splitDAWG(data []byte) ([]uint32, []byte, error) {
 	guide := data[p : p+guideLen]
 
 	var dict []uint32
+	// Zero-copy path assumes the host's native byte order matches the
+	// on-disk LittleEndian layout (true on amd64/arm64). On a big-endian
+	// host (e.g. s390x) this aliasing would silently produce wrong values;
+	// such hosts fall through to the explicit LittleEndian decode below only
+	// when the alignment check fails, so this is not currently guarded.
 	if size > 0 && uintptr(unsafe.Pointer(&dictBytes[0]))%4 == 0 {
 		dict = unsafe.Slice((*uint32)(unsafe.Pointer(&dictBytes[0])), int(size))
 	} else {
@@ -124,6 +129,10 @@ func unitLabel(n uint32) uint32 {
 	return n & (isLeafBit | 0xff)
 }
 
+// offset extracts the offset field written by encodable/dawgbuild.go: a
+// plain 22-bit value, or (when extensionBit is set) a value pre-divided by
+// 256 that must be shifted back up — see the encodable() comment for the
+// on-disk unit layout this decodes.
 func offset(n uint32) uint32 {
 	return (n >> 10) << ((n & extensionBit) >> 6)
 }
@@ -346,57 +355,4 @@ func (c *completer) findTerminal(index uint32) bool {
 	}
 	c.lastIndex = index
 	return true
-}
-
-// BlockSize — размер одного блока DAWG в слотах (4M = ~16MB dict + ~8MB guide).
-const BlockSize uint32 = 4 * 1024 * 1024
-
-// Block — один блок DAWG с фиксированным размером.
-type Block struct {
-	dict   []uint32
-	guide  []byte
-	offset uint32 // глобальное смещение блока
-}
-
-// BlockDAWG — блочная версия DAWG для ускорения компиляции.
-// Каждый блок имеет фиксированный размер, что упрощает поиск свободных слотов.
-type BlockDAWG struct {
-	blocks []Block
-	size   uint32 // общее количество узлов
-}
-
-// NewBlockDAWG создаёт блочный DAWG из готовых блоков.
-func NewBlockDAWG(blocks []Block, size uint32) *BlockDAWG {
-	return &BlockDAWG{blocks: blocks, size: size}
-}
-
-// Flatten преобразует BlockDAWG в обычный DAWG (упакованный, без дыр).
-func (b *BlockDAWG) Flatten() *DAWG {
-	if len(b.blocks) == 0 {
-		return &DAWG{dict: []uint32{1 << 10}, guide: nil}
-	}
-
-	// Собрать все dict и guide в единые массивы
-	totalSize := b.size
-	dict := make([]uint32, totalSize)
-	guide := make([]byte, totalSize*2)
-
-	// Копировать данные из блоков, сохраняя относительные индексы
-	// (нужна пересчитка offset при объединении)
-	for _, block := range b.blocks {
-		for i := range block.dict {
-			globalIdx := block.offset + uint32(i)
-			if globalIdx < totalSize {
-				dict[globalIdx] = block.dict[i]
-			}
-		}
-		for i := range block.guide {
-			globalIdx := block.offset + uint32(i)/2
-			if globalIdx*2 < uint32(len(guide)) {
-				guide[globalIdx*2+uint32(i%2)] = block.guide[i]
-			}
-		}
-	}
-
-	return &DAWG{dict: dict, guide: guide}
 }
