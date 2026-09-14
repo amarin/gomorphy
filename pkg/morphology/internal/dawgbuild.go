@@ -169,7 +169,8 @@ func (b *dawgBuilder) chainSig(n int32) string {
 			f |= 2
 		}
 		b.sigBuf = append(b.sigBuf, f)
-		b.sigBuf = append(b.sigBuf, byte(n>>24), byte(n>>16), byte(n>>8), byte(n))
+		child := b.nodes[n].first
+		b.sigBuf = append(b.sigBuf, byte(child>>24), byte(child>>16), byte(child>>8), byte(child))
 		n = b.nodes[n].next
 	}
 	return string(b.sigBuf)

@@ -146,6 +146,39 @@ func TestBuildDAWGDuplicates(t *testing.T) {
 	assert.False(t, d.Contains("кот"))
 }
 
+// TestBuildDAWGMinimizesSharedSuffixes регрессионный тест на баг в chainSig:
+// подпись цепочки братьев ошибочно кодировала id самого узла вместо id его
+// ребёнка, из-за чего register никогда не находил совпадений и суффиксы
+// никогда не сливались (DAWG вырождался в неминимизированный trie — на
+// реальном словаре OpenCorpora это раздувало double-array с ~2М до ~71М
+// слотов). Много ключей с разными префиксами и одним общим длинным
+// суффиксом: без слияния суффиксов double-array потребовал бы отдельную
+// копию суффиксной цепочки на каждый ключ.
+func TestBuildDAWGMinimizesSharedSuffixes(t *testing.T) {
+	const n = 200
+	const suffix = "-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+	keys := make([]string, n)
+	for i := 0; i < n; i++ {
+		keys[i] = string([]byte{byte('a' + i%26), byte('0' + i%10), byte('A' + i%26)}) + suffix
+	}
+
+	d, err := BuildDAWG(keys)
+	require.NoError(t, err)
+	for _, k := range keys {
+		require.True(t, d.Contains(k), "key %q must be found", k)
+	}
+
+	// Без слияния суффиксов потребовалось бы ~n*len(suffix) слотов (общий
+	// хвост копировался бы под каждый ключ). При корректной минимизации
+	// хвост — одна общая цепочка, и размер массива должен остаться на
+	// порядок меньше этой границы.
+	unminimizedFloor := n * len(suffix)
+	assert.Less(t, len(d.dict), unminimizedFloor/4,
+		"dictionary array has %d slots for %d keys sharing a %d-byte suffix — suffix minimization appears broken",
+		len(d.dict), n, len(suffix))
+}
+
 func TestBuildDAWGEmpty(t *testing.T) {
 	d, err := BuildDAWG(nil)
 	require.NoError(t, err)
