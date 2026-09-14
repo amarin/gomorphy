@@ -584,11 +584,18 @@ func randomWordformKeys(n int, seed int64) ([]string, []uint32) {
 
 - [ ] **Step 2: Run it and record the result**
 
-Run: `go test ./pkg/morphology/internal/... -run TestDAWGBuildScales -v -timeout 30m`
-Expected: PASS, with the per-N log lines showing per-key cost staying
-roughly flat (not growing >3x from N=100K to N=5M). Record the actual
-numbers in the task notes / PR description — this is the evidence the
-fix works, without needing the real 24h dataset.
+Run: `go test ./pkg/morphology/internal/... -tags scaling -run TestDAWGBuildScales -v -timeout 30m`
+(gated behind the `scaling` build tag, like this repo's existing
+`-tags integration` convention, so it never runs as part of `make test`/
+`go test ./...` — at N=5M it takes minutes and multi-GB RSS.)
+Expected: PASS. Actual measured result: growth is sub-quadratic but not
+perfectly flat (~4.4x per-key cost from N=100K to N=5M, threshold set at
+8x) — traced to the synthetic generator's near-random, poorly-shared
+suffixes pushing the dawgdic wire format's extended-offset `encodable`
+path (1-in-256 acceptance) harder than real morphological data would.
+Real OpenCorpora data, with heavy paradigm-based suffix sharing, should
+do better than this worst-case synthetic curve. Record the actual numbers
+in the task notes / PR description.
 
 - [ ] **Step 3: Commit**
 
