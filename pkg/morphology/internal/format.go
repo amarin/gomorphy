@@ -9,6 +9,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/zeebo/xxh3"
@@ -123,6 +124,12 @@ func SaveContainer(path string, sections []Section) error {
 		pos = align8(pos)
 		placed[i].offset = pos
 		pos += int64(len(s.Data))
+	}
+
+	if dir := filepath.Dir(path); dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("format: mkdir %s: %w", dir, err)
+		}
 	}
 
 	f, err := os.Create(path)

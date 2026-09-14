@@ -149,10 +149,28 @@ func TestDictionaryCloseNilSafe(t *testing.T) {
 	require.NoError(t, d.Close())
 }
 
+// SaveTo creates missing parent directories rather than failing, so a long
+// compile isn't lost to a forgotten `mkdir -p` on the output path.
+func TestSaveToCreatesMissingDir(t *testing.T) {
+	words := map[string]uint32{}
+	stdWords(words)
+	d := buildFixture(t, words, nil, nil)
+	out := filepath.Join(t.TempDir(), "missing", "nested", "x.dat")
+	require.NoError(t, d.SaveTo(out))
+
+	_, err := os.Stat(out)
+	require.NoError(t, err)
+}
+
 func TestSaveToBadPath(t *testing.T) {
 	words := map[string]uint32{}
 	stdWords(words)
 	d := buildFixture(t, words, nil, nil)
-	err := d.SaveTo(filepath.Join(t.TempDir(), "missing", "x.dat"))
+
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "blocker")
+	require.NoError(t, os.WriteFile(blocker, []byte("x"), 0o644))
+
+	err := d.SaveTo(filepath.Join(blocker, "missing", "x.dat"))
 	require.Error(t, err)
 }
