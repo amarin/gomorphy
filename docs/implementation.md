@@ -133,11 +133,11 @@ magic "GMOR" | version u32 | xxh3 чексумма
 каталог: [имя секции, offset u64, size u64, flags u8] × N
 секции:
   meta            — language, counts, version
-  tagset          — JSON-массив имён граммем
-  suffixes        — varint-length-prefixed строки
-  prefixes        — varint-length-prefixed строки
-  paradigms       — uint16 array (N суффиксов + N тегов + N префиксов)
-  words.dawg      — dictionary uint32[] + guide byte[]
+  tagset          — JSON-массив имён граммем (общий для всех шардов)
+  prefixes        — varint-length-prefixed строки (общий для всех шардов)
+  suffixes-N      — varint-length-prefixed строки (по одному набору на шард, N от 0)
+  paradigms-N     — uint16 array (N суффиксов + N тегов + N префиксов; по одному набору на шард)
+  words.dawg-N    — dictionary uint32[] + guide byte[] (по одному на шард)
   prediction-N    — prediction DAWGs (опционально)
   probability     — probability DAWG (опционально)
 ```

@@ -250,7 +250,7 @@ func runLookup(d *morphology.Dictionary, args []string) error {
 	}
 
 	for _, r := range readings {
-		fmt.Printf("%s\t%s\t%s\tpara#%d\n", r.Word, r.Normal, r.Tag, r.Para)
+		fmt.Printf("%s\t%s\t%s\tpara#%d/%d\n", r.Word, r.Normal, r.Tag, r.Shard, r.Para)
 	}
 
 	return nil

@@ -120,7 +120,9 @@ version, indexOffset), секции данных, каталог секций (�
 
 ### Формат GMOR (новый)
 Бинарный формат с расширенным каталогом секций и zstd-сжатием.
-Секции: meta, tagset, suffixes, prefixes, paradigms, words.dawg,
+Секции: meta, tagset, prefixes (общие для всех шардов), suffixes-N,
+paradigms-N, words.dawg-N (по одному набору на шард — см.
+docs/superpowers/specs/2026-09-14-suffix-sharding-design.md),
 prediction-N, probability.
 
 ### Формат pymorphy2
