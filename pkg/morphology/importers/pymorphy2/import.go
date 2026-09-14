@@ -54,19 +54,19 @@ func ImportFromDir(dir string) (*internal.Dictionary, error) {
 	if err != nil {
 		return nil, fmt.Errorf("pymorphy2: suffixes: %w", err)
 	}
-	d.Suffixes = suffixes
+	d.Suffixes = [][]string{suffixes}
 
 	paradigms, err := readParadigms(filepath.Join(dir, "paradigms.array"))
 	if err != nil {
 		return nil, fmt.Errorf("pymorphy2: paradigms: %w", err)
 	}
-	d.Paradigms = paradigms
+	d.Paradigms = [][]internal.Paradigm{paradigms}
 
 	words, err := readDAWGFile(filepath.Join(dir, "words.dawg"))
 	if err != nil {
 		return nil, fmt.Errorf("pymorphy2: words.dawg: %w", err)
 	}
-	d.Words = words
+	d.Words = []*internal.DAWG{words}
 
 	if prob, err := readDAWGFile(filepath.Join(dir, "p_t_given_w.intdawg")); err == nil {
 		d.Probability = prob

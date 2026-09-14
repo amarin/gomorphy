@@ -79,18 +79,21 @@ func TestImportFromDir(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, uint16(1), id)
 
-	assert.Equal(t, []string{"", "кот", "кота", "x"}, d.Suffixes)
+	require.Len(t, d.Suffixes, 1)
+	assert.Equal(t, []string{"", "кот", "кота", "x"}, d.Suffixes[0])
 	assert.Equal(t, []string{"", "по", "наи"}, d.Prefixes)
 
 	require.Len(t, d.Paradigms, 1)
-	p := d.Paradigms[0]
+	require.Len(t, d.Paradigms[0], 1)
+	p := d.Paradigms[0][0]
 	assert.Equal(t, 2, p.Len())
 	assert.Equal(t, uint16(10), p.Suffix(0))
 	assert.Equal(t, uint16(1), p.Tag(1))
 	assert.Equal(t, uint16(0), p.Prefix(1))
 
-	require.NotNil(t, d.Words)
-	items := d.Words.SimilarItems("кот", d.CharPolicy)
+	require.Len(t, d.Words, 1)
+	require.NotNil(t, d.Words[0])
+	items := d.Words[0].SimilarItems("кот", d.CharPolicy)
 	require.Len(t, items, 1)
 	assert.Equal(t, "кот", items[0].Key)
 	require.Len(t, items[0].Values, 1)
