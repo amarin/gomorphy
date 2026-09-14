@@ -60,6 +60,27 @@ func encodeU16s(u []uint16) []byte {
 	return b
 }
 
+// suffixShardLimit — вместимость uint16 id-пространства суффиксов одного
+// шарда.
+const suffixShardLimit = 1 << 16
+
+// shardBuild накапливает состояние (суффиксы, парадигмы, ключи DAWG)
+// одного шарда во время ImportFromXML.
+type shardBuild struct {
+	suffixList     []string
+	suffixTexts    map[string]uint16
+	paradigmsDedup map[string]uint16 // paradigmKeyHash -> paradigmID
+	paradigms      []internal.Paradigm
+	dawgEntries    []dawgEntry
+}
+
+func newShardBuild() *shardBuild {
+	return &shardBuild{
+		suffixTexts:    make(map[string]uint16),
+		paradigmsDedup: make(map[string]uint16),
+	}
+}
+
 // ImportFromXML читает dict.xml из r и возвращает *internal.Dictionary с
 // заполненными TagSet, Suffixes, Prefixes, Paradigms и Words (DAWG).
 //
@@ -67,12 +88,20 @@ func encodeU16s(u []uint16) []byte {
 //
 //  1. xmlscan собирает все леммы с словоформами.
 //  2. Для каждой леммы вычисляется LCP-stem всех словоформ.
-//  3. Каждая словоформа → (suffix_id, tag_id) в парадигму.
-//  4. Парадигмы дедуплицируются через map[paradigmKey] → paradigmID.
-//  5. Строится DAWG из ключей (stem + suffix, value=paraID<<16|formIdx).
+//  3. Каждая словоформа → (suffix_id, tag_id) в парадигму текущего шарда.
+//     Suffix id адресуется uint16, поэтому леммы делятся на несколько
+//     шардов с независимыми id-пространствами, если суффиксов больше,
+//     чем помещается в один uint16-диапазон (см. FillOnDemand в shard.go
+//     и docs/superpowers/specs/2026-09-14-suffix-sharding-design.md).
+//  4. Парадигмы дедуплицируются через map[paradigmKey] → paradigmID,
+//     отдельно на каждый шард.
+//  5. Строится DAWG из ключей (stem + suffix, value=paraID<<16|formIdx),
+//     отдельно на каждый шард.
 //
-// progress — необязательный callback для вывода прогресса.
-// Вызывается каждые 10 секунд: (processed_keys, total_keys) при сборке DAWG.
+// progress — необязательный callback для вывода прогресса. Вызывается
+// периодически с (processed, total), где total — суммарное число ключей
+// DAWG по всем шардам и processed растёт непрерывно через границы шардов
+// (CLI видит один общий прогресс-бар, а не рестарт на каждом шарде).
 func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*internal.Dictionary, error) {
 	if tagSet == nil {
 		tagSet = internal.NewTagSet("opencorpora")
@@ -95,16 +124,11 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 		return nil, fmt.Errorf("opencorpora: handler: %w", handler.err)
 	}
 
-	// Phase 2: build suffix text → ID map and extract paradigms.
-	var suffixList []string
-	suffixTexts := make(map[string]uint16)
-
-	// paradigmsDedup: paradigmKey hash → paradigmID
-	paradigmsDedup := make(map[string]uint16)
-	var paradigms []internal.Paradigm
-
-	// DAWG entries: (stem + suffix) → (paraID << 16) | formIdx
-	var dawgEntries []dawgEntry
+	// Phase 2: build suffix text -> ID map and extract paradigms, one
+	// shard at a time.
+	strategy := FillOnDemand{}
+	cur := newShardBuild()
+	shards := []*shardBuild{cur}
 
 	for _, lem := range lemmas {
 		if len(lem.forms) == 0 {
@@ -112,6 +136,25 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 		}
 
 		stem := lcp(lem.forms)
+
+		// How many suffixes would this lemma add to the CURRENT shard if
+		// placed there? Dedup within the lemma's own forms too, so a
+		// lemma reusing one suffix across several forms counts once.
+		newInLemma := make(map[string]bool)
+		for _, frm := range lem.forms {
+			suffix := ""
+			if len(stem) < len(frm.text) {
+				suffix = frm.text[len(stem):]
+			}
+			if _, ok := cur.suffixTexts[suffix]; !ok {
+				newInLemma[suffix] = true
+			}
+		}
+
+		if strategy.Boundary(len(cur.suffixTexts), len(newInLemma), suffixShardLimit) {
+			cur = newShardBuild()
+			shards = append(shards, cur)
+		}
 
 		var suffixIDs []uint16
 		var tagIDs []uint16
@@ -122,14 +165,14 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 				suffix = frm.text[len(stem):]
 			}
 
-			sid, ok := suffixTexts[suffix]
+			sid, ok := cur.suffixTexts[suffix]
 			if !ok {
-				if len(suffixList) >= 1<<16 {
-					return nil, fmt.Errorf("opencorpora: too many unique suffixes (max 65536)")
+				if len(cur.suffixList) >= suffixShardLimit {
+					return nil, fmt.Errorf("opencorpora: shard %d exceeded %d unique suffixes despite sharding strategy", len(shards)-1, suffixShardLimit)
 				}
-				sid = uint16(len(suffixList))
-				suffixTexts[suffix] = sid
-				suffixList = append(suffixList, suffix)
+				sid = uint16(len(cur.suffixList))
+				cur.suffixTexts[suffix] = sid
+				cur.suffixList = append(cur.suffixList, suffix)
 			}
 			suffixIDs = append(suffixIDs, sid)
 
@@ -141,17 +184,17 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 		}
 
 		hash := paradigmKeyHash(suffixIDs, tagIDs)
-		paraID, ok := paradigmsDedup[hash]
+		paraID, ok := cur.paradigmsDedup[hash]
 		if !ok {
-			if len(paradigms) >= 1<<16 {
-				return nil, fmt.Errorf("opencorpora: too many unique paradigms (max 65536)")
+			if len(cur.paradigms) >= 1<<16 {
+				return nil, fmt.Errorf("opencorpora: shard %d exceeded 65536 unique paradigms", len(shards)-1)
 			}
-			paraID = uint16(len(paradigms))
-			paradigmsDedup[hash] = paraID
+			paraID = uint16(len(cur.paradigms))
+			cur.paradigmsDedup[hash] = paraID
 
 			prefixes := make([]uint16, len(lem.forms))
 			para := internal.NewParadigm(suffixIDs, tagIDs, prefixes)
-			paradigms = append(paradigms, para)
+			cur.paradigms = append(cur.paradigms, para)
 		}
 
 		for formIdx := 0; formIdx < len(lem.forms); formIdx++ {
@@ -161,34 +204,55 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 			}
 			dawgKey := stem + suffix
 			val := uint32(paraID)<<16 | uint32(formIdx)
-			dawgEntries = append(dawgEntries, dawgEntry{key: dawgKey, val: val})
+			cur.dawgEntries = append(cur.dawgEntries, dawgEntry{key: dawgKey, val: val})
 		}
 	}
 
-	// Deduplicate DAWG entries.
-	dawgEntries = dedupEntries(dawgEntries)
-
-	dawgKeys := make([]string, len(dawgEntries))
-	dawgValues := make([]uint32, len(dawgEntries))
-	for i, e := range dawgEntries {
-		dawgKeys[i] = e.key
-		dawgValues[i] = e.val
+	// Phase 3: dedup DAWG entries per shard, then build one DAWG per
+	// shard, reporting progress cumulatively across all shards.
+	totalEntries := 0
+	for _, s := range shards {
+		s.dawgEntries = dedupEntries(s.dawgEntries)
+		totalEntries += len(s.dawgEntries)
 	}
 
-	// Phase 3: build DAWG with progress callback.
-	// This is the longest phase (sort + insert 3M+ keys + compile).
-	dawg, err := internal.BuildDAWGWithValuesProgress(dawgKeys, dawgValues, progress)
-	if err != nil {
-		return nil, fmt.Errorf("opencorpora: build DAWG: %w", err)
+	suffixesPerShard := make([][]string, len(shards))
+	paradigmsPerShard := make([][]internal.Paradigm, len(shards))
+	wordsPerShard := make([]*internal.DAWG, len(shards))
+
+	processedBefore := 0
+	for i, s := range shards {
+		dawgKeys := make([]string, len(s.dawgEntries))
+		dawgValues := make([]uint32, len(s.dawgEntries))
+		for j, e := range s.dawgEntries {
+			dawgKeys[j] = e.key
+			dawgValues[j] = e.val
+		}
+
+		base := processedBefore
+		shardProgress := func(processed, _ int) {
+			if progress != nil {
+				progress(base+processed, totalEntries)
+			}
+		}
+		dawg, err := internal.BuildDAWGWithValuesProgress(dawgKeys, dawgValues, shardProgress)
+		if err != nil {
+			return nil, fmt.Errorf("opencorpora: build DAWG (shard %d): %w", i, err)
+		}
+
+		suffixesPerShard[i] = s.suffixList
+		paradigmsPerShard[i] = s.paradigms
+		wordsPerShard[i] = dawg
+		processedBefore += len(s.dawgEntries)
 	}
 
 	dict := internal.NewDictionary(
 		"ru",
 		tagSet,
-		suffixList,
+		suffixesPerShard,
 		nil, // Prefixes: OpenCorpora lemmas carry their own prefixes
-		paradigms,
-		dawg,
+		paradigmsPerShard,
+		wordsPerShard,
 		internal.RussianCharPolicy(),
 	)
 	dict.Info = &internal.BuildInfo{Source: "opencorpora"}
