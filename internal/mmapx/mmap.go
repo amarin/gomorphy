@@ -1,3 +1,5 @@
+//go:build !windows
+
 // Package mmapx provides minimal read-only memory-mapped file access.
 package mmapx
 

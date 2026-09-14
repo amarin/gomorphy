@@ -179,6 +179,57 @@ func TestScanEmpty(t *testing.T) {
 	}
 }
 
+// TestScanCommentAcrossBufferBoundary guards against a bug where a read
+// buffer boundary landing right after "<!" (before "--") made the scanner
+// misclassify a comment as a bare "<!...>" declaration and truncate its skip
+// at the first '>' inside the comment text instead of its real "-->". A
+// stray "<g .../>" planted after that first '>' (but still inside the real
+// comment) makes the difference observable: it only fires a gref event if
+// the comment's own delimiter search never actually reached "-->". Buffer
+// refills happen at fixed-size chunks from the start of input, so a fixed
+// buffer size with a varying-length filler prefix sweeps every possible
+// alignment of "<!" relative to a fill boundary.
+func TestScanCommentAcrossBufferBoundary(t *testing.T) {
+	const size = 16
+
+	suffix := `<dictionary><lemmata><lemma id="1"><l t="ёж">` +
+		`<!-- a > <g v="BOGUS"/> --><g v="NOUN"/></l><f t="ёж"/></lemma>` +
+		`</lemmata></dictionary>`
+
+	want := []string{
+		`lemma 1 "ёж"`,
+		"gref NOUN",
+		"lemma-end",
+		"form ёж",
+		"form-end",
+	}
+
+	for prefixLen := range size {
+		xml := strings.Repeat("x", prefixLen) + suffix
+
+		got := scanAll(t, xml, size)
+		if !equalEvents(got, want) {
+			t.Fatalf("prefixLen=%d mismatch:\n%s", prefixLen, diffEvents(got, want))
+		}
+	}
+}
+
+func TestScanNumericEntities(t *testing.T) {
+	xml := `<dictionary><lemmata>` +
+		`<lemma id="1"><l t="&#39;a&#x27;&#1046;"/></lemma>` +
+		`</lemmata></dictionary>`
+
+	want := []string{
+		"lemma 1 \"'a'Ж\"",
+		"lemma-end",
+	}
+
+	got := scanAll(t, xml, 64)
+	if !equalEvents(got, want) {
+		t.Fatalf("mismatch:\n%s", diffEvents(got, want))
+	}
+}
+
 func TestScanSample(t *testing.T) {
 	for _, size := range []int{16, 64, 256, 4096} {
 		got := scanAll(t, sampleDict, size)

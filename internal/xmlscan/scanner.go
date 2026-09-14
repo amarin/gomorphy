@@ -2,6 +2,7 @@
 package xmlscan
 
 import (
+	"fmt"
 	"io"
 )
 
@@ -92,6 +93,12 @@ func (s *Scanner) Scan() error {
 			continue
 		}
 
+		// Buffer up to the longest prefix we distinguish below ("<!--") before
+		// deciding, so a boundary landing right after "<!" doesn't get
+		// misread as a bare "<!...>" declaration and truncate a comment at
+		// its first '>' instead of its real "-->" close.
+		s.ensureLookahead(4)
+
 		switch {
 		case s.hasPrefix("<?"):
 			if err := s.skipUntil("?>"); err != nil {
@@ -117,6 +124,22 @@ func (s *Scanner) Scan() error {
 	}
 }
 
+// ensureLookahead tries to buffer at least n bytes starting at s.pos,
+// pulling more from the reader as needed. It stops as soon as a fill call
+// makes no further progress (reader exhausted) so it never loops forever.
+func (s *Scanner) ensureLookahead(n int) {
+	for s.end-s.pos < n {
+		avail := s.end - s.pos
+		if err := s.fill(); err != nil {
+			return
+		}
+
+		if s.end-s.pos == avail {
+			return
+		}
+	}
+}
+
 func (s *Scanner) hasPrefix(p string) bool {
 	return s.end-s.pos >= len(p) && string(s.buf[s.pos:s.pos+len(p)]) == p
 }
@@ -125,6 +148,16 @@ func (s *Scanner) fill() error {
 	n := copy(s.buf, s.buf[s.pos:s.end])
 	s.pos = 0
 	s.end = n
+
+	if n >= len(s.buf) {
+		// The retained (not-yet-consumed) tail already fills the buffer, so
+		// io.ReadFull below would read into a zero-length slice and return
+		// (0, nil) forever — a silent infinite loop for the caller. This is
+		// not reachable with today's minimum buffer size (16) and delimiters
+		// (longest is 3 bytes), but fail loudly instead of hanging if that
+		// ever changes.
+		return fmt.Errorf("xmlscan: unconsumed token exceeds buffer size (%d bytes); use a larger NewBufferSize", len(s.buf))
+	}
 
 	read, err := io.ReadFull(s.r, s.buf[n:])
 	s.end += read

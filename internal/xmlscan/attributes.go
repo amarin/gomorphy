@@ -2,6 +2,8 @@ package xmlscan
 
 import (
 	"bytes"
+	"strconv"
+	"unicode/utf8"
 )
 
 func (s *Scanner) attr(name string) []byte {
@@ -72,8 +74,8 @@ func (s *Scanner) decodeEntities(src []byte) []byte {
 
 	for i := 0; i < len(src); {
 		if src[i] == '&' {
-			if tail, repl, ok := matchEntity(src[i:]); ok {
-				s.ents = append(s.ents, repl)
+			if tail, r, ok := matchEntity(src[i:]); ok {
+				s.ents = utf8.AppendRune(s.ents, r)
 				i += tail
 
 				continue
@@ -87,7 +89,7 @@ func (s *Scanner) decodeEntities(src []byte) []byte {
 	return s.ents
 }
 
-var entities = map[string]byte{
+var namedEntities = map[string]rune{
 	"amp;":  '&',
 	"lt;":   '<',
 	"gt;":   '>',
@@ -95,12 +97,56 @@ var entities = map[string]byte{
 	"apos;": '\'',
 }
 
-func matchEntity(src []byte) (consumed int, replacement byte, ok bool) {
-	for ent, char := range entities {
+// matchEntity recognizes the 5 predefined XML entities (&amp; &lt; &gt;
+// &quot; &apos;) plus numeric character references (&#39; decimal,
+// &#x27; hex). src[0] must be '&'.
+func matchEntity(src []byte) (consumed int, r rune, ok bool) {
+	if len(src) > 1 && src[1] == '#' {
+		return matchNumericEntity(src)
+	}
+
+	for ent, char := range namedEntities {
 		if bytes.HasPrefix(src[1:], []byte(ent)) {
 			return 1 + len(ent), char, true
 		}
 	}
 
 	return 0, 0, false
+}
+
+func matchNumericEntity(src []byte) (consumed int, r rune, ok bool) {
+	i := 2 // past "&#"
+	base := 10
+
+	if i < len(src) && (src[i] == 'x' || src[i] == 'X') {
+		base = 16
+		i++
+	}
+
+	start := i
+	for i < len(src) && isDigitInBase(src[i], base) {
+		i++
+	}
+
+	if i == start || i >= len(src) || src[i] != ';' {
+		return 0, 0, false
+	}
+
+	val, err := strconv.ParseInt(string(src[start:i]), base, 32)
+	if err != nil || val < 0 || val > utf8.MaxRune {
+		return 0, 0, false
+	}
+
+	return i + 1, rune(val), true
+}
+
+func isDigitInBase(c byte, base int) bool {
+	switch {
+	case c >= '0' && c <= '9':
+		return true
+	case base == 16 && (c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F'):
+		return true
+	default:
+		return false
+	}
 }
