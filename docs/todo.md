@@ -1,12 +1,15 @@
 # План работ
 
-Все этапы 0–10 (исходная реализация) выполнены. Описание каждого этапа —
-в [implementation.md](implementation.md) и отдельных файлах в
-[implementation/](implementation/).
+Этапы 0–15 выполнены. Подробности каждого этапа — в
+[implementation.md](implementation.md) и отдельных файлах в
+[implementation/](implementation/); там же — обоснование редизайна
+хранилища (этапы 11–18: CSR-trie + exact-hash + пары → парадигмы +
+DAWG) и два внеплановых, но значимых фикса, обнаруженных по ходу
+(ускорение сборки DAWG, исправление минимизации DAWG).
 
-Новая реализация (этапы 11–18) заменяет внутренний формат хранения
-(CSR-trie + exact-hash + пары → парадигмы + DAWG) с сохранением
-переиспользуемого кода (xmlscan, intern, stringsx, mmapx, opencorpora).
+Этот файл (`todo.md`) — только то, что ещё предстоит: текущий путь к
+версии 1.0.0, незавершённые/будущие этапы и нерешённые идеи. Всё
+выполненное — в `implementation/`, здесь не дублируется.
 
 ## Требования к оформлению
 
@@ -15,564 +18,70 @@
 каждого этапа собирается (`go build ./...`), тесты этапа зелёные.
 Отмечать выполненное: `[x]`.
 
-## Выполненные этапы (исходная реализация)
+## Выполненные этапы
 
-### Этап 0. Анализ и подготовка репозитория — ВЫПОЛНЕН
-[Подробное описание](implementation/stage-0-analysis.md)
+Краткий статус с ссылками на подробности — сами описания в
+`implementation/`, здесь не повторяются.
 
-### Этап 1. Примитивы формата (internal/format) — ВЫПОЛНЕН
-[Подробное описание](implementation/stage-1-format.md)
-
-### Этап 2. Интернирование строк (internal/intern, internal/stringsx) — ВЫПОЛНЕН
-[Подробное описание](implementation/stage-2-intern.md)
-
-### Этап 3. Сканер dict.xml (internal/xmlscan) — ВЫПОЛНЕН
-[Подробное описание](implementation/stage-3-xmlscan.md)
-
-### Этап 4. Builder и CSR-структуры (internal/build) — ВЫПОЛНЕН
-[Подробное описание](implementation/stage-4-builder-csr.md)
-
-### Этап 5. Компилятор и загрузчик файла — ВЫПОЛНЕН
-[Подробное описание](implementation/stage-5-compiler-loader.md)
-
-### Этап 6. Публичный фасад pkg/dictionary (FT7–FT9) — ВЫПОЛНЕН
-[Подробное описание](implementation/stage-6-facade.md)
-
-### Этап 7. Интеграция с OpenCorpora end-to-end — ВЫПОЛНЕН
-[Подробное описание](implementation/stage-7-opencorpora.md)
-
-### Этап 8. Поиск лемм FT5 — ВЫПОЛНЕН
-[Подробное описание](implementation/stage-8-lemmas.md)
-
-### Этап 9. Нечёткий поиск FT6 — ВЫПОЛНЕН
-[Подробное описание](implementation/stage-9-fuzzy.md)
-
-### Этап 10. Финализация — ВЫПОЛНЕН
-[Подробное описание](implementation/stage-10-finalize.md)
-
----
-
-## Сравнительный анализ: gomorphy vs PyMorphy2 (пересмотренный)
-
-Исходный материал: [pymorphy2 — внутреннее устройство](https://pymorphy2.readthedocs.io/en/stable/internals/index.html),
-[opennota/morph](https://gitlab.com/opennota/morph) (Go-реализация чтения pymorphy2).
-
-### Архитектура хранения PyMorphy2
-
-Ключевая идея: **парадигмы + DAWG**.
-
-1. **Парадигмы.** Каждая лемма разбирается на префикс + стем + суффикс.
-   Стем отбрасывается; (префикс, суффикс, тег) кодируются числовыми индексами.
-   Результат — шаблон склонения (парадигма). Для русского: ~3 000 парадигм
-   из ~400K лексем. Парадигма хранится как `array.array("<H")`: N суффиксов
-   + N тегов + N префиксов.
-
-2. **DAWG слов.** Все слова — в минимизированном конечном автомате.
-   Ключ: `<слово>\x00<para_id><form_idx>`. DAWG сливает общие префиксы и
-   суффиксы. 5 млн словоформ ≈ 7 МБ.
-
-3. **Теги и суффиксы.** Пулы строк: `suffixes.json` (~5K суффиксов),
-   `paradigm-prefixes.json` (~3 префикса), `gramtab-opencorpora-int.json`
-   (~1K тегов). Хранятся как JSON-массивы строк.
-
-4. **Предсказание.** Отдельные DAWG для 1–5-буквенных окончаний → наборы
-   разборов. Обеспечивает разбор несловарных слов.
-
-5. **Чтение в Go.** Библиотека `opennota/morph` (~500 строк) читает формат
-   pymorphy2 напрямую: dictionary+guide массивы для DAWG, binary Read для
-   paradigms.array, JSON для суффиксов/тегов. Ё-обработка на лету.
-
-| Сущность | Кол-во | Объём |
+| Этап | Статус | Подробности |
 |---|---|---|
-| Парадигмы | ~3 000 | ~3–4 МБ |
-| Суффиксы/префиксы/теги | ~6K | ~0.5 МБ |
-| Слова в DAWG | ~5 млн | ~7 МБ |
-| Предсказание (3 DAWG) | — | ~3–4 МБ |
-| **Итого** | | **~15 МБ** |
-
-### Архитектура хранения gomorphy (текущая)
-
-Ключевая идея: **интернирование + CSR-trie + exact-hash**.
-
-| Сущность | Кол-во | Объём на диске |
-|---|---|---|
-| Уникальные тексты (TextData) | 3 065 312 | ~67 МБ |
-| Exact-hash таблица | ~4,4 млн слотов × 16 байт | ~47 МБ |
-| Pairs (text_id + ancode_id) | 5 393 737 | ~62 МБ (raw u32) |
-| Trie (CSR) | сотни тыс. состояний | ~30–40 МБ |
-| Постинг-листы | 5,4 млн записей | ~20 МБ |
-| Леммы + анкоды | 391К + 876 | ~5 МБ |
-| **Итого на диске** | | **~305 МБ** |
-
-### Причины расхождения в 20×
-
-| Причина | Доля экономии pymorphy2 | Комментарий |
-|---|---|---|
-| Парадигмы вместо плоских текстов | ~40 МБ (67→27 МБ) | 3K шаблонов вместо 3M текстов |
-| DAWG вместо CSR-trie | ~15–20 МБ | Слияние эквивалентных состояний |
-| Встроенные метаданные в DAWG | ~42 МБ | PairTexts+PairAncodes не нужны |
-| Отсутствие exact-hash | ~47 МБ | DAWG обеспечивает O(len) lookup |
-| Отсутствие постинг-листов | ~20 МБ | Метаданные в DAWG-значениях |
-
-### Почему рефакторинг текущего кода не работает
-
-Текущая модель gomorphy **принципиально отличается** от pymorphy2:
-
-1. **Пары (textID, ancodeID)** — центральная единица хранения. Один текст
-   может иметь несколько анкодов (омонимия). В pymorphy2 это не нужно:
-   DAWG хранит `(слово → para_id, form_idx)`, и тег берётся из парадигмы.
-
-2. **Постинг-листы** привязаны к узлам trie. В pymorphy2 их нет:
-   DAWG сам содержит `(para_id, form_idx)` как значение.
-
-3. **Exact-hash** — отдельная 47 МБ таблица. В pymorphy2 DAWG обеспечивает
-   быстрый поиск без дополнительной структуры.
-
-Пошаговое «внедрение парадигм» в текущую модель не даёт основного выигрыша
-(встраивание метаданных в граф), а создаёт гибрид без преимуществ ни одной
-модели.
-
-### Почему rewrite оправдан
-
-1. **opennota/morph доказывает** DAWG-модель в Go: ~500 строк, чтение формата
-   pymorphy2, Ё-обработка, prediction. Формат прост: dictionary uint32[] +
-   guide byte[].
-
-2. **XML-пайплайн переиспользуется.** `internal/xmlscan` читает dict.xml —
-   эту часть не нужно переписывать. Новый импортёр берёт события xmlscan
-   и строит парадигмы + DAWG.
-
-3. **CLI адаптируется.** Интерактивный режим и команды — 90% кода остаётся.
-   Добавляются `import` и multi-source.
-
-4. **FT8 (Builder) сохраняется.** API `AddGrammeme/AddLemma/AddForm` остаётся —
-   это вход для программного наполнения.
-
----
-
-## План работ (новая реализация, этапы 11–18)
-
-Каждый этап — самостоятельный инкремент с проверяемым результатом.
-Переиспользуемый код: `internal/xmlscan`, `internal/intern`,
-`internal/stringsx`, `internal/mmapx`, `pkg/opencorpora`.
-
-### Этап 11. Внутренний формат: TagSet + Paradigm + DAWG reader — ВЫПОЛНЕН
-
-**Сводка**: Реализовать основные примитивы внутреннего формата:
-TagSet (набор тегов), Paradigm (шаблон склонения), DAWG reader
-(чтение формата dawgdic из pymorphy2). Этот этап создаёт фундамент
-для всех последующих.
-
-**Инкремент**:
-- Новый пакет `pkg/morphology/internal/`:
-  - `tagset.go`: `TagSet{Name string, Tags []string, Index map[string]uint16}`
-  - `paradigm.go`: `Paradigm` — плоский `[]uint16` (N suffixes + N tags + N prefixes)
-  - `dawg.go`: DAWG reader (dictionary + guide массивы, формат dawgdic).
-    Reading: `followByte`, `followRune`, `find`, `similarItems` (с Ё-заменой).
-    Формат: uint32 array (dictionary) + byte array (guide, по 2 байта на узел).
-  - `char_policy.go`: `CharPolicy` — набор пар заменяемых символов
-    (по умолчанию `е→ё` для русского, пусто для других языков).
-  - `dictionary.go`: `Dictionary` — иммутабельный снимок:
-    `TagSet`, `Suffixes []string`, `Prefixes []string`, `Paradigms []Paradigm`,
-    `Words *DAWG`, `CharPolicy`.
-
-**Автоматические проверки (тесты)**:
-- unit-тест: DAWG reader читает тестовый DAWG (создан в памяти).
-- unit-тест: `followByte`/`followRune` возвращают корректные переходы.
-- unit-тест: `similarItems` с CharPolicy `е→ё` находит варианты.
-- unit-тест: Paradigm — индексная арифметика (suffix, tag, prefix по индексу).
-- unit-тест: TagSet — добавление и поиск тегов.
-- `go test ./pkg/morphology/... -race` — зелёные.
-
-**Ручные проверки**:
-- Прочитать `words.dawg` из pymorphy2-dicts-ru: `morph.InitWith(path)`.
-- `similarItems("кота")` → найдены разборы.
-
-### Этап 12. Импорт PyMorphy2 — ВЫПОЛНЕН
-
-> Примечание: roundtrip-тест из списка проверок (`ImportFromDir → SaveTo →
-> Open`) отложен до этапа 14, где реализуется сериализация `SaveTo`/`Open`.
-
-**Сводка**: Загрузка словаря pymorphy2 из директории (words.dawg +
-paradigms.array + suffixes.json + gramtab-*.json) → иммутабельный
-`Dictionary`. Прямое чтение формата без конвертации.
-
-**Инкремент**:
-- `pkg/morphology/importers/pymorphy2/`:
-  - `import.go`: `ImportFromDir(dir string) (*Dictionary, error)`
-  - Чтение `paradigms.array`: uint16 count + для каждой: uint16 len + []uint16 data
-  - Чтение `suffixes.json`, `paradigm-prefixes.json`: JSON-массив строк
-  - Чтение `gramtab-opencorpora-int.json`: JSON-массив строк → TagSet
-  - Чтение `words.dawg`: dictionary + guide → DAWG
-  - Опционально: `prediction-suffixes-N.dawg` → Prediction []*DAWG
-  - Опционально: `p_t_given_w.intdawg` → probability DAWG
-- Публичный API в `pkg/morphology/`:
-  - `OpenPyMorphy(dir string) (*Dictionary, error)` — обёртка над импортёром
-
-**Автоматические проверки (тесты)**:
-- unit-тест: маленький DAWG + парадигмы → Dictionary.
-- unit-тест: roundtrip: ImportFromDir → SaveTo → Open → данные идентичны.
-- integration-тест: полный словарь pymorphy2-dicts-ru → Parse("все") → ≥4 разбора.
-- `go test ./pkg/morphology/... -race` — зелёные.
-
-**Ручные проверки**:
-- `gomorphy -dict pymorphy2.dat lookup кота` → результаты идентичны pymorphy2.
-
-### Этап 13. Публичный API: Parse, Lemma, Fuzzy — ВЫПОЛНЕН
-
-**Сводка**: Реализовать публичный API поверх Dictionary:
-Parse (точный поиск + предсказание), Lemma (начальная форма),
-Fuzzy (нечёткий поиск). Адаптация CLI.
-
-**Инкремент**:
-- `pkg/morphology/parse.go`:
-  - `Parse(word string) []Reading` по модели pymorphy2 → opennota: чтение
-    payload words.dawg = `(para, form)` (2×uint16 BE), норма = premises
-    `TrimPrefix/TrimSuffix` → `prefix[0]+stem+suffix[0]` для form≠0;
-    сортировка по prob (ключ `word+":"+tag`, `prob/1e6`), только если есть
-    ненулевая. Prediction по окончаниям: 6-байтовые значения
-    `(count, para, form)`, productive-граммемы, `suffixSplits` до 5 рун,
-    break при totalCount>1, дедуп по (Word,Normal,Tag).
-  - Обёртка `pkg/morphology.Dictionary{d *internal.Dictionary}`;
-    `OpenPyMorphy` возвращает `*Dictionary` (было `*internal.Dictionary`),
-    метод `Language()`.
-  - CLI-адаптация **перенесена на этап 14** (нужны SaveTo/Open — `-dict`
-    открывает скомпилированный `.dat`).
-- `pkg/morphology/lemma.go`:
-  - `Lemma(word string) []LemmaRef` — начальная форма через Parse;
-    дедуп по (Normal, Tag) — омонимы сохраняются.
-- `pkg/morphology/fuzzy.go`:
-  - `Fuzzy(word, maxDist) []FuzzyMatch` — совместный обход DAWG и banded DP
-    Левенштейна (метрика по рунам); терминал узла — по guide
-    (`HasPayloadChild`), т.к. FollowByte-проба ловит коллизии double-array.
-  - `FuzzyTop(word, maxWords) []FuzzyMatch` — расширение радиуса до верхней
-    границы `len(query)+наиб. длина слова` (дедуп по узлам)
-  - `internal`: `PayloadSeparator` (exported), `DAWG.ForEachChild`,
-    `DAWG.HasPayloadChild`.
-
-**Автоматические проверки (тесты)**:
-- unit-тест: `Parse("кота")` → 1 разбор `NOUN,anim,masc,sing,gent`, Normal "кот".
-- unit-тест: `Parse("кот")` → 2 разбора, сортировка по prob (NOUN 0.0005 > VERB 0.0001).
-- unit-тест: `Parse("КОТ")` — lowercase, `Parse("котёнка")` — предсказание.
-- unit-тест: `Lemma("кота")`→{кот,nomn,para0}; «кот» → 2 омонима.
-- unit-тест: `Fuzzy("кот",1)`→{кот:0,код:1,кота:1,крот:1}; е/ё метрика;
-  `FuzzyTop("кот",3)`→[кот,код,кота]; FuzzyTop охват всего словаря.
-- `go test ./pkg/morphology/... -race` и `go vet` — зелёные.
-
-**Ручные проверки**:
-- `gomorphy -dict pymorphy2.dat lookup кота` → корректный разбор.
-- `gomorphy -dict pymorphy2.dat fuzzy кот 1` → список слов.
-- Интерактивный режим: все команды работают.
-
-### Этап 14. Сериализация: единый формат на диске — ВЫПОЛНЕН
-
-**Сводка**: Реализованы единый дисковый формат GMOR (заголовок + каталог +
-секции, checksum xxh3-64, смещения секций не выровнены по 8 байтам), кодек
-секций (meta, tagset, suffixes, prefixes, paradigms, words.dawg,
-prediction-N, probability) с zero-copy mmap-алиасингом words.dawg,
-`Dictionary.SaveTo`/`Open`/`Close` и миграция CLI на новую публичную модель
-(`import pymorphy2`, `lookup`, `lemmas`, `fuzzy`, `top`). zstd-сжатие секций
-отложено на этап 17 (флаг сжатия в каталоге уже предусмотрен, чтение
-сжатой секции сейчас завершается ошибкой).
-
-**Сводка**: Определить и реализовать единый формат файла для хранения
-словаря: секции (header, meta, suffixes, prefixes, tagset, paradigms,
-words.dawg, prediction). Формат совместим с pymorphy2 или является
-его расширением.
-
-**Инкремент**:
-- `pkg/morphology/internal/format.go`:
-  - Формат: magic "GMOR" | version uint32 | checksum xxh3
-  - Каталог секций: [name, offset, size] × N
-  - Секции: meta, tagset, suffixes, prefixes, paradigms, words.dawg,
-    prediction-0..N, probability
-  - Чтение: mmap + срезание по каталогу (как в текущем format/)
-  - Запись: посекционная запись с возможным zstd-сжатием холодных секций
-- `pkg/morphology/save.go`:
-  - `Dictionary.SaveTo(path string) error`
-  - Сериализация: suffixes/prefixes как varint-length-prefixed строки,
-    paradigms как uint16 array, words.dawg как raw bytes.
-- `pkg/morphology/open.go`:
-  - `Open(path string) (*Dictionary, error)` — загрузка из файла
-  - mmap для горячих секций (words.dawg), полная загрузка для холодных
-
-**Автоматические проверки (тесты)**:
-- unit-тест: roundtrip ImportFromDir → SaveTo → Open → Parse результаты идентичны.
-- unit-тест: формат-версия корректно записывается и читается.
-- unit-тест: повреждённый файл → осмысленная ошибка.
-- `go test ./pkg/morphology/... -race` — зелёные.
-
-**Ручные проверки**:
-- Сравнить размер `.dat` с размером директории pymorphy2.
-- `gomorphy -dict pymorphy2.dat lookup кота` → идентично прямой загрузке.
-
-### Этап 15. Импорт OpenCorpora
-
-**Сводка**: Импорт словаря OpenCorpora (`dict.xml`) через извлечение
-парадигм из лемм. Переиспользование `internal/xmlscan` для чтения XML.
-Результат — тот же внутренний формат (paradigm + DAWG).
-
-**Инкремент**:
-- `pkg/morphology/importers/opencorpora/`:
-  - `import.go`: `ImportFromXML(r io.Reader, tagSet *TagSet) (*Dictionary, error)`
-  - Pipeline:
-    1. Сканировать XML через `xmlscan` (события: grammeme, lemma, form)
-    2. Для каждой леммы: собрать все формы → вычислить стем (LCP) →
-       суффиксы = хвосты форм минус стем → парадигма = (suffix_id, tag_id, 0)
-    3. Дедуплицировать парадигмы ( map[paradigmKey]paradigmID )
-    4. Построить DAWG из всех слов с `(para_id, form_idx)` как values
-    5. Вернуть Dictionary
-  - TagSet по умолчанию: `gramtab-opencorpora-int.json` из pymorphy2
-    (совместимые теги) или пользовательский.
-- `pkg/morphology/compile.go`:
-  - `CompileFromXML(xmlPath, outPath string) error` — полный цикл
-  - `CompileFromXMLFile(path string) (*Dictionary, error)` — в память
-
-**Автоматические проверки (тесты)**:
-- unit-тест: маленький XML (5–10 лемм) → парадигмы извлечены корректно.
-- unit-тест: roundtrip: CompileFromXML → SaveTo → Open → Parse идентичен.
-- unit-тест: число парадигм < число лемм (для dict.xml).
-- property-тест: N случайных слов → все найдены.
-- integration-тест: 100 случайных словоформ → сверка с независимым разбором.
-- `go test ./pkg/morphology/... -race` — зелёные.
-
-**Ручные проверки**:
-- `gomorphy import opencorpora dict.xml -o oc.dat` → файл создан.
-- `gomorphy -dict oc.dat lookup кота` → корректный разбор.
-- Сравнить результаты с pymorphy2 (для слов, которые есть в обоих).
-
-### Этап 16. Импорт UniMorph
-
-**Сводка**: Импорт словаря UniMorph из TSV (`лемма<TAB>форма<TAB>bundle`).
-Аналогичен этапу 15, но проще: без XML, потоковое чтение. Признаки UniMorph
-сохраняются как есть (opaque TagSet); маппинг на OpenCorpora-теги — опция.
-Подробный разбор — в [unimorph.md](unimorph.md).
-
-**Инкремент**:
-- `pkg/morphology/importers/unimorph/`:
-  - `import.go`: `ImportFromTSV(r io.Reader, opts Options) (*Dictionary, error)`
-  - Pipeline:
-    1. Потоковое чтение (bufio.Scanner), разбиение по `\t` на 3 поля:
-       лемма, словоформа, bundle
-    2. Лемма → `AddLemma`; форма → `AddForm(lemmaID, словоформа, SPLIT(bundle))`
-    3. Опция `Mapping`: проекция признаков UniMorph на другой TagSet
-       (например, OpenCorpora); неполные соответствия — как есть
-    4. `Compile()` → Dictionary (единый `.dat`-формат, общий для источников)
-- `pkg/morphology/compile.go`:
-  - `CompileFromUniMorph(r io.Reader) (*Dictionary, error)`
-  - `CompileFromUniMorphFile(path string) (*Dictionary, error)`
-- CLI: `gomorphy import unimorph <rus.tsv> -o ru-unimorph.dat`
-
-**Автоматические проверки (тесты)**:
-- unit-тест: мини-TSV (5–10 лемм) → корректные леммы и парадигмы.
-- unit-тест: roundtrip ImportFromTSV → SaveTo → Open → Parse идентичен.
-- unit-тест: синкретизм: одна форма с несколькими bundles → все чтения.
-- unit-тест: пустая лемма → лемма == словоформа.
-- unit-тест: маппинг тегов (opaque и `Mapping`).
-- integration-тест: весь `rus` → `Lookup`/`Lemmas` на выборочных словах.
-- integration-тест: парадигмы < лемм (для `rus`: 28 068 < 28 069).
-- `go test ./pkg/morphology/... -race` — зелёные.
-
-**Ручные проверки**:
-- `gomorphy import unimorph rus -o ru-unimorph.dat` → файл создан.
-- `gomorphy -dict ru-unimorph.dat lookup кота` → `N;ACC;SG`.
-- Другой язык (`eng`): `gomorphy -dict en.dat lookup cats` — без изменений (FT10).
-- Сверка по словам, общим с OpenCorpora-словарём.
-
-### Ускорение сборки DAWG: free-list вместо O(n²) сканирования — ВЫПОЛНЕНО
-
-**Проблема**: после этапа 15 сборка реального словаря OpenCorpora
-(dict.xml, 3 065 312 лемм) занимала около 24 часов. Причина —
-`compileImpl` (`pkg/morphology/internal/dawgbuild.go`) искал свободный
-`base`-слот double-array раскладки линейным сканированием бита за битом от
-`base=1` для каждого узла; по мере заполнения массива стоимость поиска на
-узел росла вместе с числом уже размещённых узлов, что даёт квадратичную
-асимптотику.
-
-**Решение**: placement-алгоритм заменён на intrusive doubly-linked free
-list (техника dawgdic/cedar/Darts, Aoe 1989): свободные слоты связаны в
-список, поиск посещает только свободные слоты, плюс кэш подсказок по
-первому байту метки. Формат файла и публичный API не изменились.
-Подробности — в [design-спеке](superpowers/specs/2026-09-14-dawg-build-freelist-design.md)
-и [плане реализации](superpowers/plans/2026-09-14-dawg-build-freelist.md).
-
-**Результат** (полный `dict.xml`, `gomorphy_build compile`):
-
-| Метрика | До фикса | После фикса |
-|---|---|---|
-| Время сборки (OpenCorpora, 3.06М лемм) | ~24 ч | ~24 с |
-| Peak RSS | — | ~8.2 ГБ |
-
-Синтетический бенчмарк (`dawgbuild_scaling_test.go`, `-tags scaling`)
-подтверждает сублинейно-квадратичный (не O(n²)) рост при 100К–5М ключей.
-
-### Исправление: минимизация DAWG не работала (баг в chainSig) — ВЫПОЛНЕНО
-
-**Проблема**: при подготовке Этапа 17 (сжатие «холодных» секций) замер секций
-реального `.dat` показал, что `words.dawg` — 99.33% файла (425.8 МБ из
-428.7 МБ), а double-array раскладка занимала 70 968 276 слотов при 3 065 312
-узлах трая (плотность ~4.3%). Причина оказалась глубже плотности упаковки:
-`chainSig` (`dawgbuild.go`) кодировала в подпись цепочки братьев id **самого
-узла** вместо id его **ребёнка** (комментарий над функцией прямо говорил
-«ребёнок сравнивается по id», код сравнивал не ребёнка). Id узла всегда
-свежий/уникальный, поэтому подписи двух структурно идентичных суффиксных
-цепочек никогда не совпадали — `register` не находил совпадений вообще
-(0 срабатываний из 35 484 001 на полном словаре), минимизация суффиксов не
-работала, и DAWG фактически собирался как неминимизированный trie.
-
-**Решение**: однострочный фикс — кодировать в подпись `b.nodes[n].first`
-(id ребёнка) вместо `n`. Регрессионный тест
-`TestBuildDAWGMinimizesSharedSuffixes` (`dawgbuild_test.go`) строит DAWG из
-ключей с общим длинным суффиксом и проверяет, что double-array остаётся на
-порядок меньше «неминимизированной» оценки — без фикса тест падает
-(18 176 слотов вместо ожидаемых <3 150).
-
-**Результат** (полный `dict.xml`, `gomorphy_build compile`):
-
-| Метрика | До фикса | После фикса |
-|---|---|---|
-| Размер `.dat` (OpenCorpora) | 428.7 МБ | 14.6 МБ (**~29×**) |
-| Слотов double-array | 70 968 276 | ~2М |
-| Плотность упаковки | ~4.3% | ~51% |
-
-Результаты `lookup`/`fuzzy` идентичны до и после фикса (сверено вручную и
-полным прогоном `go test ./... -race`, 125/125 зелёных). Заодно закрывает
-большую часть цели Этапа 17 (размер `.dat`) без zstd и без изменения формата.
-
-### Этап 17. Сужение типов ID и zstd
-
-**Сводка**: Оптимизация размера: uint16 для paradigm/suffix/tag IDs,
-zstd-сжатие холодных секций (suffixes, prefixes, tagset).
-
-**Сужение типов ID — ВЫПОЛНЕНО** (реализовано попутно на этапе 11–18):
-`Paradigm` хранит данные как `[]uint16` (`paradigm.go`), `TagSet.Index` —
-`map[string]uint16` (`tagset.go`). Отдельной работы не требуется.
-
-**zstd-сжатие холодных секций — реализация ОТЛОЖЕНА, задел под неё
-заложен сейчас.** После фикса минимизации DAWG (см. выше) `.dat` для
-полного OpenCorpora — 14.6 МБ, из них «холодные» секции (suffixes,
-tagset, paradigms) — ~2.86 МБ (~19%). Экономия от сжатия значима, но
-внедрение (подбор уровня сжатия, тесты roundtrip, замер regression на
-`Parse`) — отдельная задача, не блокирующая 1.0.0.
-
-**Заложенный сейчас формат-задел (ВЫПОЛНЕНО)**: до этой правки флаг
-секции был единственным битом «сжато/не сжато» без указания алгоритма —
-доразвить его после релиза означало бы либо гадать алгоритм по сигнатуре
-данных секции (ненадёжно: секция — произвольный blob без
-самоописывающегося заголовка), либо вводить второй флаг задним числом
-поверх уже выпущенных файлов. Сжатие ни разу не было записано ни в одном
-файле, поэтому это единственный момент, когда байтовый layout каталога
-можно перепроектировать без версионирования и без риска несовместимости
-для пользователей. Сделано (`pkg/morphology/internal/format.go`):
-- Флаги записи каталога (`Entry.Flags`/`Section.Flags`, тот же байт, тот
-  же `entrySize`) переопределены: младшие 4 бита — явный id алгоритма
-  сжатия секции (`CompressionNone=0`, `CompressionZstd=1`, далее по мере
-  реализации новых алгоритмов), старшие 4 бита зарезервированы под
-  независимые от сжатия флаги будущих версий.
-- `Container.Section` при чтении неизвестного/нереализованного алгоритма
-  возвращает `ErrUnsupportedCompression` с id алгоритма в сообщении —
-  явная ошибка апгрейда вместо порчи данных или молчаливого ignore.
-- `validateSections` при записи отклоняет зарезервированные биты и
-  незнакомые id алгоритма — расширяется одной строкой на новый алгоритм.
-- Сжатие выбирается **на уровне секции**, не файла целиком: `words.dawg`
-  всегда `CompressionNone` (алиасится из mmap без копирования), выбор
-  алгоритма для остальных секций — за будущей реализацией.
-
-**Оставшаяся реализация (отдельная будущая задача, после 1.0.0)**:
-- Библиотека: `klauspost/compress` (чистый Go, без cgo).
-- zstd-компрессия/декомпрессия для секций suffixes, prefixes, tagset,
-  paradigms; уровень — максимальное сжатие (файл собирается редко,
-  читается часто, декомпрессия холодных секций — один раз при загрузке).
-- Заодно — анализ плотности упаковки double-array DAWG (после фикса
-  минимизации ~51%; есть ли смысл дотягивать дальше) — та работа, которая
-  изначально планировалась как «Этап 17».
-
-**Автоматические проверки (тесты, для будущей реализации)**:
-- unit-тест: roundtrip сжатый → несжатый → данные идентичны.
-- unit-тест: сжатая секция меньше несжатой.
-- benchmark: Parse до и после (ожидается 0% regression).
-- `go test ./pkg/morphology/... -race` — зелёные.
-
-**Ручные проверки (для будущей реализации)**:
-- `make compile`: сравнить размер `.dat` до и после.
-- `gomorphy -dict pymorphy2.dat lookup кота` → идентично.
-
-### Секция info: диагностические метаданные словаря — ВЫПОЛНЕНО
-
-**Сводка**: новая опциональная секция `info` в формате GMOR — не нужна
-для работы `Parse`/`Lemma`/`Fuzzy`, но отвечает на вопрос «чем и когда
-собран этот `.dat`», который явно всплыл на фиксе минимизации DAWG:
-`Version` (формат) не меняется годами, а поведение сборки — может, и
-раньше нечем было это различить постфактум.
-
-**Реализовано** (`pkg/morphology/internal/buildinfo.go`,
-`pkg/morphology/buildinfo.go`, `pkg/morphology/version.go`):
-- `BuildInfo{BuiltAt, LibraryVersion, Source, SourceVersion, Author,
-  Description, SourceURL}` — JSON-секция, все поля опциональны, секция
-  целиком опциональна (старые файлы и словари, собранные вручную через
-  Builder API без `SaveTo`, открываются как раньше — `Dictionary.Info()`
-  вернёт `nil`).
-- `BuiltAt`/`LibraryVersion` проставляет сама `SaveTo` при каждом
-  сохранении (не мутируя исходный `Dictionary` — он иммутабелен); заранее
-  заданные импортёром значения этих двух полей перезаписываются.
-- `Source` заполняют импортёры: `"opencorpora"`
-  (`importers/opencorpora`), `"pymorphy2"` (`importers/pymorphy2`).
-- `LibraryVersion` берётся из новой `pkg/morphology.Version = "0.1.0"`
-  (первая версия этой константы в репозитории — раньше нигде не была
-  нужна). Это ручная строка; переход на значение, встраиваемое при сборке
-  (ldflags/VCS info) — отдельная правка при груминге CLI (Этап 18).
-- `Dictionary.Info() *BuildInfo` — публичный accessor для чтения.
-
-**Сознательно не сделано сейчас** (см. ниже, что закладывалось только на
-уровне идеи):
-- `SourceVersion` для OpenCorpora **не заполняется**: у `dict.xml` есть
-  `<dictionary version="0.92" revision="417257">`, но `internal/xmlscan`
-  сейчас не отдаёт атрибуты корневого тега наружу (`dispatch.go`:
-  `case t.is("dictionary"): s.section = sectOther` — тег распознаётся
-  только как маркер секции, без извлечения атрибутов). Нужно: новый метод
-  `Handler` (например `OnDictionaryMeta(version, revision []byte)`) +
-  ветка в `dispatch()` + чтение в `opencorpora.ImportFromXML`. Небольшая,
-  но отдельная задача — по мере того, как импортёры «научатся» парсить
-  версию своего источника (так и для будущих `pymorphy2`/`unimorph`
-  источников).
-- **Стабильный хэш содержимого** (независимый от даты сборки/версии
-  библиотеки, чтобы сравнивать два по-разному собранных `.dat` на
-  идентичность лингвистических данных) — рассмотрено и отклонено:
-  решили, что пары (`BuiltAt`, `SourceVersion`) достаточно.
-- **Посекционные чек-суммы** — рассмотрено и отклонено: файл целиком
-  проверяется одним xxh3 при `Open`, отдельные чек-суммы на секцию
-  ничего не добавляют для этого формата.
-- **Tooling для проверки/подкачки свежей версии словаря** по `SourceURL`
-  — сознательно только задел на уровне поля. Сценарий вперёд: `SourceURL`
-  — просто ссылка для ручного/агентского скачивания уже сейчас; в
-  будущем — свой мини-стандарт списка версий (аналог index-файлов
-  yum/pip: JSON с перечислением доступных версий словаря по URL), но это
-  отдельная фича co своим контрактом (что считается «новой версией», как
-  сравнивать), а не просто поле формата — проектируется отдельно, когда
-  появится конкретный публичный ресурс с версиями словарей.
-- Ни один CLI-флаг пока не заполняет `Author`/`Description`/`SourceURL`
-  — это часть груминга CLI перед Этапом 18.
-
-**Находка для будущего ревью кода**: `cmd/gomorphy_build/main.go` уже
-содержит `const programVersion = "0.1.0"`, но нигде не использует —
-мёртвый код, обнаружен по касательной при добавлении `LibraryVersion`.
-Не трогал (не в объёме этой правки) — фиксирую для раздела «Ревью кода
-перед 1.0.0» ниже.
+| 0. Анализ и подготовка репозитория | ВЫПОЛНЕН | [implementation/stage-0-analysis.md](implementation/stage-0-analysis.md) |
+| 1. Примитивы формата (internal/format) | ВЫПОЛНЕН | [implementation/stage-1-format.md](implementation/stage-1-format.md) |
+| 2. Интернирование строк | ВЫПОЛНЕН | [implementation/stage-2-intern.md](implementation/stage-2-intern.md) |
+| 3. Сканер dict.xml (internal/xmlscan) | ВЫПОЛНЕН | [implementation/stage-3-xmlscan.md](implementation/stage-3-xmlscan.md) |
+| 4. Builder и CSR-структуры | ВЫПОЛНЕН | [implementation/stage-4-builder-csr.md](implementation/stage-4-builder-csr.md) |
+| 5. Компилятор и загрузчик файла | ВЫПОЛНЕН | [implementation/stage-5-compiler-loader.md](implementation/stage-5-compiler-loader.md) |
+| 6. Публичный фасад pkg/dictionary | ВЫПОЛНЕН | [implementation/stage-6-facade.md](implementation/stage-6-facade.md) |
+| 7. Интеграция с OpenCorpora end-to-end | ВЫПОЛНЕН | [implementation/stage-7-opencorpora.md](implementation/stage-7-opencorpora.md) |
+| 8. Поиск лемм FT5 | ВЫПОЛНЕН | [implementation/stage-8-lemmas.md](implementation/stage-8-lemmas.md) |
+| 9. Нечёткий поиск FT6 | ВЫПОЛНЕН | [implementation/stage-9-fuzzy.md](implementation/stage-9-fuzzy.md) |
+| 10. Финализация (первая реализация) | ВЫПОЛНЕН | [implementation/stage-10-finalize.md](implementation/stage-10-finalize.md) |
+| — (обоснование редизайна хранилища, этапы 11–18) | — | [implementation/redesign-rationale.md](implementation/redesign-rationale.md) |
+| 11. Внутренний формат: TagSet + Paradigm + DAWG reader | ВЫПОЛНЕН | [implementation/stage-11-internal-format.md](implementation/stage-11-internal-format.md) |
+| 12. Импорт PyMorphy2 | ВЫПОЛНЕН | [implementation/stage-12-import-pymorphy2.md](implementation/stage-12-import-pymorphy2.md) |
+| 13. Публичный API: Parse, Lemma, Fuzzy | ВЫПОЛНЕН | [implementation/stage-13-public-api.md](implementation/stage-13-public-api.md) |
+| 14. Сериализация: единый формат на диске | ВЫПОЛНЕН | [implementation/stage-14-serialization.md](implementation/stage-14-serialization.md) |
+| 15. Импорт OpenCorpora | ВЫПОЛНЕН | [implementation/stage-15-import-opencorpora.md](implementation/stage-15-import-opencorpora.md) |
+| — Ускорение сборки DAWG (free-list вместо O(n²)) | ВЫПОЛНЕНО | [implementation/dawg-freelist-optimization.md](implementation/dawg-freelist-optimization.md) |
+| — Исправление минимизации DAWG (баг в chainSig, ~29× к размеру `.dat`) | ВЫПОЛНЕНО | [implementation/dawg-minimization-fix.md](implementation/dawg-minimization-fix.md) |
+| 17. Сужение типов ID + формат-задел под сжатие + секция `info` | ЧАСТИЧНО (см. ниже) | [implementation/stage-17-optimize.md](implementation/stage-17-optimize.md), [implementation/info-section.md](implementation/info-section.md) |
+
+## Незавершённые/будущие этапы
+
+### Этап 16. Импорт UniMorph — НЕ НАЧАТО
+
+Импорт словаря UniMorph из TSV. Полный план — в
+[implementation/stage-16-import-unimorph.md](implementation/stage-16-import-unimorph.md)
+(готов к реализации, план не менялся). Не входит в путь к 1.0.0 (см.
+ниже) — приоритизация после релиза.
+
+### Этап 17 — остаток: zstd-сжатие + анализ плотности DAWG
+
+Сужение типов ID и формат-задел под сжатие уже сделаны (см. таблицу
+выше). Осталось — отдельная будущая задача, **не блокирующая 1.0.0**:
+
+- Библиотека `klauspost/compress` (чистый Go, без cgo), zstd для секций
+  suffixes/prefixes/tagset/paradigms, максимальный уровень сжатия
+  (сборка редкая, чтение частое).
+- Заодно — анализ плотности упаковки double-array DAWG: после фикса
+  минимизации плотность ~51%, стоит ли дотягивать дальше.
+
+Подробности и уже сделанное — в
+[implementation/stage-17-optimize.md](implementation/stage-17-optimize.md).
 
 ## Путь к версии 1.0.0
 
 Порядок до релиза (зафиксирован 2026-09-14):
 
-1. ~~Формат: задел под расширяемое сжатие + секция info~~ — ВЫПОЛНЕНО
-   (см. Этап 17 и «Секция info» выше).
+1. ~~Формат: задел под расширяемое сжатие + секция info~~ — ВЫПОЛНЕНО.
 2. Ревью кода перед 1.0.0 (ниже) — не начато.
 3. Этап 18, но сначала — груминг CLI-команд (есть отдельные идеи,
    уточняются с пользователем до начала этапа).
 4. Релиз 1.0.0.
 
-Всё остальное (zstd-реализация из Этапа 17, Этап 19, Этап 20) — в бэклог
-после 1.0.0, приоритизируется и уточняется отдельно перед стартом каждой
-задачи.
+Всё остальное (zstd-реализация из Этапа 17, Этап 16, Этап 19, Этап 20)
+— в бэклог после 1.0.0, приоритизируется и уточняется отдельно перед
+стартом каждой задачи.
 
 ### Ревью кода перед 1.0.0 — НЕ НАЧАТО
 
@@ -592,65 +101,23 @@ tagset, paradigms) — ~2.86 МБ (~19%). Экономия от сжатия з�
   упрощения тестирования и модификации отдельных частей (per-package,
   с конкретными именами функций/файлов, не общие пожелания).
 
+**Известная затравка** (найдена по касательной, не разбиралась):
+`cmd/gomorphy_build/main.go`: `const programVersion = "0.1.0"` нигде
+не используется — мёртвый код.
+
 **Результат**: отчёт с конкретными находками (файл:строка, что не так,
 почему это важно) и рекомендациями; что из найденного фиксится сразу, а
 что — переносится в отдельные задачи, решается по факту ревью.
 
-### Этап 18. Финализация: CLI, документация, тесты
+### Этап 18. Финализация: CLI, документация, тесты — НЕ НАЧАТО
 
 > Перед стартом этапа — отдельный груминг CLI-команд (`cmd/gomorphy`,
 > `cmd/gomorphy_build`): есть конкретные идеи по доработке, уточняются с
-> пользователем перед тем, как фиксировать инкремент этапа ниже.
+> пользователем перед тем, как фиксировать инкремент этапа.
 
-**Сводка**: Обновление CLI (все команды через аргументы + интерактивный
-режим), финализация документации, полный прогон тестов.
-
-**Инкремент**:
-- `cmd/gomorphy/main.go`:
-  - Все команды доступны через CLI-аргументы: `lookup`, `lemmas`, `fuzzy`,
-    `top`, `import`
-  - Интерактивный режим: `parse`, `lemma`, `fuzzy`, `top`, `import`, `help`
-  - Мульти-словарь на уровне CLI: `-dict` принимает путь к .dat файлу
-- `cmd/opencorpora_update/main.go`:
-  - Объединение с `import`: `gomorphy update` = загрузка + import
-- Документация: обновление `docs/`, `README.md`, godoc
-- Навык `skills/use-dictionary/SKILL.md` — «использование словаря gomorphy»:
-  lookup/lemmas/fuzzy/top/import, работа с несколькими `.dat` (создаётся
-  вместе с причёсыванием CLI).
-- Полный прогон: `go vet ./...`, `go test -race ./...`, `go build ./...`
-
-**Автоматические проверки (тесты)**:
-- Все unit-тесты зелёные.
-- Все integration-тесты зелёные.
-- `go vet ./...` без замечаний.
-- `go build ./...` без ошибок.
-
-**Ручные проверки**:
-- Полный цикл: `import pymorphy2` → `lookup` → `fuzzy` → `top`.
-- Полный цикл: `import opencorpora` → `lookup` → `fuzzy` → `top`.
-- Полный цикл: `import unimorph` → `lookup` → `fuzzy` → `top`.
-- Интерактивный режим: все команды работают с tab-completion.
-
----
-
-## Итоговые метрики (ожидаемые)
-
-| Показатель | Текущее | После этапа 18 |
-|---|---|---|
-| Размер .dat (pymorphy2) | — | ~15–20 МБ |
-| Размер .dat (opencorpora) | 305 МБ | ~20–30 МБ |
-| Размер .dat с zstd | — | ~10–15 МБ |
-| Загрузка | mmap, мс | mmap, мс |
-| Parse (точный) | < 10 мкс | < 10 мкс |
-| Parse (предсказание) | нет | < 50 мкс |
-| Lemmas | < 10 мкс | < 10 мкс |
-| Fuzzy k≤2 | доли сек | доли сек |
-| Поддержка pymorphy2 | нет | да |
-| Поддержка OpenCorpora | да | да (новый формат) |
-| Поддержка UniMorph (TSV) | нет | да (169 языков) |
-| Множественные словари | на уровне приложения | на уровне приложения |
-
----
+Полный план (CLI-команды, интерактивный режим, документация, навык
+использования словаря, ожидаемые метрики) — в
+[implementation/stage-18-finalize.md](implementation/stage-18-finalize.md).
 
 ## Этап 19. Тематические словари: TSV-импорт, CLI-батчи, навыки, решение по MCP — ЗАПЛАНИРОВАН
 
@@ -719,8 +186,6 @@ tagset, paradigms) — ~2.86 МБ (~19%). Экономия от сжатия з�
 - `gomorphy -dict names.dict lookup - < words.txt` → секции по слову;
 - прогон скилла «тематический словарь» через агента на примере «словарь
   прилагательных-названий кораблей» без загруженного OpenCorpora.
-
----
 
 ## Этап 20. База синонимов: группы, теги, sidecar-файл — ЗАПЛАНИРОВАН (сценарии — открытый вопрос)
 
