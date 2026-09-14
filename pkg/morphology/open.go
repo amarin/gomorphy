@@ -36,7 +36,7 @@ func CompileFromXMLFile(path string, progress opencorpora.Progress) (*Dictionary
 	if err != nil {
 		return nil, fmt.Errorf("morphology: open %s: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return CompileFromXML(f, progress)
 }
 

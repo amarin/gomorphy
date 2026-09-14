@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/binary"
-	"reflect"
 	"testing"
 	"unsafe"
 
@@ -172,11 +171,11 @@ func TestParseDAWGZeroCopy(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NotEmpty(t, d.dict)
-	rawData := (*reflect.SliceHeader)(unsafe.Pointer(&raw)).Data
-	dictData := (*reflect.SliceHeader)(unsafe.Pointer(&d.dict)).Data
+	rawData := uintptr(unsafe.Pointer(unsafe.SliceData(raw)))
+	dictData := uintptr(unsafe.Pointer(unsafe.SliceData(d.dict)))
 	assert.Equal(t, rawData+4, dictData, "dict должен алиасить mmap, а не копироваться")
 
-	guideData := (*reflect.SliceHeader)(unsafe.Pointer(&d.guide)).Data
+	guideData := uintptr(unsafe.Pointer(unsafe.SliceData(d.guide)))
 	require.NoError(t, err)
 	guideOffset := int64(4 + len(dict)*4 + 4)
 	assert.Equal(t, rawData+uintptr(guideOffset), guideData)

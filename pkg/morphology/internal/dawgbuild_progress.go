@@ -28,15 +28,7 @@ func BuildDAWGWithValuesProgress(keys []string, values []uint32, progress func(p
 
 	// Phase 3: build list-form DAWG (insertion + merging).
 	// Это самая медленная фаза — отчёт каждые 1% ключей.
-	b := &dawgBuilder{
-		register:  make(map[string]int32, 1<<20),
-		merged:    make([]bool, 1),
-		path:      make([]int32, 0, 32),
-		sigBuf:    make([]byte, 0, 64),
-		labelsBuf: make([]byte, 0, 16),
-	}
-	b.root = b.newNode(0)
-	b.path = append(b.path, b.root)
+	b := newDawgBuilder()
 
 	// Progress every 1% of keys, but at least every 1000 keys.
 	progressEvery := total / 100
@@ -44,23 +36,11 @@ func BuildDAWGWithValuesProgress(keys []string, values []uint32, progress func(p
 		progressEvery = 1000
 	}
 
-	for i, k := range payloadKeys {
-		common := 0
-		for common < len(b.lastKey) && common < len(k) && b.lastKey[common] == k[common] {
-			common++
-		}
-		b.closeSuffix(common)
-		for j := common; j < len(k); j++ {
-			b.appendByte(k[j])
-		}
-		b.nodes[b.path[len(b.path)-1]].leaf = true
-		b.lastKey = k
-
+	b.insertKeys(payloadKeys, func(i int) {
 		if progress != nil && (i+1)%progressEvery == 0 {
 			progress(i+1, total)
 		}
-	}
-	b.closeSuffix(0)
+	})
 
 	// Phase 4: compile to double-array (DFS) with progress.
 	// Progress callback uses same total (keys count) for consistency.

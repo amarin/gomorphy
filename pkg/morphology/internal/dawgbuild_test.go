@@ -187,6 +187,50 @@ func TestBuildDAWGEmpty(t *testing.T) {
 	assert.False(t, d.Contains("кот"))
 }
 
+// TestBuildDAWGLargeScalePlacement stresses the placer (compileImpl split
+// out during the pre-1.0 review, docs/code-review-pre-1.0.md) with far more
+// nodes and shared-suffix merges than the small fixtures elsewhere in this
+// file exercise, since node placement / base reuse is exactly the logic
+// that refactor touched.
+func TestBuildDAWGLargeScalePlacement(t *testing.T) {
+	rng := rand.New(rand.NewSource(42))
+	const n = 20000
+
+	seen := make(map[string]bool, n)
+	keys := make([]string, 0, n)
+	alphabet := "абвгдежзийклмнопрстуфхцчшщъыьэюя"
+	runes := []rune(alphabet)
+
+	for len(keys) < n {
+		length := 3 + rng.Intn(6)
+		b := make([]rune, length)
+		for i := range b {
+			b[i] = runes[rng.Intn(len(runes))]
+		}
+		k := string(b)
+		if !seen[k] {
+			seen[k] = true
+			keys = append(keys, k)
+		}
+	}
+
+	d, err := BuildDAWG(append([]string{}, keys...))
+	require.NoError(t, err)
+
+	for _, k := range keys {
+		assert.True(t, d.Contains(k), "missing key %q", k)
+	}
+
+	missing := 0
+	for i := 0; i < 2000; i++ {
+		k := keys[rng.Intn(len(keys))] + "\x00notakey"
+		if !seen[k] && d.Contains(k) {
+			missing++
+		}
+	}
+	assert.Zero(t, missing, "DAWG accepted keys that were never inserted")
+}
+
 // TestBuildDAWGManyKeysAndSortingStress гоняет большее множество ключей
 // (в том числе с общими префиксами и суффиксами) и сверяет приёмочку.
 func TestBuildDAWGManyKeysAndSortingStress(t *testing.T) {

@@ -45,25 +45,3 @@ func TestDebugFollowKo(t *testing.T) {
 		t.Logf("contains %s: %v", k, d.Contains(k))
 	}
 }
-func itos(v int32) string {
-	var b [20]byte
-	i := len(b)
-	neg := v < 0
-	if neg {
-		v = -v
-	}
-	for v > 0 {
-		i--
-		b[i] = "0123456789abcdef"[v&15]
-		v >>= 4
-	}
-	for i > 0 {
-		i--
-		b[i] = '0'
-	}
-	if neg {
-		i--
-		b[i] = '-'
-	}
-	return string(b[i:])
-}

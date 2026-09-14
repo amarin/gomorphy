@@ -60,6 +60,15 @@ func BuildDAWGWithValues(keys []string, values []uint32) (*DAWG, error) {
 func buildDAWGWithPayload(keys []string) (*DAWG, error) {
 	sort.Strings(keys)
 
+	b := newDawgBuilder()
+	b.insertKeys(keys, nil)
+
+	return b.compile()
+}
+
+// newDawgBuilder создаёт dawgBuilder с заранее выделенными буферами (общая
+// точка входа для BuildDAWG* и BuildDAWGWithValuesProgress).
+func newDawgBuilder() *dawgBuilder {
 	b := &dawgBuilder{
 		register:  make(map[string]int32, 1<<20),
 		merged:    make([]bool, 1),
@@ -70,7 +79,15 @@ func buildDAWGWithPayload(keys []string) (*DAWG, error) {
 	b.root = b.newNode(0)
 	b.path = append(b.path, b.root)
 
-	for _, k := range keys {
+	return b
+}
+
+// insertKeys вставляет отсортированные keys в билдер (инкрементальное
+// сравнение общего префикса с предыдущим ключом, Демьюк-слияние братьев).
+// Если onInserted не nil, вызывается после каждой вставки с 0-based индексом
+// только что вставленного ключа — используется для прогресс-коллбэков.
+func (b *dawgBuilder) insertKeys(keys []string, onInserted func(i int)) {
+	for i, k := range keys {
 		common := 0
 		for common < len(b.lastKey) && common < len(k) && b.lastKey[common] == k[common] {
 			common++
@@ -81,10 +98,12 @@ func buildDAWGWithPayload(keys []string) (*DAWG, error) {
 		}
 		b.nodes[b.path[len(b.path)-1]].leaf = true
 		b.lastKey = k
+
+		if onInserted != nil {
+			onInserted(i)
+		}
 	}
 	b.closeSuffix(0)
-
-	return b.compile()
 }
 
 // dawgBuilder строит list-form DAWG (плоские узлы со списками братьев) и
@@ -211,78 +230,103 @@ func (b *dawgBuilder) compileImpl(totalNodes int32, progress func(processed, tot
 		return NewDAWG(dic, nil), nil
 	}
 
-	dic := make([]uint32, 1)
-	dic[0] = 0
+	p := newPlacer(b, totalNodes, progress)
+	if !p.place(b.root, 0) {
+		return nil, errDAWGBuild
+	}
 
-	alloc := newSlotAllocator()
-	link := make(map[int32]uint32)
+	if progress != nil {
+		progress(int(p.processedNodes), 0)
+	}
 
-	processedNodes := int32(0)
+	guide := b.buildGuide(p.dic)
+	if guide == nil {
+		return nil, errDAWGBuild
+	}
+	return NewDAWG(p.dic, guide), nil
+}
+
+// placer holds the working state for laying out a minimized list-form DAWG
+// into a double-array (dic): the allocator, the link table for merged
+// (shared) first children, and progress bookkeeping. Split out from
+// compileImpl so node placement can be tested independently of guide
+// building.
+type placer struct {
+	b *dawgBuilder
+
+	dic   []uint32
+	alloc *slotAllocator
+	link  map[int32]uint32
+
+	processedNodes int32
+	progressEvery  int32
+	progress       func(processed, total int)
+}
+
+func newPlacer(b *dawgBuilder, totalNodes int32, progress func(processed, total int)) *placer {
 	progressEvery := totalNodes / 10000
 	if progressEvery < 10 {
 		progressEvery = 10
 	}
 
-	var dfs func(n int32, index uint32) bool
-	dfs = func(n int32, index uint32) bool {
-		node := &b.nodes[n]
-		first := node.first
+	return &placer{
+		b:             b,
+		dic:           []uint32{0},
+		alloc:         newSlotAllocator(),
+		link:          make(map[int32]uint32),
+		progressEvery: progressEvery,
+		progress:      progress,
+	}
+}
 
-		if first != 0 && b.merged[first] {
-			if base, ok := link[first]; ok && encodable(index^base) {
-				setAt(&dic, index, unitAt(index^base, node.label, node.leaf))
-				processedNodes++
-				if progress != nil && processedNodes%progressEvery == 0 {
-					progress(int(processedNodes), 0)
-				}
-				return true
-			}
+// place recursively lays out node n at double-array slot index, reusing a
+// previously chosen base when n's first child is a merged (shared) node
+// whose base is still valid at this index (Демьюк-style base reuse).
+func (p *placer) place(n int32, index uint32) bool {
+	node := &p.b.nodes[n]
+	first := node.first
+
+	if first != 0 && p.b.merged[first] {
+		if base, ok := p.link[first]; ok && encodable(index^base) {
+			setAt(&p.dic, index, unitAt(index^base, node.label, node.leaf))
+			p.tick()
+			return true
 		}
+	}
 
-		b.labelsBuf = b.labelsBuf[:0]
-		for e := first; e != 0; e = b.nodes[e].next {
-			b.labelsBuf = append(b.labelsBuf, b.nodes[e].label)
-		}
+	p.b.labelsBuf = p.b.labelsBuf[:0]
+	for e := first; e != 0; e = p.b.nodes[e].next {
+		p.b.labelsBuf = append(p.b.labelsBuf, p.b.nodes[e].label)
+	}
 
-		base, ok := alloc.alloc(index, b.labelsBuf)
-		if !ok {
+	base, ok := p.alloc.alloc(index, p.b.labelsBuf)
+	if !ok {
+		return false
+	}
+
+	setAt(&p.dic, index, unitAt(index^base, node.label, node.leaf))
+	if node.leaf {
+		setAt(&p.dic, base, isLeafBit)
+	}
+	if first != 0 && p.b.merged[first] {
+		p.link[first] = base
+	}
+
+	for e := first; e != 0; e = p.b.nodes[e].next {
+		if !p.place(e, base^uint32(p.b.nodes[e].label)) {
 			return false
 		}
-
-		setAt(&dic, index, unitAt(index^base, node.label, node.leaf))
-		if node.leaf {
-			setAt(&dic, base, isLeafBit)
-		}
-		if first != 0 && b.merged[first] {
-			link[first] = base
-		}
-
-		for e := first; e != 0; e = b.nodes[e].next {
-			if !dfs(e, base^uint32(b.nodes[e].label)) {
-				return false
-			}
-		}
-
-		processedNodes++
-		if progress != nil && processedNodes%progressEvery == 0 {
-			progress(int(processedNodes), 0)
-		}
-		return true
 	}
 
-	if !dfs(b.root, 0) {
-		return nil, errDAWGBuild
-	}
+	p.tick()
+	return true
+}
 
-	if progress != nil {
-		progress(int(processedNodes), 0)
+func (p *placer) tick() {
+	p.processedNodes++
+	if p.progress != nil && p.processedNodes%p.progressEvery == 0 {
+		p.progress(int(p.processedNodes), 0)
 	}
-
-	guide := b.buildGuide(dic)
-	if guide == nil {
-		return nil, errDAWGBuild
-	}
-	return NewDAWG(dic, guide), nil
 }
 
 // compile раскладывает минимизированный list-form DAWG в double-array

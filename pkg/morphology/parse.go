@@ -2,6 +2,7 @@ package morphology
 
 import (
 	"encoding/binary"
+	"slices"
 	"sort"
 	"strings"
 
@@ -89,40 +90,53 @@ func (x *Dictionary) predict(word string) []Reading {
 		if !strings.HasPrefix(word, pref) {
 			continue
 		}
+		readings = append(readings, x.predictForPrefix(id, splits, seen)...)
+	}
+	return readings
+}
 
-		totalCount := 0
-		for i := len(splits) - 1; i >= 0; i-- {
-			wordStart, wordEnd := splits[i][0], splits[i][1]
-			for _, it := range x.d.Prediction[id].SimilarItems(wordEnd, x.d.CharPolicy) {
-				for _, v := range it.Values {
-					if len(v) < 6 {
-						continue
-					}
-					count := int(binary.BigEndian.Uint16(v[:2]))
-					paraNum := binary.BigEndian.Uint16(v[2:4])
-					form := binary.BigEndian.Uint16(v[4:6])
+// predictForPrefix predicts readings against a single prefix's
+// prediction-DAWG (x.d.Prediction[id]), widening from the longest suffix
+// split (splits[len(splits)-1]) toward shorter ones until at least 2 total
+// matches accumulate — pymorphy2's KnownSuffixAnalyzer heuristic: trust a
+// long, specific suffix match over a short, common one when it exists.
+// seen dedups (word, lemma, tag) triples across all prefixes tried by the
+// caller and is mutated in place.
+func (x *Dictionary) predictForPrefix(id int, splits [][2]string, seen map[string]bool) []Reading {
+	var readings []Reading
+	totalCount := 0
 
-					para, ok := x.paradigm(paraNum)
-					if !ok || form >= uint16(para.Len()) {
-						continue
-					}
-					if !productive(x.paradigmTag(para, int(form))) {
-						continue
-					}
-					totalCount += count
-
-					r := x.readingForm(wordStart+it.Key, paraNum, form)
-					key := r.Word + "\x00" + r.Normal + "\x00" + r.Tag
-					if seen[key] {
-						continue
-					}
-					seen[key] = true
-					readings = append(readings, r)
+	for i := len(splits) - 1; i >= 0; i-- {
+		wordStart, wordEnd := splits[i][0], splits[i][1]
+		for _, it := range x.d.Prediction[id].SimilarItems(wordEnd, x.d.CharPolicy) {
+			for _, v := range it.Values {
+				if len(v) < 6 {
+					continue
 				}
+				count := int(binary.BigEndian.Uint16(v[:2]))
+				paraNum := binary.BigEndian.Uint16(v[2:4])
+				form := binary.BigEndian.Uint16(v[4:6])
+
+				para, ok := x.paradigm(paraNum)
+				if !ok || form >= uint16(para.Len()) {
+					continue
+				}
+				if !productive(x.paradigmTag(para, int(form))) {
+					continue
+				}
+				totalCount += count
+
+				r := x.readingForm(wordStart+it.Key, paraNum, form)
+				key := r.Word + "\x00" + r.Normal + "\x00" + r.Tag
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				readings = append(readings, r)
 			}
-			if totalCount > 1 {
-				break
-			}
+		}
+		if totalCount > 1 {
+			break
 		}
 	}
 	return readings
@@ -224,8 +238,8 @@ func productive(tag string) bool {
 	if tag == "" {
 		return false
 	}
-	for _, g := range nonproductiveGrammemes {
-		if strings.Contains(tag, g) {
+	for part := range strings.SplitSeq(tag, ",") {
+		if slices.Contains(nonproductiveGrammemes, part) {
 			return false
 		}
 	}
