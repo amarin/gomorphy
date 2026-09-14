@@ -29,7 +29,7 @@ import (
 //	│    name     [16]byte             │
 //	│    offset   u64                  │
 //	│    size     u64                  │
-//	│    flags    u8  (сжатие)         │
+//	│    flags    u8                   │
 //	├──────────────────────────────────┤
 //	│  Секции данных                   │
 //	└──────────────────────────────────┘
@@ -37,6 +37,19 @@ import (
 // Checksum покрывает всё, что после поля checksum (каталог + секции).
 // Смещения секций выровнены по 8 байтам, чтобы словарь words.dawg можно
 // было алиасить из mmap без копирования (offset+4 кратен 4).
+//
+// flags: младшие 4 бита — id алгоритма сжатия секции (см. Compression*,
+// 0 — без сжатия), старшие 4 бита зарезервированы под независимые от
+// сжатия флаги будущих версий. Алгоритм записывается явно (а не
+// угадывается по сигнатуре данных секции): секция — это произвольный
+// blob без самоописывающегося заголовка, и явный id даёт точную,
+// однозначную диагностику для файла из будущей версии с неизвестным
+// читателю алгоритмом («unsupported compression algorithm 3, upgrade
+// required») вместо попытки угадать формат по первым байтам. Сжатие
+// выбирается на уровне секции (не файла целиком): words.dawg остаётся
+// несжатой, чтобы её можно было алиасить из mmap без копирования; выбор
+// алгоритма для остальных секций — за реализацией самого сжатия (см.
+// docs/todo.md, "Этап 17").
 const (
 	magicHeader = "GMOR"
 	headerSize  = 16 // magic(4) + version(4) + checksum(8)
@@ -49,20 +62,34 @@ const (
 	Version uint32 = 1
 )
 
-// Флаги записи каталога.
+// Алгоритмы сжатия секции (младшие 4 бита Entry.Flags/Section.Flags).
+// Добавление нового алгоритма — это добавление константы и ветки в
+// Container.Section/validateSections, без изменения байтового layout
+// каталога и без версионирования: сжатие ни разу не было записано ни в
+// одном выпущенном файле, поэтому этот нибл свободен для полного контроля
+// именно сейчас, до релиза 1.0.
 const (
-	FlagNone       uint8 = 0
-	FlagCompressed uint8 = 1 << 0
+	CompressionNone uint8 = 0
+	CompressionZstd uint8 = 1
+
+	// compressionMask выделяет id алгоритма из флагов записи каталога.
+	compressionMask uint8 = 0x0F
+	// maxKnownCompression — верхняя граница известных id алгоритмов;
+	// расширять по мере добавления новых констант Compression*.
+	maxKnownCompression = CompressionZstd
 )
+
+// compression возвращает id алгоритма сжатия секции по флагам записи каталога.
+func compression(flags uint8) uint8 { return flags & compressionMask }
 
 // Ошибки формата.
 var (
-	ErrBadMagic           = errors.New("format: bad magic")
-	ErrUnsupportedVersion = errors.New("format: unsupported version")
-	ErrBadChecksum        = errors.New("format: checksum mismatch")
-	ErrMalformedFile      = errors.New("format: malformed file")
-	ErrUnknownSection     = errors.New("format: unknown section")
-	ErrCompressed         = errors.New("format: compressed section unsupported")
+	ErrBadMagic               = errors.New("format: bad magic")
+	ErrUnsupportedVersion     = errors.New("format: unsupported version")
+	ErrBadChecksum            = errors.New("format: checksum mismatch")
+	ErrMalformedFile          = errors.New("format: malformed file")
+	ErrUnknownSection         = errors.New("format: unknown section")
+	ErrUnsupportedCompression = errors.New("format: unsupported compression algorithm")
 )
 
 // Section — секция для записи: данные и флаги.
@@ -98,8 +125,8 @@ func (c *Container) Entries() []Entry {
 func (c *Container) Section(name string) ([]byte, uint8, error) {
 	for _, e := range c.entries {
 		if e.Name == name {
-			if e.Flags&FlagCompressed != 0 {
-				return nil, e.Flags, wrap(ErrCompressed, name)
+			if algo := compression(e.Flags); algo != CompressionNone {
+				return nil, e.Flags, wrap(ErrUnsupportedCompression, fmt.Sprintf("%s (algorithm %d)", name, algo))
 			}
 			if e.Size == 0 {
 				return nil, e.Flags, nil
@@ -223,8 +250,11 @@ func validateSections(sections []Section) error {
 		if s.Name == "" || len(s.Name) > nameSize {
 			return fmt.Errorf("format: section name %q longer than %d bytes", s.Name, nameSize)
 		}
-		if s.Flags&^FlagCompressed != 0 {
-			return fmt.Errorf("format: section %s has unknown flags %d", s.Name, s.Flags)
+		if s.Flags&^compressionMask != 0 {
+			return fmt.Errorf("format: section %s has reserved flag bits set: %#x", s.Name, s.Flags)
+		}
+		if compression(s.Flags) > maxKnownCompression {
+			return fmt.Errorf("format: section %s has unknown compression algorithm %d", s.Name, compression(s.Flags))
 		}
 		if seen[s.Name] {
 			return fmt.Errorf("format: duplicate section %q", s.Name)

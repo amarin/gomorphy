@@ -113,12 +113,26 @@ func TestOpenContainerMalformed(t *testing.T) {
 
 func TestOpenContainerCompressedUnsupported(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "c.dat")
-	require.NoError(t, SaveContainer(path, []Section{{Name: "tagset", Data: []byte{2}, Flags: FlagCompressed}}))
+	require.NoError(t, SaveContainer(path, []Section{{Name: "tagset", Data: []byte{2}, Flags: CompressionZstd}}))
 
 	cont, err := OpenContainer(readFile(t, path))
 	require.NoError(t, err)
 	_, _, err = cont.Section("tagset")
-	assert.ErrorIs(t, err, ErrCompressed)
+	assert.ErrorIs(t, err, ErrUnsupportedCompression)
+}
+
+func TestSaveContainerRejectsReservedFlagBits(t *testing.T) {
+	err := SaveContainer(filepath.Join(t.TempDir(), "c.dat"), []Section{
+		{Name: "tagset", Data: []byte{2}, Flags: 1 << 4},
+	})
+	require.Error(t, err)
+}
+
+func TestSaveContainerRejectsUnknownCompressionAlgorithm(t *testing.T) {
+	err := SaveContainer(filepath.Join(t.TempDir(), "c.dat"), []Section{
+		{Name: "tagset", Data: []byte{2}, Flags: maxKnownCompression + 1},
+	})
+	require.Error(t, err)
 }
 
 func TestSaveContainerBadName(t *testing.T) {
