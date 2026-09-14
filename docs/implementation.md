@@ -1,9 +1,44 @@
-# Реализация gomorphy (as-is)
+# Реализация gomorphy (as-is + план)
 
-Документ описывает реализацию в формулировках свершившегося факта.
-Соответствует требованиям `docs/requirements.md` и плану из `docs/todo.md`.
+Документ описывает текущую реализацию (этапы 0–10) и план новой реализации
+(этапы 11–18) с заменой внутреннего формата хранения.
 
-## Состав репозитория
+Соответствует требованиям [requirements.md](requirements.md) и плану из [todo.md](todo.md).
+
+## Описание этапов
+
+### Исходная реализация (выполнена)
+
+- [Этап 0. Анализ и подготовка репозитория](implementation/stage-0-analysis.md)
+- [Этап 1. Примитивы формата](implementation/stage-1-format.md)
+- [Этап 2. Интернирование строк](implementation/stage-2-intern.md)
+- [Этап 3. Сканер dict.xml](implementation/stage-3-xmlscan.md)
+- [Этап 4. Builder и CSR-структуры](implementation/stage-4-builder-csr.md)
+- [Этап 5. Компилятор и загрузчик файла](implementation/stage-5-compiler-loader.md)
+- [Этап 6. Публичный фасад pkg/dictionary](implementation/stage-6-facade.md)
+- [Этап 7. Интеграция с OpenCorpora end-to-end](implementation/stage-7-opencorpora.md)
+- [Этап 8. Поиск лемм FT5](implementation/stage-8-lemmas.md)
+- [Этап 9. Нечёткий поиск FT6](implementation/stage-9-fuzzy.md)
+- [Этап 10. Финализация](implementation/stage-10-finalize.md)
+
+### Новая реализация (выполнена)
+
+- [x] [Этап 11. Внутренний формат: TagSet + Paradigm + DAWG reader](implementation/stage-11-internal-format.md) — ВЫПОЛНЕН
+- [x] [Этап 12. Импорт PyMorphy2](implementation/stage-12-import-pymorphy2.md) — ВЫПОЛНЕН
+- [x] [Этап 13. Публичный API: Parse, Lemma, Fuzzy](implementation/stage-13-public-api.md) — ВЫПОЛНЕН
+- [x] [Этап 14. Сериализация: единый формат на диске](implementation/stage-14-serialization.md) — ВЫПОЛНЕН
+- [x] [Этап 15. Импорт OpenCorpora](implementation/stage-15-import-opencorpora.md) — ВЫПОЛНЕН
+- [ ] [Этап 16. Импорт UniMorph](implementation/stage-16-import-unimorph.md)
+- [ ] [Этап 17. Сужение типов ID и zstd](implementation/stage-17-optimize.md)
+- [ ] [Этап 18. Финализация: CLI, документация, тесты](implementation/stage-18-finalize.md)
+- [ ] [Этап 19. Тематические словари: TSV-импорт, CLI-батчи, навыки, решение по MCP](todo.md)
+- [ ] [Этап 20. База синонимов: группы, теги, sidecar-файл](todo.md)
+
+Терминология проекта — в [glossary.md](glossary.md).
+
+## Текущая реализация (этапы 0–10)
+
+### Состав репозитория
 
 ```
 pkg/dictionary    публичный фасад библиотеки (FT7–FT9)
@@ -18,120 +53,151 @@ cmd/opencorpora_update CLI: обновить, распаковать, скомп
 cmd/gomorphy      CLI: точный поиск, леммы, нечёткий поиск по .dat
 ```
 
-## Модель данных в памяти
+### Модель данных в памяти (текущая)
 
 Все сущности нормализованы в справочники; словоформа — пара идентификаторов.
 
-### Справочники
-- `grammemes []string` — имена граммем, id = индекс (uint8).
-- Анкоды: CSR `ancodeOff []uint32` + `ancodeGrams []uint8` — 876 уникальных
-  наборов граммем, id = uint16. Ключ набора при сборке — отсортированная
-  последовательность id граммем.
+- `grammemes []string` — имена граммем, id = индекс.
+- Анкоды: CSR `ancodeOff []uint32` + `ancodeGrams []uint32` — 876 уникальных
+  наборов граммем, id = uint16.
+- `textsArena []byte` + `textOff []uint32` — арена текстов.
+- CSR-trie: `stateOff`, `TransLabel`, `TransTarget`, `Finals`.
+- Exact-hash: open-addressing `hash(text) → trie state`.
+- Постинг-листы: `PostingsOff` + `Postings` (пары `lemmaId, ancodeId`).
 
-### Тексты
-- `textsArena []byte` — все уникальные тексты подряд;
-- `textOff []uint32` — N+1 границ; текст i — срез `[textOff[i], textOff[i+1])`.
-Интернирование: хеш байтового среза (без создания string) → open-addressing
-таблица `(hash, offset, len)` → при промахе append в арену.
-
-### Леммы и строки (CSR)
-- `lemmaText []uint32`, `lemmaRowOff []uint32` (L+1);
-- строки всех лемм подряд: `rowText []uint32`, `rowAncode []uint16`.
-Строка = текст + анкод; `<l>`-запись является первой строкой леммы.
-
-### Префиксный индекс (CSR-trie)
-- `stateOff []uint32` (S+1), переходы `transitions []{char uint8; next uint32}`
-  внутри состояния упорядочены по `char`;
-- финальность состояний — битмап;
-- постинг-листы: `postOff []uint32` (N+1) + массив пар
-  `{lemmaId uint32; ancodeId uint16}`, дедуплицированных и упорядоченных.
-Выборка словоформы: проход по переходам до узла → срез
-`posts[postOff[i]:postOff[i+1]]`. Один внутренний запрос, ноль аллокаций.
-
-### Exact-hash
-Open-addressing таблица `hash(text) → диапазон постингов` для точного поиска
-без обхода дерева; строится при компиляции одним проходом.
-
-### Ссылки
-Секции links/link_types хранятся как есть (id-тройки), холодные данные.
-
-## Сборка (Builder)
-
-`internal/build.Builder` — изменяемая фаза, непотокобезопасна (один писатель),
-документировано. Внутренние операции:
-
-- `AddGrammeme(name)` → id;
-- `AddLemma(text string, grammemes ...string)` → lemmaId;
-- `AddForm(lemmaId, text string, grammemes ...string)` → rowId.
-
-Оба источника данных сводятся к этим операциям:
-1. **XML**: `internal/xmlscan` читает поток событий `grammeme | lemma | form`
-   напрямую из буфера bz2→bufio; атрибуты — срезы буфера; интернирование по хешу.
-2. **Программный API** (FT8): `dictionary.NewEmpty()` → `Builder` → методы выше.
-
-Завершение сборки (`Build()`) выполняет: сортировку уникальных текстов,
-построение exact-hash, компиляцию trie→CSR (опционально минимизация DAFSA),
-сортировку и дедупликацию постингов, заморозку структур.
-
-## Формат файла
+### Формат файла (текущий)
 
 ```
-magic "GMRF" | version u32 | xxh3 чексумма содержимого
+magic "GMRF" | version u32 | xxh3 чексумма
 каталог: [имя секции, offset u64, size u64] × N
 секции: meta, grammemes, ancodes, textsArena, textOff,
         states, transitions, finals, exactHash, postings,
         lemmaIndex, rowAncodes, links
 ```
 
-Кодирование: `textOff/stateOff/postOff` — delta+varint; postings —
-delta-varint lemmaId + varint ancodeId; transitions — `char u8 + varint delta`.
-Холодные секции (links) могут быть zstd-сжаты, горячие хранятся сырыми для mmap.
-Чтение: `internal/mmapx` открывает файл, проверяет magic/version/чексумму,
-разрезает по каталогу; типизированные представления без копирования где возможно.
-
-## Рантайм (Dictionary)
-
-`pkg/dictionary.Dictionary` — иммутабельный снимок после загрузки/компиляции:
+### Рантайм (текущий)
 
 ```go
-func Open(path string) (*Dictionary, error)              // FT7
-func NewEmpty() (*Dictionary, error)                     // FT8
-func (d *Dictionary) Lookup(word string) ([]Wordform, error)          // FT2
-func (d *Dictionary) Lemmas(word string) ([]LemmaRef, error)          // FT5
-func (d *Dictionary) Fuzzy(word string, maxDist int) ([]FuzzyMatch, error) // FT6
-func (d *Dictionary) SaveTo(path string) error           // FT3, FT8
-func (d *Dictionary) Builder() *build.Builder            // FT8
+func Open(path string) (*Dictionary, error)
+func (d *Dictionary) Lookup(word string) ([]Wordform, error)
+func (d *Dictionary) Lemmas(word string) ([]LemmaRef, error)
+func (d *Dictionary) Fuzzy(word string, maxDist int) ([]FuzzyMatch, error)
+func (d *Dictionary) FuzzyTop(word string, maxWords int) ([]FuzzyMatch, error)
+func (d *Dictionary) SaveTo(path string) error
 ```
 
-- `Wordform` — значение (не указатель): текст, анкод, разложенные граммемы, lemmaId.
-- Чтение конкурентно безопасно (иммутабельные структуры + mmap read-only).
-- Экземпляры независимы: свои интернинги, свои mmap-регионы; глобальных
-  переменных в пакетах нет. Публичный API не мутирует состояние словаря.
-- Обновление словаря (FT7): `opencorpora.Loader.Update()` (загрузка+распаковка)
-  → `dictionary.CompileFromXML(path)` → `SaveTo(path)`; атомарная запись через
-  временный файл + rename.
+## Новая реализация (этапы 11–18)
 
-## Поиск
+### Состав репозитория (после этапа 18)
 
-- **Точный (FT2)**: exact-hash → postings → значения через арены.
-  Резервный путь — обход CSR-trie.
-- **Леммы (FT5)**: postings → `lemmaText[l]`; начальная форма — первая строка
-  леммы.
-- **Нечёткий (FT6)**: совместный обход CSR-trie и DFA Левенштейна с отсечением
-  по порогу k; результаты группируются по дистанции (возрастание дистанции =
-  убывание релевантности).
+```
+pkg/morphology/               публичный фасад: Open, Parse, Lemma, Fuzzy
+pkg/morphology/internal/      внутренний формат: TagSet, Paradigm, DAWG, Dictionary
+pkg/morphology/importers/     импортёры из разных форматов
+pkg/morphology/importers/pymorphy2/   чтение words.dawg + paradigms.array
+pkg/morphology/importers/opencorpora/ dict.xml → парадигмы → DAWG
+pkg/morphology/importers/unimorph/    TSV → парадигмы → DAWG
 
-## Загрузчик OpenCorpora
+internal/xmlscan              (переиспользуется) сканер dict.xml
+internal/intern               (переиспользуется) интернирование строк
+internal/stringsx             (переиспользуется) строковая арена
+internal/mmapx                (переиспользуется) mmap-ридер
+pkg/opencorpora               (переиспользуется) загрузчик OpenCorpora
 
-`pkg/opencorpora`: проверка обновления по Last-Modified, загрузка `dict.xml.bz2`,
-распаковка bzip2, пути в `.data/opencorpora`. Поведение не менялось.
+cmd/gomorphy                  CLI: lookup/fuzzy/top/lemmas/import
+cmd/opencorpora_update        CLI: обновление + импорт
+```
+
+### Модель данных в памяти (новая)
+
+```
+Dictionary
+  TagSet         *TagSet        // набор граммем (имя → id)
+  Suffixes       []string       // набор суффиксов (id → текст)
+  Prefixes       []string       // набор префиксов (id → текст)
+  Paradigms      []Paradigm     // шаблоны склонения
+  Words          *DAWG          // слова → (para_id, form_idx)
+  Prediction     []*DAWG        // предсказание по окончаниям (опционально)
+  Probability    *DAWG          // вероятности (опционально)
+  CharPolicy     *CharPolicy    // подмены символов (е↔ё и т.д.)
+```
+
+DAWG reader (формат dawgdic):
+- `Dictionary []uint32` — массив узлов (label + offset + leaf bits)
+- `Guide []byte` — навигация: child + sibling по 2 байта на узел
+- Поиск: `followByte(r, idx)` → O(1), `find(key)` → O(len)
+- Ё-обработка: `similarItems(key)` с подменой `е→ё` на лету
+
+### Формат файла (новый)
+
+```
+magic "GMOR" | version u32 | xxh3 чексумма
+каталог: [имя секции, offset u64, size u64, flags u8] × N
+секции:
+  meta            — language, counts, version
+  tagset          — JSON-массив имён граммем
+  suffixes        — varint-length-prefixed строки
+  prefixes        — varint-length-prefixed строки
+  paradigms       — uint16 array (N суффиксов + N тегов + N префиксов)
+  words.dawg      — dictionary uint32[] + guide byte[]
+  prediction-N    — prediction DAWGs (опционально)
+  probability     — probability DAWG (опционально)
+```
+
+### Рантайм (новый)
+
+```go
+// Открытие из разных источников
+func Open(path string) (*Dictionary, error)                      // из .dat файла
+func OpenPyMorphy(dir string) (*Dictionary, error)               // из директории pymorphy2
+func CompileFromXML(r io.Reader) (*Dictionary, error)            // из dict.xml
+func CompileFromUniMorph(r io.Reader) (*Dictionary, error)       // из TSV UniMorph
+
+// Публичный API (FT2, FT5, FT6)
+func (d *Dictionary) Parse(word string) []Reading                // точный + предсказание
+func (d *Dictionary) Lemma(word string) []LemmaRef               // начальная форма
+func (d *Dictionary) Fuzzy(word string, maxDist int) []FuzzyMatch // нечёткий поиск
+func (d *Dictionary) FuzzyTop(word string, maxWords int) []FuzzyMatch
+
+// Сериализация (FT3, FT7)
+func (d *Dictionary) SaveTo(path string) error
+
+// Информация
+func (d *Dictionary) Language() string
+func (d *Dictionary) TagSet() *TagSet
+
+// Закрытие
+func (d *Dictionary) Close() error
+```
+
+- `Reading` — значение (текст, нормальная форма, теги, вероятность, источник).
+- Чтение конкурентно безопасно (иммутабельный снимок).
+- Один экземпляр = один язык/источник. Несколько словарей = несколько экземпляров.
+
+### Поиск (новый)
+
+- **Точный (Parse)**: DAWG lookup → `(para_id, form_idx)` → индексная
+  арифметика по парадигме → `stem + suffix` + тег. O(len) обход DAWG.
+- **Предсказание**: если слово не найдено — поиск по prediction DAWGs
+  (1–5-буквенные окончания → наборы разборов).
+- **Леммы (Lemma)**: DAWG → `(para_id, 0)` → `stem + suffix[0]`.
+- **Нечёткий (Fuzzy)**: совместный обход DAWG и DFA Левенштейна
+  с отсечением по порогу k. Метрика по рунам.
 
 ## Метрики (контрольные точки)
 
-| Показатель | Значение |
-|---|---|
-| Компиляция dict.xml | единицы секунд, крупные аллокации только под итоговые структуры |
-| Размер .dat | ~110–120 МБ (varint/delta), ~35–45 МБ с zstd |
-| Загрузка .dat | mmap, миллисекунды |
-| Точный поиск | < 10 мкс, ноль аллокаций |
-| Нечёткий поиск k≤2 | доли секунды на 3М слов |
+| Показатель | Текущее (этап 10) | Цель (этап 18) |
+|---|---|---|
+| Размер .dat (OpenCorpora) | ~305 МБ | ~20–30 МБ |
+| Размер .dat (PyMorphy2) | — | ~15–20 МБ |
+| Размер .dat с zstd | — | ~10–15 МБ |
+| Сборка .dat (OpenCorpora, 3.06М лемм) | ~24 ч (до free-list фикса) | ~24 с |
+| Загрузка | mmap, мс | mmap, мс |
+| Parse (точный) | < 10 мкс | < 10 мкс |
+| Parse (предсказание) | нет | < 50 мкс |
+| Lemmas | < 10 мкс | < 10 мкс |
+| Fuzzy k≤2 | доли сек | доли сек |
+| Поддержка pymorphy2 | нет | да |
+| Поддержка UniMorph | нет | да (169 языков, opaque) |
+| Множественные словари | на уровне приложения | на уровне приложения |
+| Языковая нейтральность | нет (русский) | да |

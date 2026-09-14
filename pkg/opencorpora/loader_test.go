@@ -45,7 +45,7 @@ func writeFixture(t *testing.T) string {
 	return dataPath
 }
 
-func TestLoader_UnpackUpdate(t *testing.T) {
+func TestLoader_Sync(t *testing.T) {
 	dataPath := writeFixture(t)
 	loader := opencorpora.NewLoader(dataPath)
 
@@ -56,8 +56,8 @@ func TestLoader_UnpackUpdate(t *testing.T) {
 		t.Fatal("unpacked file must not exist before unpack")
 	}
 
-	if err := loader.UnpackUpdate(); err != nil {
-		t.Fatalf("UnpackUpdate() error = %v", err)
+	if err := loader.Sync(true); err != nil {
+		t.Fatalf("Sync() error = %v", err)
 	}
 
 	got, err := os.ReadFile(filepath.Join(loader.DataPath(), opencorpora.LocalUnpackedFilename))
@@ -73,16 +73,16 @@ func TestLoader_Update_LocalOnly_OK(t *testing.T) {
 	dataPath := writeFixture(t)
 	loader := opencorpora.NewLoader(dataPath)
 
-	if err := loader.Update(true); err != nil {
-		t.Fatalf("Update(local only) error = %v", err)
+	if err := loader.Sync(true); err != nil {
+		t.Fatalf("Sync(local only) error = %v", err)
 	}
 }
 
 func TestLoader_Update_LocalOnly_NoArchive(t *testing.T) {
 	loader := opencorpora.NewLoader(filepath.Join(t.TempDir(), "missing"))
 
-	err := loader.Update(true)
+	err := loader.Sync(true)
 	if err == nil {
-		t.Fatal("Update(local only) without archive expected to fail")
+		t.Fatal("Sync(local only) without archive expected to fail")
 	}
 }

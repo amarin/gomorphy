@@ -17,3 +17,8 @@
 # vendor/
 /.idea/
 /vendor/
+
+# Compiled CLI binaries (build with `make build`/`go build`, not checked in)
+/gomorphy
+/bin/
+/deploy/

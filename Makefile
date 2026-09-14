@@ -7,11 +7,22 @@ DEPLOYMENT_PREFIX=./deploy
 .PHONY: all build lint tidy deps race test update compile clean help
 
 all: build
+CLI_MAIN=gomorphy
+CLI_UPDATER=gomorphy_build
 
-build: ## Build CLI binaries
+$(DEPLOYMENT_PREFIX):
+	@echo "make folder for compiled binaries at ${DEPLOYMENT_PREFIX}"
 	@mkdir -p $(DEPLOYMENT_PREFIX)
-	$(GOBUILD) -o $(DEPLOYMENT_PREFIX)/gomorphy ./cmd/gomorphy
-	$(GOBUILD) -o $(DEPLOYMENT_PREFIX)/opencorpora_update ./cmd/opencorpora_update
+
+$(DEPLOYMENT_PREFIX)/${CLI_MAIN}: $(DEPLOYMENT_PREFIX)
+	@echo "build ${CLI_MAIN}"
+	$(GOBUILD) -o $(DEPLOYMENT_PREFIX)/${CLI_MAIN} ./cmd/gomorphy
+
+$(DEPLOYMENT_PREFIX)/${CLI_UPDATER}: $(DEPLOYMENT_PREFIX)
+	@echo "build ${CLI_UPDATER}"
+	$(GOBUILD) -o $(DEPLOYMENT_PREFIX)/${CLI_UPDATER} ./cmd/gomorphy_build
+
+build: $(DEPLOYMENT_PREFIX)/${CLI_MAIN} $(DEPLOYMENT_PREFIX)/${CLI_UPDATER} ## Build CLI binaries
 
 update: ## Download and compile OpenCorpora dictionary
 	$(DEPLOYMENT_PREFIX)/opencorpora_update -l

@@ -1,9 +1,13 @@
 package opencorpora
 
-const (
-	DomainName            = "opencorpora"
-	RemoteURL             = "http://opencorpora.org/files/export/dict/dict.opcorpora.xml.bz2"
-	LocalSourceFilename   = "dict.xml.bz2"
-	LocalUnpackedFilename = "dict.xml"
-	LocalCompiledFilename = "opencorpora.dict"
-)
+// DomainName is the data directory domain for OpenCorpora.
+const DomainName = "opencorpora"
+
+// RemoteURL is the official OpenCorpora export location.
+const RemoteURL = "http://opencorpora.org/files/export/dict/dict.opcorpora.xml.bz2"
+
+// LocalSourceFilename is the downloaded bzip2 archive name.
+const LocalSourceFilename = "dict.xml.bz2"
+
+// LocalUnpackedFilename is the XML file name after unpacking.
+const LocalUnpackedFilename = "dict.xml"

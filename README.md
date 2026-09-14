@@ -35,6 +35,7 @@ gomorphy -dict .data/opencorpora/opencorpora.dict lookup кота
 | [docs/installation.md](docs/installation.md) | Установка библиотеки и CLI-утилит |
 | [docs/cli.md](docs/cli.md) | Использование CLI: lookup, lemmas, fuzzy, top |
 | [docs/library.md](docs/library.md) | Программное использование: подключение словаря, поиск, создание собственных словарей |
+| [docs/mcp.md](docs/mcp.md) | Почему нет встроенного MCP-сервера |
 
 ## Project structure
 

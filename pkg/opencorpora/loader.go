@@ -13,17 +13,16 @@ import (
 	"github.com/amarin/logging"
 
 	"github.com/amarin/gomorphy/pkg/common"
-	"github.com/amarin/gomorphy/pkg/dictionary"
 )
 
 // Loader provides OpenCorpora dictionary download and unpacking utilities.
-// Compilation into runtime format is performed by pkg/dictionary, see docs/todo.md stage 7.
+// Compilation is handled externally via pkg/morphology.
 type Loader struct {
 	logging.Logger
 	dataPath string
 }
 
-// NewLoader creates new opencorpora loader instance.
+// NewLoader creates a new opencorpora loader instance.
 // Takes path to data storage. If empty path provided, uses .data/opencorpora by default.
 func NewLoader(dataPath string) *Loader {
 	if dataPath == "" {
@@ -36,74 +35,35 @@ func NewLoader(dataPath string) *Loader {
 	}
 }
 
+// DataPath returns the data directory path.
 func (loader *Loader) DataPath() string {
 	return path.Join(loader.dataPath)
 }
 
-func (loader *Loader) SetDataPath(dataPath string) {
-	if dataPath == "" {
-		dataPath = common.DomainDataPath(DomainName)
-	}
-
-	loader.dataPath = dataPath
+// UnpackedFilePath returns path to the unpacked dict.xml.
+func (loader *Loader) UnpackedFilePath() string {
+	return loader.filePath(LocalUnpackedFilename)
 }
 
 func (loader *Loader) filePath(fileName string) string {
-	return path.Join(loader.DataPath(), fileName)
+	return path.Join(loader.dataPath, fileName)
 }
 
-// downloadedFilePath returns path to downloaded archive file.
-func (loader *Loader) downloadedFilePath() string {
-	return loader.filePath(LocalSourceFilename)
+// IsUnpackedExists returns true if the unpacked dict.xml exists.
+func (loader *Loader) IsUnpackedExists() bool {
+	loader.Info("check if unpacked file exists")
+	expectedFile := loader.unpackedFilePath()
+	loader.Debugf("check file %v", expectedFile)
+	_, err := os.Stat(expectedFile)
+	return err == nil
 }
 
-// unpackedFilePath returns path to unpacked lemmata file.
+// UnpackedFilePath returns the path to the unpacked file (internal alias).
 func (loader *Loader) unpackedFilePath() string {
 	return loader.filePath(LocalUnpackedFilename)
 }
 
-// CompiledFilePath returns path to the compiled runtime dictionary file.
-func (loader *Loader) CompiledFilePath() string {
-	return loader.filePath(LocalCompiledFilename)
-}
-
-// IsCompiledExists reports whether a compiled dictionary file is present.
-func (loader *Loader) IsCompiledExists() bool {
-	_, err := os.Stat(loader.CompiledFilePath())
-
-	return err == nil
-}
-
-// Compile compiles the unpacked dict.xml into the runtime dictionary file
-// using dictionary.CompileFromXML, writing atomically (FT7).
-func (loader *Loader) Compile() error {
-	if !loader.IsUnpackedExists() {
-		return fmt.Errorf("%w: no unpacked dictionary at %v", Error, loader.unpackedFilePath())
-	}
-
-	loader.Infof("compiling %v", loader.unpackedFilePath())
-
-	dict, err := dictionary.CompileFromXMLFile(loader.unpackedFilePath())
-	if err != nil {
-		loader.Errorf("compile: %v", err)
-
-		return err
-	}
-
-	defer func() { _ = dict.Close() }()
-
-	if err := dict.SaveToAtomic(loader.CompiledFilePath()); err != nil {
-		loader.Errorf("save %v: %v", loader.CompiledFilePath(), err)
-
-		return err
-	}
-
-	loader.Infof("compiled to %v", loader.CompiledFilePath())
-
-	return nil
-}
-
-// IsDownloadExists returns true if downloaded file exists at expected path.
+// IsDownloadExists returns true if the downloaded archive exists.
 func (loader *Loader) IsDownloadExists() bool {
 	loader.Info("check if downloaded file exists")
 	expectedFile := loader.downloadedFilePath()
@@ -111,57 +71,28 @@ func (loader *Loader) IsDownloadExists() bool {
 	fileStat, err := os.Stat(expectedFile)
 	switch {
 	case err != nil && errors.Is(err, os.ErrNotExist):
-		loader.Debugf("file not exists at %v", expectedFile)
-
-		return false // no file
+		return false
 	case err != nil:
-		loader.Debugf("file access: %v: %v", expectedFile, err)
-
-		return false // no file
+		return false
 	default:
-		modTimeFormat := "2006-01-02T15:04:05Z07:00"
-		loader.Debugf(
-			"exists: %s: modified %s: size %d",
-			expectedFile, fileStat.ModTime().Format(modTimeFormat), fileStat.Size())
-
+		loader.Debugf("exists: %s: modified %s: size %d",
+			expectedFile, fileStat.ModTime().Format("2006-01-02T15:04:05Z07:00"), fileStat.Size())
 		return true
 	}
 }
 
-// IsUnpackedExists returns true if downloaded and unpacked file exists at expected path.
-func (loader *Loader) IsUnpackedExists() bool {
-	loader.Info("check if unpacked file exists")
-	expectedFile := loader.unpackedFilePath()
-	loader.Debugf("check file %v", expectedFile)
-	fileStat, err := os.Stat(expectedFile)
-	switch {
-	case err != nil && errors.Is(err, os.ErrNotExist):
-		loader.Debugf("file not exists at %v", expectedFile)
-
-		return false // no file
-	case err != nil:
-		loader.Debugf("file access: %v: %v", expectedFile, err)
-
-		return false // no file
-	default:
-		modTimeFormat := "2006-01-02T15:04:05Z07:00"
-		loader.Debugf(
-			"exists: %s: modified %s: size %d",
-			expectedFile, fileStat.ModTime().Format(modTimeFormat), fileStat.Size())
-
-		return true
-	}
+func (loader *Loader) downloadedFilePath() string {
+	return loader.filePath(LocalSourceFilename)
 }
 
+// IsUpdateRequired checks the remote for a newer version.
 func (loader *Loader) IsUpdateRequired() (bool, error) {
 	loader.Info("check if update required")
 	expectedFile := loader.downloadedFilePath()
 	loader.Debugf("check file %v", expectedFile)
 	fileStat, err := os.Stat(expectedFile)
 	if err != nil && errors.Is(err, os.ErrNotExist) {
-		loader.Debugf("file not exists, update required: %v", expectedFile)
-
-		return true, nil // no file, update required
+		return true, nil
 	}
 
 	loader.Debugf("check remote %v", RemoteURL)
@@ -172,34 +103,30 @@ func (loader *Loader) IsUpdateRequired() (bool, error) {
 	}
 
 	if response.StatusCode != 200 {
-		loader.Warnf("remote %v: status: %v", RemoteURL, response.StatusCode)
 		return false, fmt.Errorf("unexpected response code %v", response.StatusCode)
 	}
 
 	lastModifiedString, ok := response.Header[common.HTTPHeaderLastModified]
 	if ok && len(lastModifiedString) > 0 {
-		loader.Debugf("remote %v: %v", common.HTTPHeaderLastModified, lastModifiedString)
 		lastModified, err := time.Parse(time.RFC1123, lastModifiedString[0])
 		if err != nil {
-			return true, nil // cant compare lastModified, do update
+			return true, nil
 		}
 		if lastModified.After(fileStat.ModTime()) {
-			return true, nil // site version is older then local
+			return true, nil
 		}
-	} else {
-		loader.Debugf("remote %v: missed, assume no update required", common.HTTPHeaderLastModified)
 	}
 
-	return false, nil // site version is older then local
+	return false, nil
 }
 
+// DownloadUpdate downloads the dictionary archive if update is needed.
 func (loader *Loader) DownloadUpdate() (updated bool, err error) {
 	updateRequired, err := loader.IsUpdateRequired()
-
-	switch {
-	case err != nil:
+	if err != nil {
 		return false, err
-	case !updateRequired:
+	}
+	if !updateRequired {
 		return false, nil
 	}
 
@@ -207,72 +134,56 @@ func (loader *Loader) DownloadUpdate() (updated bool, err error) {
 		return false, err
 	}
 
-	// Get the response bytes from the url
 	response, err := http.Get(RemoteURL) // nolint:gosec,noctx
 	if err != nil {
 		return false, err
 	}
+	defer response.Body.Close()
 
-	defer func() {
-		if response.Body != nil {
-			_ = response.Body.Close()
-		}
-	}()
-
-	// Create a empty file
 	file, err := os.Create(loader.downloadedFilePath())
 	if err != nil {
 		return false, err
 	}
+	defer file.Close()
 
-	defer func() {
-		if file != nil {
-			_ = file.Close()
-		}
-	}()
-
-	if _, err = io.Copy(file, response.Body); err != nil { // nolint:gosec
+	if _, err = io.Copy(file, response.Body); err != nil {
 		return false, err
 	}
 
 	return true, nil
 }
 
-func (loader *Loader) UnpackUpdate() (err error) {
-	var (
-		source     io.ReadCloser
-		bzipSource io.Reader
-		target     io.WriteCloser
-	)
-
+// UnpackUpdate extracts dict.xml from the bzip2 archive.
+func (loader *Loader) UnpackUpdate() error {
 	if err := common.MakeDomainDataPath(DomainName); err != nil {
 		return err
 	}
 
-	if source, err = os.Open(loader.downloadedFilePath()); err != nil { // nolint:gosec
+	source, err := os.Open(loader.downloadedFilePath())
+	if err != nil {
 		return err
 	}
+	defer source.Close()
 
-	defer func() { _ = source.Close() }()
+	bzipSource := bzip2.NewReader(source)
 
-	bzipSource = bzip2.NewReader(source)
-
-	if target, err = os.Create(loader.unpackedFilePath()); err != nil { // nolint:gosec
+	target, err := os.Create(loader.unpackedFilePath())
+	if err != nil {
 		return err
 	}
+	defer target.Close()
 
-	defer func() { _ = target.Close() }()
-
-	if _, err = io.Copy(target, bzipSource); err != nil { // nolint:gosec
+	if _, err = io.Copy(target, bzipSource); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-// Update downloads and unpacks dictionary when required, then compiles the
-// runtime dictionary file. skipDownload set uses local archive only.
-func (loader *Loader) Update(skipDownload bool) error {
+// Sync downloads and unpacks the dictionary archive if needed, without compiling.
+// After Sync completes, the caller can use loader.UnpackedFilePath() to get the
+// path to dict.xml and compile it via pkg/morphology.
+func (loader *Loader) Sync(skipDownload bool) error {
 	downloadedExists := loader.IsDownloadExists()
 	updateRequired, err := loader.IsUpdateRequired()
 	if err != nil {
@@ -280,32 +191,25 @@ func (loader *Loader) Update(skipDownload bool) error {
 	}
 
 	downloadRequired := !skipDownload && (updateRequired || !downloadedExists)
-	unpackRequired := false
 
 	if downloadRequired {
 		loader.Info("update required, downloading")
-
 		updated, err := loader.DownloadUpdate()
-		switch {
-		case err != nil:
+		if err != nil {
 			loader.Errorf("download: %v", err)
 			return err
-		case !updated:
-			loader.Warn("files not updated, no errors")
-		default:
+		}
+		if updated {
 			loader.Info("downloaded")
+		} else {
+			loader.Warn("files not updated, no errors")
 		}
 	} else {
 		loader.Info("skip download")
 	}
 
 	if !loader.IsUnpackedExists() && loader.IsDownloadExists() {
-		unpackRequired = true
-	}
-
-	if unpackRequired {
 		loader.Info("unpacking")
-
 		if err := loader.UnpackUpdate(); err != nil {
 			loader.Errorf("unpack: %v", err)
 			return err
@@ -319,5 +223,5 @@ func (loader *Loader) Update(skipDownload bool) error {
 		return fmt.Errorf("%w: no unpacked dictionary at %v", Error, loader.unpackedFilePath())
 	}
 
-	return loader.Compile()
+	return nil
 }
