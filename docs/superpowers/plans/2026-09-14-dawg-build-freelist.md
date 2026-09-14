@@ -614,35 +614,51 @@ git commit -m "test: add synthetic scaling benchmark for DAWG construction"
 `cmd/gomorphy_build/main.go`, unchanged) and the local
 `.data/opencorpora/dict.xml` fixture already present in this checkout.
 
-- [ ] **Step 1: Run the real compile and time it**
+- [x] **Step 1: Run the real compile and time it**
 
 ```bash
 go build -o /tmp/gomorphy_build ./cmd/gomorphy_build
-time /tmp/gomorphy_build compile -o /tmp/opencorpora-new.dat
+time /tmp/gomorphy_build -o /tmp/opencorpora-new.dat compile
 ```
 
-Expected: completes in minutes, not ~24h. The command prints periodic
-`[build]`/`[compile]` progress lines (existing `compileAndSave` progress
-printer in `cmd/gomorphy_build/main.go`) — watch the `keys/s`/`nodes/s`
-rate stay roughly constant rather than collapsing as the run progresses,
-which is the real-data confirmation of Task 3's synthetic result.
+Note: `-o` must precede the subcommand — Go's `flag` package stops
+parsing flags at the first non-flag argument, so the doc'd form
+`compile -o <path>` silently ignores `-o` and falls back to the default
+path. (The CLI's own `--help` text and this plan both document the
+non-working order; worth a follow-up fix to `cmd/gomorphy_build/main.go`,
+out of scope for this plan.)
 
-- [ ] **Step 2: Spot-check correctness against the old `.dat`**
+Result: **22.5s wall clock** (`user 26.4s`, `sys 1.1s`), peak RSS heap
+~8.2 GiB, for the full ~1.5M-wordform / 3.07M-node OpenCorpora dictionary
+— down from the ~24h baseline. `keys/s`/`nodes/s` stayed roughly constant
+throughout (`build` ~200-236K keys/s, `compile` ~37-52K nodes/s), matching
+Task 3's linear-scaling result on real data.
 
-```bash
-go run ./cmd/gomorphy -dict /tmp/opencorpora-new.dat lookup кота
-go run ./cmd/gomorphy -dict .data/opencorpora/opencorpora.dict lookup кота
-```
+- [x] **Step 2: Spot-check correctness**
 
-Expected: identical parse results between the freshly-built dictionary
-and the pre-existing `.dat` in `.data/opencorpora/opencorpora.dict` (built
-by the old algorithm) for several sample words, confirming the placement
-algorithm swap didn't change lookup semantics.
+The plan's original baseline, `.data/opencorpora/opencorpora.dict`, turned
+out to predate the stages-11-18 paradigm+DAWG storage redesign (magic
+`GMRF` vs current `GMOR`) — current code refuses to open it
+(`bad magic: GMRF`), so it's not usable as a same-format comparison
+target. Verified correctness two other ways instead:
 
-- [ ] **Step 3: Record the wall-clock time**
+1. **Determinism**: ran the compile twice independently (once via an
+   accidental default-path invocation, once via the documented `-o`
+   path) — `cmp` confirms the two `.dat` outputs are byte-identical
+   (428,667,112 bytes), and both match the pre-existing
+   `.data/opencorpora/opencorpora.dat` already in the checkout (same
+   `GMOR` format, same size) byte-for-byte.
+2. **Regression suite**: `go build ./... && go vet ./...` clean;
+   `go test ./pkg/morphology/... -race` → 110/110 passed;
+   `go test ./...` → 124/124 passed across all 13 packages.
+3. Manual lookups (`go run ./cmd/gomorphy -dict /tmp/opencorpora-new.dat
+   lookup <word>`) for кота/бежать/красивый/дом/стол all resolved to the
+   correct lemma and a plausible paradigm.
 
-No commit for this task (verification only) — report the measured
-before/after build time in the PR description or a follow-up message.
+- [x] **Step 3: Record the wall-clock time**
+
+Recorded above (22.5s vs ~24h baseline). No commit for this task
+(verification only).
 
 ---
 
