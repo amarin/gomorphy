@@ -4,7 +4,8 @@ package morphology
 type LemmaRef struct {
 	Normal string // начальная форма
 	Tag    string // тег начальной формы (форма 0 парадигмы)
-	Para   uint16 // id парадигмы
+	Para   uint16 // id парадигмы — уникален только вместе с Shard
+	Shard  int    // индекс шарда словаря; всегда 0 для нешардированных словарей
 }
 
 // Lemma возвращает начальные формы слова по его разборам. Дедупликация по
@@ -19,7 +20,7 @@ func (x *Dictionary) Lemma(word string) []LemmaRef {
 	seen := make(map[string]bool, len(readings))
 	out := make([]LemmaRef, 0, len(readings))
 	for _, r := range readings {
-		para, ok := x.paradigm(r.Para)
+		para, ok := x.paradigm(r.Shard, r.Para)
 		if !ok {
 			continue
 		}
@@ -29,7 +30,7 @@ func (x *Dictionary) Lemma(word string) []LemmaRef {
 			continue
 		}
 		seen[key] = true
-		out = append(out, LemmaRef{Normal: r.Normal, Tag: tag, Para: r.Para})
+		out = append(out, LemmaRef{Normal: r.Normal, Tag: tag, Para: r.Para, Shard: r.Shard})
 	}
 	return out
 }
