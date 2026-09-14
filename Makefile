@@ -24,17 +24,17 @@ $(DEPLOYMENT_PREFIX)/${CLI_UPDATER}: $(DEPLOYMENT_PREFIX)
 
 build: $(DEPLOYMENT_PREFIX)/${CLI_MAIN} $(DEPLOYMENT_PREFIX)/${CLI_UPDATER} ## Build CLI binaries
 
-update: ## Download and compile OpenCorpora dictionary
-	$(DEPLOYMENT_PREFIX)/opencorpora_update -l
+update: $(DEPLOYMENT_PREFIX)/${CLI_UPDATER} ## Download, unpack and compile OpenCorpora dictionary
+	$(DEPLOYMENT_PREFIX)/${CLI_UPDATER} update
 
-compile: ## Compile existing dict.xml to .dat
-	$(DEPLOYMENT_PREFIX)/opencorpora_update -l -v
+compile: $(DEPLOYMENT_PREFIX)/${CLI_UPDATER} ## Compile existing dict.xml to .dat
+	$(DEPLOYMENT_PREFIX)/${CLI_UPDATER} compile
 
 test: ## Run all unit tests with race detector
 	$(GOTEST) -race -count=1 ./...
 
-test-integration: ## Run integration tests (requires compiled dictionary)
-	$(GOTEST) -race -tags integration -count=1 -run 'Integration|FullDict' ./pkg/dictionary/
+test-integration: ## Run integration tests (network access + real OpenCorpora data required)
+	$(GOTEST) -race -tags integration -count=1 ./...
 
 lint: ## Run golangci-lint
 	@golangci-lint run
