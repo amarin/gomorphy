@@ -99,13 +99,11 @@ pkg/morphology/importers/opencorpora/ dict.xml → парадигмы → DAWG
 pkg/morphology/importers/unimorph/    TSV → парадигмы → DAWG
 
 internal/xmlscan              (переиспользуется) сканер dict.xml
-internal/intern               (переиспользуется) интернирование строк
-internal/stringsx             (переиспользуется) строковая арена
 internal/mmapx                (переиспользуется) mmap-ридер
 pkg/opencorpora               (переиспользуется) загрузчик OpenCorpora
 
 cmd/gomorphy                  CLI: lookup/fuzzy/top/lemmas/import
-cmd/opencorpora_update        CLI: обновление + импорт
+cmd/gomorphy_build            CLI: update/compile (OpenCorpora → GMOR)
 ```
 
 ### Модель данных в памяти (новая)

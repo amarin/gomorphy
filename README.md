@@ -5,6 +5,10 @@ Morphological analysis library for Russian, powered by OpenCorpora dictionary.
 Go reimplementation of PyMorphy2 with a compact binary format, mmap loading and
 zero-allocation lookups.
 
+**Platforms**: Unix only (Linux, macOS, BSD) — dictionary loading uses
+`syscall.Mmap`. Windows builds compile but `morphology.Open` returns an error
+at runtime; native Windows mmap support is tracked in `docs/todo.md`.
+
 ## Features
 
 - **Exact lookup** — all grammatical readings of a wordform (POS, case, number, ...)

@@ -3,7 +3,7 @@
 Импорт:
 
 ```go
-import "github.com/amarin/gomorphy/pkg/dictionary"
+import "github.com/amarin/gomorphy/pkg/morphology"
 ```
 
 ## Подключение и получение данных словаря
