@@ -1,31 +1,46 @@
 package internal
 
 // Dictionary — иммутабельный снимок словаря.
+//
+// Suffixes, Paradigms и Words — по одному элементу на шард; индекс 0 —
+// единственный шард для несегментированных словарей (нет отдельного
+// "нешардированного" представления). Шарды существуют потому, что
+// suffix id адресуется uint16: словарь с суффиксов больше, чем помещается
+// в один uint16-диапазон, делится на несколько шардов с независимыми
+// id-пространствами (см. docs/superpowers/specs/2026-09-14-suffix-sharding-design.md).
+// TagSet и Prefixes остаются общими для всех шардов.
 type Dictionary struct {
 	Language    string
 	TagSet      *TagSet
-	Suffixes    []string
+	Suffixes    [][]string
 	Prefixes    []string
-	Paradigms   []Paradigm
-	Words       *DAWG
+	Paradigms   [][]Paradigm
+	Words       []*DAWG
 	Prediction  []*DAWG
 	Probability *DAWG
 	CharPolicy  *CharPolicy
 	Info        *BuildInfo
 }
 
-// NewDictionary собирает Dictionary из компонентов. Prediction, Probability
-// и Info остаются nil; Prediction/Probability заполняются импортёрами при
-// чтении prediction-файлов, Info — импортёром (обычно только Source) или
-// SaveTo (BuiltAt/LibraryVersion — при каждом сохранении).
+// NewDictionary собирает Dictionary из компонентов. suffixes, paradigms и
+// words обязаны иметь одинаковую длину (число шардов) — паникует иначе,
+// как и NewParadigm паникует на несовпадении длин своих частей. Prediction,
+// Probability и Info остаются nil; Prediction/Probability заполняются
+// импортёрами при чтении prediction-файлов, Info — импортёром (обычно
+// только Source) или SaveTo (BuiltAt/LibraryVersion — при каждом
+// сохранении).
 func NewDictionary(
 	language string,
 	tagSet *TagSet,
-	suffixes, prefixes []string,
-	paradigms []Paradigm,
-	words *DAWG,
+	suffixes [][]string,
+	prefixes []string,
+	paradigms [][]Paradigm,
+	words []*DAWG,
 	charPolicy *CharPolicy,
 ) *Dictionary {
+	if len(suffixes) != len(paradigms) || len(paradigms) != len(words) {
+		panic("internal: NewDictionary shard slices (suffixes, paradigms, words) must have equal length")
+	}
 	return &Dictionary{
 		Language:   language,
 		TagSet:     tagSet,

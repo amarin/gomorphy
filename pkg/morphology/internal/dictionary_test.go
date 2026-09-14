@@ -21,21 +21,24 @@ func TestDictionaryConstruction(t *testing.T) {
 	dict := NewDictionary(
 		"ru",
 		ts,
-		[]string{"кот", "коты"},
+		[][]string{{"кот", "коты"}},
 		[]string{"а"},
-		[]Paradigm{paradigm},
-		NewDAWG(words, nil),
+		[][]Paradigm{{paradigm}},
+		[]*DAWG{NewDAWG(words, nil)},
 		RussianCharPolicy(),
 	)
 
 	require.NotNil(t, dict)
 	assert.Equal(t, "ru", dict.Language)
 	assert.Same(t, ts, dict.TagSet)
-	assert.Equal(t, []string{"кот", "коты"}, dict.Suffixes)
+	require.Len(t, dict.Suffixes, 1)
+	assert.Equal(t, []string{"кот", "коты"}, dict.Suffixes[0])
 	assert.Equal(t, []string{"а"}, dict.Prefixes)
 	require.Len(t, dict.Paradigms, 1)
-	assert.Equal(t, uint16(5), dict.Paradigms[0].Suffix(0))
-	assert.NotNil(t, dict.Words)
+	require.Len(t, dict.Paradigms[0], 1)
+	assert.Equal(t, uint16(5), dict.Paradigms[0][0].Suffix(0))
+	require.Len(t, dict.Words, 1)
+	assert.NotNil(t, dict.Words[0])
 	assert.NotNil(t, dict.CharPolicy)
 	assert.Empty(t, dict.Prediction)
 }
@@ -45,4 +48,13 @@ func TestDictionaryEmptyComponents(t *testing.T) {
 	require.NotNil(t, dict)
 	assert.Empty(t, dict.Suffixes)
 	assert.Len(t, dict.Paradigms, 0)
+}
+
+func TestNewDictionaryPanicsOnShardCountMismatch(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected panic on mismatched shard slice lengths")
+		}
+	}()
+	NewDictionary("ru", nil, [][]string{{"a"}}, nil, nil, nil, nil)
 }
