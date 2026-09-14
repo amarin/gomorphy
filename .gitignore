@@ -22,3 +22,6 @@
 /gomorphy
 /bin/
 /deploy/
+
+# Local git worktrees (superpowers:using-git-worktrees)
+/.worktrees/
