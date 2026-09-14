@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/amarin/gomorphy/pkg/morphology"
 	"github.com/stretchr/testify/assert"
@@ -64,6 +65,41 @@ func TestSaveOpenRoundtrip(t *testing.T) {
 	wantProb := maxReadingProb(d.Parse("кот"))
 	assert.Equal(t, wantProb, maxReadingProb(got.Parse("кот")))
 	assert.NotZero(t, wantProb, "фикстура должна содержать вероятность")
+}
+
+// TestSaveToStampsBuildInfo проверяет, что SaveTo проставляет BuiltAt и
+// LibraryVersion в секцию info при каждом сохранении, сохраняя то, что уже
+// заполнил импортёр (Source), и не изменяя исходный Dictionary (он
+// иммутабелен — buildFixture идёт через OpenPyMorphy, который выставляет
+// Info.Source="pymorphy2", но не BuiltAt/LibraryVersion).
+func TestSaveToStampsBuildInfo(t *testing.T) {
+	words := map[string]uint32{}
+	stdWords(words)
+	d := buildFixture(t, words, nil, nil)
+
+	before := d.Info()
+	require.NotNil(t, before, "buildFixture идёт через OpenPyMorphy — Info.Source должен быть заполнен")
+	assert.Equal(t, "pymorphy2", before.Source)
+	assert.Zero(t, before.BuiltAt, "BuiltAt не должен быть заполнен до SaveTo")
+	assert.Empty(t, before.LibraryVersion, "LibraryVersion не должен быть заполнен до SaveTo")
+
+	saveStart := time.Now().UTC()
+	out := filepath.Join(t.TempDir(), "d.dat")
+	require.NoError(t, d.SaveTo(out))
+	saveEnd := time.Now().UTC()
+
+	assert.Zero(t, d.Info().BuiltAt, "SaveTo не должна мутировать исходный Dictionary")
+
+	got, err := morphology.Open(out)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, got.Close()) }()
+
+	info := got.Info()
+	require.NotNil(t, info)
+	assert.Equal(t, "pymorphy2", info.Source, "Source, заполненный импортёром, должен пережить SaveTo/Open")
+	assert.Equal(t, morphology.Version, info.LibraryVersion)
+	assert.False(t, info.BuiltAt.Before(saveStart), "BuiltAt раньше начала сохранения")
+	assert.False(t, info.BuiltAt.After(saveEnd), "BuiltAt позже окончания сохранения")
 }
 
 func maxReadingProb(rs []morphology.Reading) float64 {

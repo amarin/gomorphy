@@ -155,5 +155,13 @@ func parseContainer(cont *internal.Container) (*internal.Dictionary, error) {
 		d.Probability = prob
 	}
 
+	if infoData, _, err := cont.Section("info"); err == nil {
+		info, err := internal.DecodeBuildInfo(infoData)
+		if err != nil {
+			return nil, err
+		}
+		d.Info = info
+	}
+
 	return d, nil
 }

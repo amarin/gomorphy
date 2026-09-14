@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -212,6 +213,40 @@ func TestTagSetRoundtrip(t *testing.T) {
 
 func TestTagSetBadJSON(t *testing.T) {
 	_, err := DecodeTagSet([]byte("nope"))
+	require.Error(t, err)
+}
+
+func TestBuildInfoRoundtrip(t *testing.T) {
+	want := &BuildInfo{
+		BuiltAt:        time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC),
+		LibraryVersion: "0.1.0",
+		Source:         "opencorpora",
+		SourceVersion:  "0.92 rev417257",
+		Author:         "test",
+		Description:    "unit test fixture",
+		SourceURL:      "https://example.com/dict.dat",
+	}
+
+	got, err := DecodeBuildInfo(EncodeBuildInfo(want))
+	require.NoError(t, err)
+	assert.Equal(t, want.BuiltAt.Unix(), got.BuiltAt.Unix())
+	assert.Equal(t, want.LibraryVersion, got.LibraryVersion)
+	assert.Equal(t, want.Source, got.Source)
+	assert.Equal(t, want.SourceVersion, got.SourceVersion)
+	assert.Equal(t, want.Author, got.Author)
+	assert.Equal(t, want.Description, got.Description)
+	assert.Equal(t, want.SourceURL, got.SourceURL)
+}
+
+func TestBuildInfoEncodeNil(t *testing.T) {
+	got, err := DecodeBuildInfo(EncodeBuildInfo(nil))
+	require.NoError(t, err)
+	assert.Zero(t, got.BuiltAt)
+	assert.Empty(t, got.LibraryVersion)
+}
+
+func TestBuildInfoBadJSON(t *testing.T) {
+	_, err := DecodeBuildInfo([]byte("nope"))
 	require.Error(t, err)
 }
 

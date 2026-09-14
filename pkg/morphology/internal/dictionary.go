@@ -11,10 +11,13 @@ type Dictionary struct {
 	Prediction  []*DAWG
 	Probability *DAWG
 	CharPolicy  *CharPolicy
+	Info        *BuildInfo
 }
 
-// NewDictionary собирает Dictionary из компонентов. Prediction и Probability
-// остаются nil; заполняются импортёрами при чтении prediction-файлов.
+// NewDictionary собирает Dictionary из компонентов. Prediction, Probability
+// и Info остаются nil; Prediction/Probability заполняются импортёрами при
+// чтении prediction-файлов, Info — импортёром (обычно только Source) или
+// SaveTo (BuiltAt/LibraryVersion — при каждом сохранении).
 func NewDictionary(
 	language string,
 	tagSet *TagSet,

@@ -29,6 +29,7 @@ func ImportFromDir(dir string) (*internal.Dictionary, error) {
 		nil, nil, nil, nil,
 		internal.RussianCharPolicy(),
 	)
+	d.Info = &internal.BuildInfo{Source: "pymorphy2"}
 
 	tags, err := readStringArray(filepath.Join(dir, "gramtab-opencorpora-int.json"))
 	if err != nil {

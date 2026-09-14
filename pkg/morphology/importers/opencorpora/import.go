@@ -182,6 +182,7 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 		dawg,
 		internal.RussianCharPolicy(),
 	)
+	dict.Info = &internal.BuildInfo{Source: "opencorpora"}
 
 	return dict, nil
 }
