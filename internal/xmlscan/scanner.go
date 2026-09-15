@@ -12,7 +12,11 @@ type Handler interface {
 	OnGrammeme(parent []byte, name []byte) error
 	OnGrammemeRef(value []byte) error
 	OnLemma(id uint32, text []byte) error
-	OnLemmaEnd() error
+	// OnLemmaHeadEnd fires when <l> (the lemma's headword element) closes
+	// — not when the enclosing <lemma> closes, which has no dedicated
+	// event of its own. Implementations needing true end-of-lemma
+	// behavior should reset their state on the next OnLemma call instead.
+	OnLemmaHeadEnd() error
 	OnForm(text []byte) error
 	OnFormEnd() error
 }

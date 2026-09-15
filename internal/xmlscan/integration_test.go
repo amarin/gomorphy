@@ -82,7 +82,7 @@ func (c *counter) OnLemma(id uint32, _ []byte) error {
 	return nil
 }
 
-func (c *counter) OnLemmaEnd() error { return nil }
+func (c *counter) OnLemmaHeadEnd() error { return nil }
 
 func (c *counter) OnForm([]byte) error { c.forms++; return nil }
 

@@ -30,7 +30,7 @@ func (r *recorder) OnLemma(id uint32, text []byte) error {
 	return nil
 }
 
-func (r *recorder) OnLemmaEnd() error { r.events = append(r.events, "lemma-end"); return nil }
+func (r *recorder) OnLemmaHeadEnd() error { r.events = append(r.events, "lemma-end"); return nil }
 
 func (r *recorder) OnForm(text []byte) error {
 	r.events = append(r.events, "form "+string(text))

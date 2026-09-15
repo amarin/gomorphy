@@ -293,7 +293,7 @@ func (h *xmlHandler) OnLemma(id uint32, text []byte) error {
 	return nil
 }
 
-func (h *xmlHandler) OnLemmaEnd() error {
+func (h *xmlHandler) OnLemmaHeadEnd() error {
 	h.curForm = nil
 	h.curGrams = nil
 	return nil

@@ -56,7 +56,8 @@ func (s *Scanner) dispatch() error {
 		if t.selfClosing {
 			s.inWord = false
 
-			return s.h.OnLemmaEnd()
+			// </l> (self-closing <l/> here), not </lemma> — see Handler.OnLemmaHeadEnd's doc comment.
+			return s.h.OnLemmaHeadEnd()
 		}
 
 	case t.is("f"):
@@ -106,7 +107,8 @@ func (s *Scanner) closeTag(t parsedTag) error {
 		if s.section == sectLemmata && s.inWord {
 			s.inWord = false
 
-			return s.h.OnLemmaEnd()
+			// </l> closes here, not </lemma> — see Handler.OnLemmaHeadEnd's doc comment.
+			return s.h.OnLemmaHeadEnd()
 		}
 
 	case t.is("f"):
