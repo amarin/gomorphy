@@ -413,3 +413,113 @@ yet»: реализация читает файл только через `sysca
 тем же контрактом (`Open`/`Bytes`/`Len`/`Close`), проверить на реальной
 Windows-машине (CI или вручную) — кросс-компиляция без вменяемого теста
 самой мапы недостаточна.
+
+## Этап 21. CLI-редизайн gomorphy_build + источник pymorphy2 — ЗАПЛАНИРОВАН
+
+**Сводка**: переформатировать `cmd/gomorphy_build` с «команда одного
+словаря» на универсальный конвейер `gomorphy_build <команда> <тип_словаря>
+[опции]` и добавить второй источник — готовые словари pymorphy2 из PyPI
+(пакет `pymorphy2-dicts-ru`). Решение принято вместе с пользователем
+2026-09-15: единый конвейер download → unpack → compile для всех типов
+словарей (opencorpora, pymorphy, позже unimorph).
+
+### Новый интерфейс CLI
+
+```
+gomorphy_build <command> <dict_type> [flags]
+
+Commands:
+  download    загрузить обновление с удалённого источника, сохранить в
+              исходном формате архива (без извлечения и сборки)
+  unpack      извлечь из загруженного архива / подготовить файл-источник
+              к импорту
+  compile     собрать словарь в единый GMOR-файл (.dat)
+  update      download + unpack + compile (полный цикл)
+
+Dict types:
+  opencorpora   источник OpenCorpora (dict.opcorpora.xml.bz2)
+  pymorphy      источник pymorphy2-dicts (wheel с PyPI)
+  unimorph      задел на будущее (Этап 16)
+
+Flags:
+  -d        debug logging
+  -l        skip downloading, использовать локальные файлы
+  -o <path> путь к выходному файлу .dat (по умолчанию — <domain>.dat в .data/<domain>/)
+  -version  печать версии
+```
+
+Порядок аргументов зафиксирован: команда, затем тип словаря, затем опции
+(`gomorphy_build download pymorphy -o /tmp/p.dat`).
+
+### Конвейер по типам словарей
+
+| этап | opencorpora | pymorphy |
+|---|---|---|
+| download | `dict.opcorpora.xml.bz2` (существующий `opencorpora.RemoteURL`) → `.data/opencorpora/dict.xml.bz2` | PyPI JSON API → URL wheel → `.data/pymorphy/pymorphy2_dicts_ru-<ver>.whl` |
+| unpack | bzip2 → `.data/opencorpora/dict.xml` | unzip wheel, извлечь поддерево `pymorphy2_dicts_ru/data/*` → `.data/pymorphy/data/` |
+| compile | `dict.xml` → `opencorpora.dat` (через `morphology.CompileFromXMLFile`) | **опционально**: `data/` → `pymorphy.dat` (через `morphology.OpenPyMorphy` + `SaveTo`) |
+
+**Про skip compile для pymorphy**: unpack-результат (`data/`) уже
+загружается напрямую через `morphology.OpenPyMorphy` — словари в формате
+pymorphy2 не требуют компиляции (DAWG/prediction уже собраны в пакете).
+Команда `compile pymorphy` остаётся для консолидации в единый `.dat`
+(mmap, один файл) и унификации с остальными источниками. Для
+`opencorpora` compile обязателен (XML не загружается напрямую).
+
+### Инкремент
+
+- `pkg/pymorphy` — загрузчик готового словаря (по образцу `pkg/opencorpora`):
+  - `const.go`: `DomainName = "pymorphy"`,
+    `PyPIJSONURL = "https://pypi.org/pypi/pymorphy2-dicts-ru/json"`
+    (JSON: `releases`/`urls`), wheel-URL из `urls[0].url`
+    (wheel = ZIP, поддерево `pymorphy2_dicts_ru/data/`);
+  - `loader.go`: `Loader{dataPath, resolvedVersion}` — методы по образцу
+    `opencorpora.Loader`: `IsDownloadExists`, `IsUpdateRequired`
+    (сравнение локально сохранённой версии с версией с PyPI),
+    `DownloadUpdate` (GET wheel → файл), `UnpackUpdate`
+    (zip → `data/`), `Sync(skipDownload)`; плюс persistence версии
+    (например, `version.txt` в доменной директории), чтобы не дёргать
+    PyPI при каждом вызове.
+- `cmd/gomorphy_build/main.go` — редизайн:
+  - парсер: `command := flag.Arg(0)`, `dictType := flag.Arg(1)`;
+    опции остаются в `flag.Args()` (текущий механизм `common.FindOutFlag`
+    расширить на `-l` либо перейти на per-subcommand `flag.FlagSet`
+    с re-parse — решение в рамках этапа);
+  - диспетчер команд/типов по таблице `command × dictType` с ошибками
+    для несуществующих комбинаций (например, `compile pymorphy` допустим,
+    `unpack opencorpora` допустим);
+  - `runUpdate`/`runCompile`/новые `runDownload`/`runUnpack` переходят
+    на общий флоу «скачать → распаковать → (опц.) собрать», специфика
+    типа вынесена в методы источника;
+  - сохранение обратной совместимости не требуется (CLI-груминг
+    планировался как breaking change, см. Этап 18).
+- `pkg/morphology` — новая entry point для compile pymorphy:
+  `CompileFromPymorphyDir(dir) (*Dictionary, error)` (обёртка над
+  `OpenPyMorphy`), либо reuse существующих `OpenPyMorphy` + `SaveTo`
+  из CLI — решение в рамках этапа.
+- Обновить Usage-текст и примеры в `cmd/gomorphy_build/main.go`.
+
+### Автоматические проверки (тесты)
+
+- unit `pkg/pymorphy`: разбор PyPI JSON (фиктивный payload) → корректный
+  wheel URL; разбор версии; `IsUpdateRequired` с локальной `version.txt`
+  новее/старше/отсутствует;
+- unit `pkg/pymorphy`: распаковка тестового zip с поддеревом `data/`
+  → файлы `words.dawg`, `paradigms.array` и т.д. в исходной директории;
+- CLI: табличные тесты диспетчера `command × dictType` — все валидные
+  комбинации, неизвестная команда, неизвестный тип, опции после позиционных;
+- CLI: end-to-end `download pymorphy` / `unpack pymorphy` на мини-zip
+  (без сети), `compile pymorphy` на тестовом `data/` → `.dat`,
+  `gomorphy -dict pymorphy.dat lookup <слово>`;
+- regression: существующие тесты OpenCorpora-флоу не сломаны;
+- `go test -race ./...` — зелёные.
+
+### Ручные проверки
+
+- `gomorphy_build update opencorpora` — поведение не изменилось;
+- `gomorphy_build update pymorphy` → `.data/pymorphy/data/` +
+  `.data/pymorphy/pymorphy.dat`, `gomorphy -dict` работает, слово
+  разбирается (сравнить с результатом opencorpora-словаря);
+- `gomorphy_build download pymorphy` отдельно → только `.whl`;
+- `gomorphy_build unpack pymorphy` отдельно → `data/` загружается через
+  `OpenPyMorphy` без compile.
