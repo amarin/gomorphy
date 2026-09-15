@@ -66,7 +66,7 @@ func TestDenseAlphabetWidth1OverflowsOnTooManyRunes(t *testing.T) {
 
 func TestDenseAlphabetWidth2CapacityIsMuchLarger(t *testing.T) {
 	// The same 255-rune corpus that overflows width 1 must fit
-	// comfortably in width 2 (capacity 65534).
+	// comfortably in width 2 (capacity 64516).
 	var corpus []string
 	for r := rune(0x400); r < 0x400+255; r++ {
 		corpus = append(corpus, string(r))
@@ -96,9 +96,47 @@ func TestDenseAlphabetEncodeRejectsUnknownRune(t *testing.T) {
 
 func TestDenseAlphabetDeterministic(t *testing.T) {
 	corpus := []string{"кот", "мышь", "дом", "яснее"}
-	a1, err := NewDenseAlphabet(1, corpus)
+	for _, width := range []int{1, 2} {
+		t.Run(fmt.Sprintf("width=%d", width), func(t *testing.T) {
+			a1, err := NewDenseAlphabet(width, corpus)
+			require.NoError(t, err)
+			a2, err := NewDenseAlphabet(width, corpus)
+			require.NoError(t, err)
+			assert.Equal(t, a1.codeOf, a2.codeOf)
+		})
+	}
+}
+
+func TestDenseAlphabetEncodedBytesNeverReserved(t *testing.T) {
+	corpus := []string{"кот", "кота", "мышь", "дом", "яснее", "абвгдеёжзийклмнопрстуфхцчшщъыьэюя", "ABCxyz123"}
+	for _, width := range []int{1, 2} {
+		a, err := NewDenseAlphabet(width, corpus)
+		require.NoError(t, err)
+		for _, s := range corpus {
+			enc, err := a.Encode(s)
+			require.NoError(t, err)
+			for _, b := range enc {
+				assert.NotEqual(t, byte(0), b, "encoded byte must never be 0x00 (guide sentinel), width=%d, s=%q", width, s)
+				assert.NotEqual(t, byte(PayloadSeparator), b, "encoded byte must never be PayloadSeparator, width=%d, s=%q", width, s)
+			}
+		}
+	}
+}
+
+func TestDenseAlphabetDecodeRejectsReservedOrOutOfRangeCode(t *testing.T) {
+	a1, err := NewDenseAlphabet(1, []string{"кот"})
 	require.NoError(t, err)
-	a2, err := NewDenseAlphabet(1, corpus)
+	_, err = a1.Decode([]byte{0})
+	assert.Error(t, err)
+	_, err = a1.Decode([]byte{1})
+	assert.Error(t, err)
+	_, err = a1.Decode([]byte{255}) // in-range byte, but no rune assigned to it in this small corpus
+	assert.Error(t, err)
+
+	a2, err := NewDenseAlphabet(2, []string{"кот"})
 	require.NoError(t, err)
-	assert.Equal(t, a1.codeOf, a2.codeOf)
+	_, err = a2.Decode([]byte{0, 0}) // reserved byte in hi position
+	assert.Error(t, err)
+	_, err = a2.Decode([]byte{2, 0}) // reserved byte in lo position
+	assert.Error(t, err)
 }

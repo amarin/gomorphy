@@ -16,7 +16,11 @@
 //
 // A full-corpus run (~3M words) takes minutes per alphabet; the default
 // sample (100,000 words, evenly strided) is fast enough for a routine
-// check. Override with GOMORPHY_ALPHABET_BENCH_SAMPLE (0 or >= corpus size
+// check. Even-strided sampling of an alphabetically-sorted wordlist
+// systematically thins out adjacent inflected forms (which give the DAWG
+// most of its prefix/suffix sharing), so a sampled run's percentages are
+// directionally right but need not match a full-corpus run exactly.
+// Override with GOMORPHY_ALPHABET_BENCH_SAMPLE (0 or >= corpus size
 // means "use everything").
 package internal
 
@@ -69,6 +73,9 @@ func TestAlphabetCompare(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s=%q is not a valid integer: %v", sampleEnvVar, v, err)
 		}
+		if n < 0 {
+			t.Fatalf("%s=%d must not be negative", sampleEnvVar, n)
+		}
 		sample = n
 	}
 	stride := 1
@@ -120,10 +127,35 @@ func TestAlphabetCompare(t *testing.T) {
 		}
 		elapsed := time.Since(start)
 
+		// Guide-traversal spot-check: BuildDAWG can "succeed" even when
+		// the alphabet's encoding puts a reserved byte (0x00, the
+		// guide's own child/sibling-absent sentinel - see ForEachChild
+		// in dawg.go - or PayloadSeparator) into the word portion. The
+		// resulting DAWG still answers Contains/Find correctly (they use
+		// FollowByte, not the guide) but ForEachChild-based traversal
+		// (all of fuzzy.go's prefix search) silently finds nothing. This
+		// exact bug shipped once in this branch (see the design spec's
+		// "Fix wave" note) - catch it here instead of reporting a
+		// misleadingly good size/speed number for a DAWG that could
+		// never actually be used.
+		rootChildren := 0
+		dawg.ForEachChild(0, func(label byte, next uint32) { rootChildren++ })
+		if rootChildren == 0 {
+			t.Fatalf("%s: ForEachChild(root) found 0 children - guide traversal is broken (the alphabet's encoding likely emits a reserved byte); this alphabet cannot produce a usable dictionary", a.Name())
+		}
+		checked := 0
+		for i := 0; i < len(keys) && checked < 20; i++ {
+			if !dawg.Contains(keys[i]) {
+				t.Fatalf("%s: key for word %q not found via Contains after build", a.Name(), words[i])
+			}
+			checked++
+		}
+		t.Logf("%s: guide has %d root children; %d sampled keys confirmed present", a.Name(), rootChildren, checked)
+
 		results = append(results, result{
 			name:  a.Name(),
 			slots: len(dawg.dict),
-			bytes: len(dawg.dict) * 4,
+			bytes: len(dawg.dict)*4 + len(dawg.guide),
 			build: elapsed,
 		})
 	}

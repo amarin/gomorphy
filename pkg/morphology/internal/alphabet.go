@@ -51,21 +51,31 @@ type DenseAlphabet struct {
 	runeOf []rune // runeOf[code-2] == r for codeOf[r] == code (codes start at 2)
 }
 
-// maxCodesForWidth returns how many non-reserved codes a dense alphabet of
-// the given width can address: 256^width total codes, minus the 2
-// reserved (0 and 1).
+// maxCodesForWidth returns how many non-reserved codes a dense alphabet
+// of the given width can address. Width 1: 254 (byte values 2..255,
+// avoiding the reserved 0 and 1). Width 2: 254*254 = 64516, using a
+// base-254 two-digit encoding (see Encode/Decode) where EACH byte
+// individually stays in [2,255] - a naive big-endian 16-bit split lets
+// the high byte fall to 0x00 for any code <= 255, colliding with the
+// DAWG guide-traversal sentinel (dawg.go's ForEachChild) even though the
+// *code* itself was never 0 or 1. This was a real bug, found by the
+// final review of this branch - see
+// docs/superpowers/specs/2026-09-15-dawg-alphabet-harness-design.md.
 func maxCodesForWidth(width int) int {
-	total := 1
-	for i := 0; i < width; i++ {
-		total *= 256
+	switch width {
+	case 1:
+		return 254
+	case 2:
+		return 254 * 254
+	default:
+		return 0
 	}
-	return total - 2
 }
 
 // NewDenseAlphabet builds a DenseAlphabet of the given width (1 or 2) from
 // every distinct rune found across corpus. Returns an error if width is
 // not 1 or 2, or if corpus contains more distinct runes than width can
-// address (254 for width 1, 65534 for width 2) - this is a hard failure,
+// address (254 for width 1, 64516 for width 2) - this is a hard failure,
 // not silent truncation or wraparound.
 func NewDenseAlphabet(width int, corpus []string) (*DenseAlphabet, error) {
 	if width != 1 && width != 2 {
@@ -112,10 +122,18 @@ func (a *DenseAlphabet) Encode(s string) ([]byte, error) {
 		if !ok {
 			return nil, fmt.Errorf("internal: rune %q not in DenseAlphabet (width %d)", r, a.width)
 		}
-		if a.width == 1 {
+		switch a.width {
+		case 1:
 			buf = append(buf, byte(code))
-		} else {
-			buf = append(buf, byte(code>>8), byte(code))
+		case 2:
+			// Base-254 two-digit encoding: k = code-2 is in
+			// [0, 64515]; each digit (0..253) is offset by +2 before
+			// being written, so both bytes always land in [2,255] -
+			// never 0x00 (guide sentinel) or 0x01 (PayloadSeparator).
+			k := code - 2
+			hi := byte(2 + k/254)
+			lo := byte(2 + k%254)
+			buf = append(buf, hi, lo)
 		}
 	}
 	return buf, nil
@@ -128,10 +146,16 @@ func (a *DenseAlphabet) Decode(b []byte) (string, error) {
 	out := make([]rune, 0, len(b)/a.width)
 	for i := 0; i < len(b); i += a.width {
 		var code uint16
-		if a.width == 1 {
+		switch a.width {
+		case 1:
 			code = uint16(b[i])
-		} else {
-			code = uint16(b[i])<<8 | uint16(b[i+1])
+		case 2:
+			if b[i] < 2 || b[i+1] < 2 {
+				return "", fmt.Errorf("internal: byte pair (%d,%d) contains a reserved byte (<2)", b[i], b[i+1])
+			}
+			hiDigit := uint16(b[i]) - 2
+			loDigit := uint16(b[i+1]) - 2
+			code = 2 + hiDigit*254 + loDigit
 		}
 		if code < 2 || int(code)-2 >= len(a.runeOf) {
 			return "", fmt.Errorf("internal: code %d has no known rune", code)

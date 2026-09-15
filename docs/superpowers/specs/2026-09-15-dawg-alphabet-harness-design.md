@@ -129,21 +129,27 @@ func (IdentityAlphabet) Decode(b []byte) (string, error) { return string(b), nil
 type DenseAlphabet struct {
 	width  int // 1 or 2
 	codeOf map[rune]uint16
-	runeOf []rune // index i -> rune with code i; codeOf[runeOf[i]] == i
+	runeOf []rune // runeOf[code-2] == r for codeOf[r] == code (codes start at 2)
 }
 
 // NewDenseAlphabet builds a DenseAlphabet from every distinct rune found
 // across corpus, encoding each into width bytes (1: codes 2..255, up to
-// 254 distinct runes; 2: codes 2..65535, up to 65534 distinct runes).
-// Returns an error if corpus contains more distinct runes than width can
-// address.
+// 254 distinct runes; 2: codes 2..64517, up to 64516 (254*254) distinct
+// runes). Returns an error if corpus contains more distinct runes than
+// width can address.
 func NewDenseAlphabet(width int, corpus []string) (*DenseAlphabet, error)
 ```
 
 `Encode`: for each rune in `s` (via `range s`, which already decodes UTF-8),
-look up `codeOf[r]`; error if absent; append its code as `width` big-endian
-bytes. `Decode`: read `width`-byte chunks, look up `runeOf[code]`; error if
-`len(b)` isn't a multiple of `width` or a code has no mapping.
+look up `codeOf[r]`; error if absent; for width 1, append the code as a
+single byte; for width 2, append it as a base-254 two-digit encoding where
+each digit is offset by +2, so both bytes individually stay in [2,255] -
+never `0x00` (the DAWG guide-traversal sentinel) or `0x01`
+(`PayloadSeparator`), even though a naive big-endian 16-bit split would let
+the high byte fall to `0x00` for any code <= 255. `Decode`: read
+`width`-byte chunks, look up `runeOf[code]`; error if `len(b)` isn't a
+multiple of `width`, a chunk contains a byte < 2, or a code has no
+mapping.
 
 ### Harness
 
@@ -180,7 +186,7 @@ convention as `internal/xmlscan/integration_test.go` and this session's
     (assert directly on the constructed map, not just black-box behavior);
     `NewDenseAlphabet(1, corpus)` returns an error (not silent truncation
     or wraparound) when `corpus` has more than 254 distinct runes; same for
-    width 2 at 65,534; `Decode` on a byte sequence whose length isn't a
+    width 2 at 64,516; `Decode` on a byte sequence whose length isn't a
     multiple of `width` returns an error, not a panic or silent
     misalignment.
   - Determinism: two `NewDenseAlphabet(1, sameCorpus)` calls produce
