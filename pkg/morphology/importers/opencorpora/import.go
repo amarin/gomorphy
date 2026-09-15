@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/amarin/gomorphy/internal/xmlscan"
 	"github.com/amarin/gomorphy/pkg/morphology/internal"
@@ -37,11 +38,18 @@ type dawgEntry struct {
 	val uint32
 }
 
-func paradigmKeyHash(sk []uint16, tk []uint16) string {
-	if len(sk) == 0 && len(tk) == 0 {
+// paradigmKeyHash builds a dedup key from three parallel per-form arrays
+// (prefix IDs, suffix IDs, tag IDs). The concatenation has no separators
+// or length prefixes between segments — this is collision-free only
+// because the caller always passes three slices of equal length
+// (len(lem.forms) each), so total byte length alone determines where
+// each segment starts. Do not call this with unequal-length slices.
+func paradigmKeyHash(pk, sk, tk []uint16) string {
+	if len(pk) == 0 && len(sk) == 0 && len(tk) == 0 {
 		return ""
 	}
-	buf := make([]byte, 0, len(sk)*2+len(tk)*2)
+	buf := make([]byte, 0, len(pk)*2+len(sk)*2+len(tk)*2)
+	buf = append(buf, encodeU16s(pk)...)
 	buf = append(buf, encodeU16s(sk)...)
 	buf = append(buf, encodeU16s(tk)...)
 	return string(buf)
@@ -128,21 +136,28 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 	cur := newShardBuild()
 	shards := []*shardBuild{cur}
 
+	// Prefixes are shared across ALL shards (unlike suffixes/paradigms,
+	// which are per-shard) — see the doc comment on paradigmAffix in
+	// pkg/morphology/parse.go. Index 0 is always the empty prefix.
+	prefixTexts := map[string]uint16{"": 0}
+	prefixList := []string{""}
+
 	for _, lem := range lemmas {
 		if len(lem.forms) == 0 {
 			continue
 		}
 
-		stem := lcp(lem.forms)
+		stemInput, formPrefixes, _ := stripCmp2Prefix(lem.forms)
+		stem := lcp(stemInput)
 
 		// How many suffixes would this lemma add to the CURRENT shard if
 		// placed there? Dedup within the lemma's own forms too, so a
 		// lemma reusing one suffix across several forms counts once.
 		newInLemma := make(map[string]bool)
-		for _, frm := range lem.forms {
+		for _, si := range stemInput {
 			suffix := ""
-			if len(stem) < len(frm.text) {
-				suffix = frm.text[len(stem):]
+			if len(stem) < len(si) {
+				suffix = si[len(stem):]
 			}
 			if _, ok := cur.suffixTexts[suffix]; !ok {
 				newInLemma[suffix] = true
@@ -154,14 +169,26 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 			shards = append(shards, cur)
 		}
 
+		var prefixIDs []uint16
 		var suffixIDs []uint16
 		var tagIDs []uint16
 
-		for _, frm := range lem.forms {
+		for i, frm := range lem.forms {
 			suffix := ""
-			if len(stem) < len(frm.text) {
-				suffix = frm.text[len(stem):]
+			if len(stem) < len(stemInput[i]) {
+				suffix = stemInput[i][len(stem):]
 			}
+
+			pid, ok := prefixTexts[formPrefixes[i]]
+			if !ok {
+				if len(prefixList) >= 1<<16 {
+					return nil, fmt.Errorf("opencorpora: exceeded %d unique prefixes", 1<<16)
+				}
+				pid = uint16(len(prefixList))
+				prefixTexts[formPrefixes[i]] = pid
+				prefixList = append(prefixList, formPrefixes[i])
+			}
+			prefixIDs = append(prefixIDs, pid)
 
 			sid, ok := cur.suffixTexts[suffix]
 			if !ok {
@@ -181,7 +208,7 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 			tagIDs = append(tagIDs, tid)
 		}
 
-		hash := paradigmKeyHash(suffixIDs, tagIDs)
+		hash := paradigmKeyHash(prefixIDs, suffixIDs, tagIDs)
 		paraID, ok := cur.paradigmsDedup[hash]
 		if !ok {
 			if len(cur.paradigms) >= 1<<16 {
@@ -190,17 +217,19 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 			paraID = uint16(len(cur.paradigms))
 			cur.paradigmsDedup[hash] = paraID
 
-			prefixes := make([]uint16, len(lem.forms))
-			para := internal.NewParadigm(suffixIDs, tagIDs, prefixes)
+			para := internal.NewParadigm(suffixIDs, tagIDs, prefixIDs)
 			cur.paradigms = append(cur.paradigms, para)
 		}
 
 		for formIdx := 0; formIdx < len(lem.forms); formIdx++ {
 			suffix := ""
-			if len(stem) < len(lem.forms[formIdx].text) {
-				suffix = lem.forms[formIdx].text[len(stem):]
+			if len(stem) < len(stemInput[formIdx]) {
+				suffix = stemInput[formIdx][len(stem):]
 			}
-			dawgKey := stem + suffix
+			dawgKey := formPrefixes[formIdx] + stem + suffix
+			if dawgKey != lem.forms[formIdx].text {
+				return nil, fmt.Errorf("opencorpora: internal invariant violated: prefix+stem+suffix (%q) != form text (%q) for lemma %q", dawgKey, lem.forms[formIdx].text, lem.text)
+			}
 			val := uint32(paraID)<<16 | uint32(formIdx)
 			cur.dawgEntries = append(cur.dawgEntries, dawgEntry{key: dawgKey, val: val})
 		}
@@ -248,7 +277,7 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 		"ru",
 		tagSet,
 		suffixesPerShard,
-		nil, // Prefixes: OpenCorpora lemmas carry their own prefixes
+		prefixList,
 		paradigmsPerShard,
 		wordsPerShard,
 		internal.RussianCharPolicy(),
@@ -346,30 +375,90 @@ func (h *xmlHandler) OnFormEnd() error {
 	return nil
 }
 
-// lcp computes the longest common prefix of all form texts.
-func lcp(forms []formGrams) string {
-	if len(forms) == 0 {
+// lcp computes the longest common prefix of texts, trimmed back to the
+// nearest valid UTF-8 rune boundary so the result (and therefore every
+// "suffix = text minus this prefix") is always valid UTF-8. A raw
+// byte-level cut can otherwise land inside a multi-byte character when
+// two texts share a lead byte but differ in its continuation byte (e.g.
+// any Cyrillic letter in the а-п block compared against "по") — see
+// docs/research/0003-comparative-paradigms-not-merging.md, section 4/6.
+func lcp(texts []string) string {
+	if len(texts) == 0 {
 		return ""
 	}
-	if len(forms) == 1 {
-		return forms[0].text
+	if len(texts) == 1 {
+		return texts[0]
 	}
-	prefix := forms[0].text
-	for i := 1; i < len(forms); i++ {
-		max := len(prefix)
-		if len(forms[i].text) < max {
-			max = len(forms[i].text)
+	n := len(texts[0])
+	for i := 1; i < len(texts); i++ {
+		max := n
+		if len(texts[i]) < max {
+			max = len(texts[i])
 		}
 		j := 0
-		for j < max && prefix[j] == forms[i].text[j] {
+		for j < max && texts[0][j] == texts[i][j] {
 			j++
 		}
-		prefix = prefix[:j]
-		if prefix == "" {
+		n = j
+		if n == 0 {
 			return ""
 		}
 	}
-	return prefix
+	for n > 0 && n < len(texts[0]) && !utf8.RuneStart(texts[0][n]) {
+		n--
+	}
+	return texts[0][:n]
+}
+
+// cmp2Prefix is the only lemma-internal separable prefix present in
+// OpenCorpora's dict.xml (verified against the real file — see
+// docs/superpowers/specs/2026-09-15-comparative-prefix-split-design.md):
+// the Cmp2 grammeme marks a comparative-degree form that is literally
+// "по" + the corresponding non-Cmp2 form (e.g. lemma "поправимее",
+// dict.xml id 259490: Cmp2 form "попоправимее" = "по" + "поправимее").
+const cmp2Prefix = "по"
+
+// stripCmp2Prefix separates each form's Cmp2-driven prefix ("по" or
+// "") from the text that should feed lcp(), so the shared root never
+// ends up split across different suffix strings depending on which
+// forms happen to carry that prefix (the root-in-suffix problem from
+// docs/research/0003-comparative-paradigms-not-merging.md).
+//
+// If any Cmp2-tagged form's text does not literally start with "по",
+// every form of this lemma falls back to prefix "" and its own full
+// text, exactly the pre-fix behavior, and ok is false so the caller
+// can detect it. This does happen on the real dict.xml: 3 lemmas
+// (недобитее, окологлоточнее, мультипроцессорнее) hit this path,
+// because their base word already carries its own prefix
+// (недо-/около-/мульти-) and OpenCorpora infixes "по" after it rather
+// than prepending it to the whole word (e.g. "недобитее" -> Cmp2 form
+// "недопобитее", not "понедобитее") — see
+// docs/research/0003-comparative-paradigms-not-merging.md for the full
+// trace. The fallback handles these 3 lemmas correctly (no merge
+// benefit, no data corruption) — it is not dead code, keep it.
+func stripCmp2Prefix(forms []formGrams) (stemInput []string, prefixes []string, ok bool) {
+	stemInput = make([]string, len(forms))
+	prefixes = make([]string, len(forms))
+	ok = true
+	for i, f := range forms {
+		if !strings.Contains(f.gramm, "Cmp2") {
+			stemInput[i] = f.text
+			continue
+		}
+		if !strings.HasPrefix(f.text, cmp2Prefix) {
+			ok = false
+			break
+		}
+		prefixes[i] = cmp2Prefix
+		stemInput[i] = f.text[len(cmp2Prefix):]
+	}
+	if !ok {
+		for i, f := range forms {
+			stemInput[i] = f.text
+			prefixes[i] = ""
+		}
+	}
+	return stemInput, prefixes, ok
 }
 
 // dedupEntries removes exact (key, val) duplicates from dawg entries.

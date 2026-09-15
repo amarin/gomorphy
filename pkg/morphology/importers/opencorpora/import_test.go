@@ -62,6 +62,62 @@ const testDictXML = `<?xml version="1.0" encoding="UTF-8"?>
  </lemmata>
 </dictionary>`
 
+// comparativeDictXML has two comparative-degree adjectives ("яснее",
+// "плотнее") with different roots but the same tag pattern (COMP,Qual /
+// COMP,Qual,V-ej / COMP,Qual,Cmp2 / COMP,Qual,Cmp2,V-ej) — real
+// OpenCorpora data shows this pattern accounts for 82% of shard 0's
+// paradigms (docs/research/0003-comparative-paradigms-not-merging.md).
+// The Cmp2-tagged forms are literally "по" + the corresponding
+// non-Cmp2 form, matching the real dict.xml lemma "поправимее" (id
+// 259490) verified in that document.
+const comparativeDictXML = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary corpus="opencorpora" russian="yes">
+ <grammemes>
+  <grammeme id="ADJF">прилагательное</grammeme>
+  <grammeme id="COMP">сравнит. степень</grammeme>
+  <grammeme id="Qual">качественное</grammeme>
+  <grammeme id="Cmp2">по-сравнит.</grammeme>
+  <grammeme id="V-ej">форма на -ей</grammeme>
+ </grammemes>
+ <lemmata>
+  <lemma id="1" text="яснее">
+   <l t="яснее"><g v="COMP"/><g v="Qual"/></l>
+   <f t="яснее"/>
+   <f t="ясней"><g v="V-ej"/></f>
+   <f t="пояснее"><g v="Cmp2"/></f>
+   <f t="поясней"><g v="Cmp2"/><g v="V-ej"/></f>
+  </lemma>
+  <lemma id="2" text="плотнее">
+   <l t="плотнее"><g v="COMP"/><g v="Qual"/></l>
+   <f t="плотнее"/>
+   <f t="плотней"><g v="V-ej"/></f>
+   <f t="поплотнее"><g v="Cmp2"/></f>
+   <f t="поплотней"><g v="Cmp2"/><g v="V-ej"/></f>
+  </lemma>
+ </lemmata>
+</dictionary>`
+
+// TestImportFromXMLComparativeParadigmsMerge guards against the
+// root-in-suffix duplication documented in
+// docs/research/0003-comparative-paradigms-not-merging.md: "яснее" and
+// "плотнее" share suffix/tag/prefix structure once "по" is split off
+// as a real prefix, and must collapse into ONE paradigm.
+func TestImportFromXMLComparativeParadigmsMerge(t *testing.T) {
+	d, err := opencorpora.CompileFromXML(strings.NewReader(comparativeDictXML), nil)
+	require.NoError(t, err)
+	require.Len(t, d.Paradigms, 1)
+
+	assert.Equal(t, 1, len(d.Paradigms[0]),
+		"яснее и плотнее делят один паттерн словоизменения и должны схлопнуться в одну парадигму, несмотря на разные корни")
+
+	assert.Contains(t, d.Prefixes, "по", "по-приставка Cmp2-форм должна попасть в таблицу префиксов")
+
+	for _, word := range []string{"яснее", "ясней", "пояснее", "поясней", "плотнее", "плотней", "поплотнее", "поплотней"} {
+		items := d.Words[0].SimilarItems(word, d.CharPolicy)
+		assert.Greater(t, len(items), 0, "%q должно быть найдено", word)
+	}
+}
+
 func TestImportFromXMLBasic(t *testing.T) {
 	d, err := opencorpora.CompileFromXML(strings.NewReader(testDictXML), nil)
 	require.NoError(t, err)
@@ -165,6 +221,66 @@ func tagsForWord(t *testing.T, d *internal.Dictionary, shard int, word string) [
 		}
 	}
 	return tags
+}
+
+// normalFormsForWord resolves word to every normalized (citation) form
+// it can produce, replicating exactly what
+// (*morphology.Dictionary).readingForm does (pkg/morphology/parse.go):
+// decode (paraID, formIdx) from the DAWG payload, then
+// norm = prefix(form0) + TrimSuffix(TrimPrefix(word, prefix(form)), suffix(form)) + suffix(form0).
+// This exercises the read path with real (non-empty) prefixes, which
+// tagsForWord alone does not.
+func normalFormsForWord(t *testing.T, d *internal.Dictionary, shard int, word string) []string {
+	t.Helper()
+	require.Less(t, shard, len(d.Words))
+
+	strAt := func(list []string, id uint16) string {
+		if int(id) < len(list) {
+			return list[id]
+		}
+		return ""
+	}
+
+	var norms []string
+	for _, it := range d.Words[shard].SimilarItems(word, d.CharPolicy) {
+		if it.Key != word {
+			continue
+		}
+		for _, v := range it.Values {
+			require.Len(t, v, 4)
+			paraID := binary.BigEndian.Uint16(v[:2])
+			formIdx := binary.BigEndian.Uint16(v[2:4])
+			require.Less(t, int(paraID), len(d.Paradigms[shard]))
+			para := d.Paradigms[shard][paraID]
+			require.Less(t, int(formIdx), para.Len())
+
+			ownPrefix := strAt(d.Prefixes, para.Prefix(int(formIdx)))
+			ownSuffix := strAt(d.Suffixes[shard], para.Suffix(int(formIdx)))
+			stem := strings.TrimSuffix(strings.TrimPrefix(word, ownPrefix), ownSuffix)
+
+			p0 := strAt(d.Prefixes, para.Prefix(0))
+			s0 := strAt(d.Suffixes[shard], para.Suffix(0))
+			norms = append(norms, p0+stem+s0)
+		}
+	}
+	return norms
+}
+
+// TestImportFromXMLComparativeParadigmsNormalFormPerLemma guards
+// against the shared paradigm silently mixing up which lemma a word
+// belongs to (the same failure shape as the precedent
+// paradigmKeyHash bug covered by TestImportFromXMLWordResolvesOwnLemmaTag):
+// "поясней" and "поплотней" share one paradigm after this fix, but
+// each must still resolve to its OWN lemma's normal form.
+func TestImportFromXMLComparativeParadigmsNormalFormPerLemma(t *testing.T) {
+	d, err := opencorpora.CompileFromXML(strings.NewReader(comparativeDictXML), nil)
+	require.NoError(t, err)
+	require.Len(t, d.Words, 1)
+
+	assert.Contains(t, normalFormsForWord(t, d, 0, "поясней"), "яснее",
+		"поясней должно нормализоваться к 'яснее', не к 'плотнее'")
+	assert.Contains(t, normalFormsForWord(t, d, 0, "поплотней"), "плотнее",
+		"поплотней должно нормализоваться к 'плотнее', не к 'яснее'")
 }
 
 // TestImportFromXMLWordResolvesOwnLemmaTag guards against the paradigm-dedup
