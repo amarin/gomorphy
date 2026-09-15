@@ -52,6 +52,7 @@
 ## Исследования
 
 - [Плотность упаковки DAWG при плотном алфавите меток](research/0001-dawg-alphabet-density.md)
+- [Бинарное кодирование парадигм и списка тегов вместо текста](research/0002-paradigm-tagset-binary-encoding.md)
 
 ## Решения
 
