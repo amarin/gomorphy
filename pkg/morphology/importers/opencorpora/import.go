@@ -111,10 +111,9 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 	var lemmas []lemmaEntry
 
 	handler := &xmlHandler{
-		tagSet:  tagSet,
-		lemmas:  &lemmas,
-		curForm: nil,
-		err:     nil,
+		tagSet: tagSet,
+		lemmas: &lemmas,
+		err:    nil,
 	}
 
 	if err := xmlscan.New(r, handler).Scan(); err != nil {
@@ -261,58 +260,88 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 }
 
 // xmlHandler implements xmlscan.Handler to collect lemmas and forms.
+//
+// Grammemes for a lemma's headword (<l>) and for each of its forms (<f>)
+// are collected into separate buffers (lemGrams, formOwnGrams) because
+// they arrive interleaved across many XML events; a form's own <g>
+// children are only fully known once </f> closes, so its final tag is
+// assembled on OnFormEnd, not on OnForm. See
+// docs/superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md.
 type xmlHandler struct {
-	tagSet   *internal.TagSet
-	lemmas   *[]lemmaEntry
-	curForm  *formGrams
-	err      error
-	curGrams []string
-	// lGrams is declared but never populated or read — it predates the fix
-	// for the OpenCorpora tag bug (docs/code-review-pre-1.0.md), where
-	// lemma-level grammemes never reach any form's tag. Whoever designs that
-	// fix should decide whether a field like this is still needed.
-	lGrams []string
+	tagSet *internal.TagSet
+	lemmas *[]lemmaEntry
+	err    error
+
+	lemGrams     []string // current lemma's own grammemes (from <l>); persist across all its forms
+	formOwnGrams []string // current form's own grammemes (from <f>); reset on every OnForm. Named
+	// formOwnGrams, not formGrams, to avoid colliding in spirit with the
+	// package's existing formGrams *type* (used below and in lem.forms).
+	curFormText string // current form's text, held between OnForm and OnFormEnd
+	inLemmaHead bool   // true between OnLemma and OnLemmaHeadEnd (i.e. while inside <l>)
 }
 
 func (h *xmlHandler) OnGrammeme(_ []byte, name []byte) error {
 	return nil
 }
 
+// OnGrammemeRef records one <g v="..."/> reference, routing it to the
+// lemma's own grammemes while inside <l> (inLemmaHead) or to the current
+// form's own grammemes while inside <f>.
 func (h *xmlHandler) OnGrammemeRef(value []byte) error {
-	if len(value) > 0 {
-		h.curGrams = append(h.curGrams, string(value))
+	if len(value) == 0 {
+		return nil
+	}
+	if h.inLemmaHead {
+		h.lemGrams = append(h.lemGrams, string(value))
+	} else {
+		h.formOwnGrams = append(h.formOwnGrams, string(value))
 	}
 	return nil
 }
 
+// OnLemma fires when <l> (the lemma's headword) opens: starts a new
+// lemmaEntry and resets both grammeme buffers for it.
 func (h *xmlHandler) OnLemma(id uint32, text []byte) error {
 	lem := lemmaEntry{id: id, text: string(text)}
 	*h.lemmas = append(*h.lemmas, lem)
-	h.curForm = nil
-	h.curGrams = nil
+	h.lemGrams = nil
+	h.formOwnGrams = nil
+	h.inLemmaHead = true
 	return nil
 }
 
+// OnLemmaHeadEnd fires when </l> closes (see xmlscan.Handler's doc comment
+// — this is not the end of the enclosing <lemma>). It only flips
+// inLemmaHead off; lemGrams is deliberately NOT cleared here, since every
+// form of this lemma still needs it.
 func (h *xmlHandler) OnLemmaHeadEnd() error {
-	h.curForm = nil
-	h.curGrams = nil
+	h.inLemmaHead = false
 	return nil
 }
 
+// OnForm fires when <f> opens: starts a fresh per-form grammeme buffer.
+// The form's tag is not built here — its own <g> children haven't been
+// parsed yet at this point; see OnFormEnd.
 func (h *xmlHandler) OnForm(text []byte) error {
+	h.formOwnGrams = nil
+	h.curFormText = string(text)
+	return nil
+}
+
+// OnFormEnd fires when </f> closes: the form's own grammemes are now fully
+// known, so this is where the final tag is assembled — lemma grammemes
+// first, then this form's own, in XML declaration order (no sorting, no
+// dedup, per the design spec) — and appended to the current lemma's forms.
+func (h *xmlHandler) OnFormEnd() error {
 	if h.lemmas == nil || len(*h.lemmas) == 0 {
 		return nil
 	}
 	lem := &(*h.lemmas)[len(*h.lemmas)-1]
-	gramm := strings.Join(h.curGrams, ",")
-	frm := formGrams{text: string(text), gramm: gramm}
-	lem.forms = append(lem.forms, frm)
-	h.curForm = &lem.forms[len(lem.forms)-1]
-	return nil
-}
-
-func (h *xmlHandler) OnFormEnd() error {
-	h.curForm = nil
+	all := make([]string, 0, len(h.lemGrams)+len(h.formOwnGrams))
+	all = append(all, h.lemGrams...)
+	all = append(all, h.formOwnGrams...)
+	gramm := strings.Join(all, ",")
+	lem.forms = append(lem.forms, formGrams{text: h.curFormText, gramm: gramm})
 	return nil
 }
 

@@ -26,29 +26,26 @@ const testDictXML = `<?xml version="1.0" encoding="UTF-8"?>
  </grammemes>
  <lemmata>
   <lemma id="1" text="кот">
-   <l g="NOUN,anim,masc,sing">
-    <f t="кот">
-     <g v="nomn"/>
-    </f>
-    <f t="кота">
-     <g v="gent"/>
-    </f>
-   </l>
+   <l t="кот"><g v="NOUN"/><g v="anim"/><g v="masc"/><g v="sing"/></l>
+   <f t="кот">
+    <g v="nomn"/>
+   </f>
+   <f t="кота">
+    <g v="gent"/>
+   </f>
   </lemma>
   <lemma id="2" text="кот">
-   <l g="VERB,impf,trans">
-    <f t="кот"/>
-   </l>
+   <l t="кот"><g v="VERB"/><g v="impf"/><g v="trans"/></l>
+   <f t="кот"/>
   </lemma>
   <lemma id="3" text="мышь">
-   <l g="NOUN,fem,sing,anim">
-    <f t="мышь">
-     <g v="nomn"/>
-    </f>
-    <f t="мыши">
-     <g v="gent"/>
-    </f>
-   </l>
+   <l t="мышь"><g v="NOUN"/><g v="fem"/><g v="sing"/><g v="anim"/></l>
+   <f t="мышь">
+    <g v="nomn"/>
+   </f>
+   <f t="мыши">
+    <g v="gent"/>
+   </f>
   </lemma>
  </lemmata>
 </dictionary>`
@@ -93,6 +90,32 @@ func TestImportFromXMLStemLCP(t *testing.T) {
 	assert.Equal(t, "", d.Suffixes[0][0], "первый суффикс в шарде 0 должен быть пустым")
 }
 
+// TestImportFromXMLFormTagsCombineLemmaAndOwnGrammemes guards against the
+// tag-corruption bug documented in docs/code-review-pre-1.0.md and fixed
+// per docs/superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md:
+// each form's tag must be its lemma's own grammemes plus its own — not
+// empty, not a previous form's, not an accumulating mixture.
+func TestImportFromXMLFormTagsCombineLemmaAndOwnGrammemes(t *testing.T) {
+	d, err := opencorpora.CompileFromXML(strings.NewReader(testDictXML), nil)
+	require.NoError(t, err)
+	require.NotNil(t, d.TagSet)
+
+	want := []string{
+		"NOUN,anim,masc,sing,nomn", // лемма "кот" (сущ.), форма "кот"
+		"NOUN,anim,masc,sing,gent", // лемма "кот" (сущ.), форма "кота"
+		"VERB,impf,trans",          // лемма "кот" (гл.), форма "кот" (своих граммем нет)
+		"NOUN,fem,sing,anim,nomn",  // лемма "мышь", форма "мышь"
+		"NOUN,fem,sing,anim,gent",  // лемма "мышь", форма "мыши"
+	}
+	for _, tag := range want {
+		assert.Contains(t, d.TagSet.Tags, tag, "tag %q must be registered", tag)
+	}
+
+	for _, tag := range d.TagSet.Tags {
+		assert.NotEqual(t, "", tag, "no form should get an empty tag")
+	}
+}
+
 func TestImportFromXMLDAWGContains(t *testing.T) {
 	d, err := opencorpora.CompileFromXML(strings.NewReader(testDictXML), nil)
 	require.NoError(t, err)
@@ -128,15 +151,13 @@ func TestImportFromXMLNoForms(t *testing.T) {
  </grammemes>
  <lemmata>
   <lemma id="1" text="пустая">
-   <l g="NOUN">
-   </l>
+   <l t="пустая"><g v="NOUN"/></l>
   </lemma>
   <lemma id="2" text="есть">
-   <l g="NOUN">
-    <f t="есть">
-     <g v="nomn"/>
-    </f>
-   </l>
+   <l t="есть"><g v="NOUN"/></l>
+   <f t="есть">
+    <g v="nomn"/>
+   </f>
   </lemma>
  </lemmata>
 </dictionary>`
