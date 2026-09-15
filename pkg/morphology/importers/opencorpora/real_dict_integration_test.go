@@ -92,7 +92,24 @@ func TestStripCmp2PrefixRealDictAnomalies(t *testing.T) {
 			}
 		}
 	}
-	if anomalies > 0 {
+	// The narrow Cmp2-only fix's own fallback (stripCmp2Prefix's ok=false
+	// branch) handles anomalies safely by not merging those lemmas, so a
+	// small, known count is expected and not a failure — see import.go's
+	// doc comment on stripCmp2Prefix. maxKnownAnomalies covers the 3
+	// lemmas already traced (недобитее, окологлоточнее,
+	// мультипроцессорнее) plus a small margin; a jump well past this
+	// (e.g. dict.xml changing how Cmp2 forms are constructed more
+	// broadly) would silently give up most of this fix's benefit with no
+	// signal otherwise, so this test still gates on the count staying
+	// small.
+	const maxKnownAnomalies = 5
+	if anomalies > maxKnownAnomalies {
+		t.Errorf("real dict.xml has %d lemmas where a Cmp2 form does not literally start with \"по\" "+
+			"(examples: %v) — well above the %d known/expected (недобитее, окологлоточнее, "+
+			"мультипроцессорнее) — investigate before assuming the fallback still covers this safely; "+
+			"see docs/research/0003-comparative-paradigms-not-merging.md",
+			anomalies, examples, maxKnownAnomalies)
+	} else if anomalies > 0 {
 		t.Logf("real dict.xml has %d lemmas where a Cmp2 form does not literally start with \"по\" "+
 			"(examples: %v) — these fall back to the pre-fix (non-merged) behavior via "+
 			"stripCmp2Prefix's anomaly path, which is correct and safe, just misses the merge "+

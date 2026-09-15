@@ -38,6 +38,12 @@ type dawgEntry struct {
 	val uint32
 }
 
+// paradigmKeyHash builds a dedup key from three parallel per-form arrays
+// (prefix IDs, suffix IDs, tag IDs). The concatenation has no separators
+// or length prefixes between segments — this is collision-free only
+// because the caller always passes three slices of equal length
+// (len(lem.forms) each), so total byte length alone determines where
+// each segment starts. Do not call this with unequal-length slices.
 func paradigmKeyHash(pk, sk, tk []uint16) string {
 	if len(pk) == 0 && len(sk) == 0 && len(tk) == 0 {
 		return ""
@@ -175,6 +181,9 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 
 			pid, ok := prefixTexts[formPrefixes[i]]
 			if !ok {
+				if len(prefixList) >= 1<<16 {
+					return nil, fmt.Errorf("opencorpora: exceeded %d unique prefixes", 1<<16)
+				}
 				pid = uint16(len(prefixList))
 				prefixTexts[formPrefixes[i]] = pid
 				prefixList = append(prefixList, formPrefixes[i])
@@ -218,6 +227,9 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 				suffix = stemInput[formIdx][len(stem):]
 			}
 			dawgKey := formPrefixes[formIdx] + stem + suffix
+			if dawgKey != lem.forms[formIdx].text {
+				return nil, fmt.Errorf("opencorpora: internal invariant violated: prefix+stem+suffix (%q) != form text (%q) for lemma %q", dawgKey, lem.forms[formIdx].text, lem.text)
+			}
 			val := uint32(paraID)<<16 | uint32(formIdx)
 			cur.dawgEntries = append(cur.dawgEntries, dawgEntry{key: dawgKey, val: val})
 		}
@@ -412,12 +424,18 @@ const cmp2Prefix = "по"
 // forms happen to carry that prefix (the root-in-suffix problem from
 // docs/research/0003-comparative-paradigms-not-merging.md).
 //
-// If any Cmp2-tagged form's text does not literally start with "по"
-// (an anomaly not observed against the real dict.xml — see the
-// real_dict_integration_test.go check in Task 3 — but not assumed
-// impossible), every form of this lemma falls back to prefix "" and
-// its own full text, exactly the pre-fix behavior, and ok is false so
-// the caller can detect and count it.
+// If any Cmp2-tagged form's text does not literally start with "по",
+// every form of this lemma falls back to prefix "" and its own full
+// text, exactly the pre-fix behavior, and ok is false so the caller
+// can detect it. This does happen on the real dict.xml: 3 lemmas
+// (недобитее, окологлоточнее, мультипроцессорнее) hit this path,
+// because their base word already carries its own prefix
+// (недо-/около-/мульти-) and OpenCorpora infixes "по" after it rather
+// than prepending it to the whole word (e.g. "недобитее" -> Cmp2 form
+// "недопобитее", not "понедобитее") — see
+// docs/research/0003-comparative-paradigms-not-merging.md for the full
+// trace. The fallback handles these 3 lemmas correctly (no merge
+// benefit, no data corruption) — it is not dead code, keep it.
 func stripCmp2Prefix(forms []formGrams) (stemInput []string, prefixes []string, ok bool) {
 	stemInput = make([]string, len(forms))
 	prefixes = make([]string, len(forms))
