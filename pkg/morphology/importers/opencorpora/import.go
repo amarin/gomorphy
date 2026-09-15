@@ -41,11 +41,10 @@ func paradigmKeyHash(sk []uint16, tk []uint16) string {
 	if len(sk) == 0 && len(tk) == 0 {
 		return ""
 	}
-	var buf [1024]byte
-	n := 0
-	n = copy(buf[n:], encodeU16s(sk))
-	n = copy(buf[n:], encodeU16s(tk))
-	return string(buf[:n])
+	buf := make([]byte, 0, len(sk)*2+len(tk)*2)
+	buf = append(buf, encodeU16s(sk)...)
+	buf = append(buf, encodeU16s(tk)...)
+	return string(buf)
 }
 
 func encodeU16s(u []uint16) []byte {
@@ -267,17 +266,19 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 // children are only fully known once </f> closes, so its final tag is
 // assembled on OnFormEnd, not on OnForm. See
 // docs/superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md.
+//
+// The field is named formOwnGrams, not formGrams, to avoid colliding in
+// spirit with the package's existing formGrams *type* (used below and in
+// lem.forms).
 type xmlHandler struct {
 	tagSet *internal.TagSet
 	lemmas *[]lemmaEntry
 	err    error
 
 	lemGrams     []string // current lemma's own grammemes (from <l>); persist across all its forms
-	formOwnGrams []string // current form's own grammemes (from <f>); reset on every OnForm. Named
-	// formOwnGrams, not formGrams, to avoid colliding in spirit with the
-	// package's existing formGrams *type* (used below and in lem.forms).
-	curFormText string // current form's text, held between OnForm and OnFormEnd
-	inLemmaHead bool   // true between OnLemma and OnLemmaHeadEnd (i.e. while inside <l>)
+	formOwnGrams []string // current form's own grammemes (from <f>); reset on every OnForm
+	curFormText  string   // current form's text, held between OnForm and OnFormEnd
+	inLemmaHead  bool     // true between OnLemma and OnLemmaHeadEnd (i.e. while inside <l>)
 }
 
 func (h *xmlHandler) OnGrammeme(_ []byte, name []byte) error {
