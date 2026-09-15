@@ -49,3 +49,80 @@ func TestLCP(t *testing.T) {
 		})
 	}
 }
+
+func TestStripCmp2Prefix(t *testing.T) {
+	cases := []struct {
+		name          string
+		forms         []formGrams
+		wantStemInput []string
+		wantPrefixes  []string
+		wantOK        bool
+	}{
+		{
+			name: "no Cmp2 forms",
+			forms: []formGrams{
+				{text: "кот", gramm: "NOUN,anim,masc,sing,nomn"},
+				{text: "кота", gramm: "NOUN,anim,masc,sing,gent"},
+			},
+			wantStemInput: []string{"кот", "кота"},
+			wantPrefixes:  []string{"", ""},
+			wantOK:        true,
+		},
+		{
+			name: "Cmp2 forms strip по",
+			forms: []formGrams{
+				{text: "яснее", gramm: "COMP,Qual"},
+				{text: "ясней", gramm: "COMP,Qual,V-ej"},
+				{text: "пояснее", gramm: "COMP,Qual,Cmp2"},
+				{text: "поясней", gramm: "COMP,Qual,Cmp2,V-ej"},
+			},
+			wantStemInput: []string{"яснее", "ясней", "яснее", "ясней"},
+			wantPrefixes:  []string{"", "", "по", "по"},
+			wantOK:        true,
+		},
+		{
+			name: "Cmp2 form without по prefix falls back for the whole lemma",
+			forms: []formGrams{
+				{text: "яснее", gramm: "COMP,Qual"},
+				{text: "СЛОМАНО", gramm: "COMP,Qual,Cmp2"},
+			},
+			wantStemInput: []string{"яснее", "СЛОМАНО"},
+			wantPrefixes:  []string{"", ""},
+			wantOK:        false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stemInput, prefixes, ok := stripCmp2Prefix(tc.forms)
+			if ok != tc.wantOK {
+				t.Errorf("ok = %v, want %v", ok, tc.wantOK)
+			}
+			if len(stemInput) != len(tc.wantStemInput) {
+				t.Fatalf("stemInput = %v, want %v", stemInput, tc.wantStemInput)
+			}
+			for i := range stemInput {
+				if stemInput[i] != tc.wantStemInput[i] {
+					t.Errorf("stemInput[%d] = %q, want %q", i, stemInput[i], tc.wantStemInput[i])
+				}
+			}
+			if len(prefixes) != len(tc.wantPrefixes) {
+				t.Fatalf("prefixes = %v, want %v", prefixes, tc.wantPrefixes)
+			}
+			for i := range prefixes {
+				if prefixes[i] != tc.wantPrefixes[i] {
+					t.Errorf("prefixes[%d] = %q, want %q", i, prefixes[i], tc.wantPrefixes[i])
+				}
+			}
+		})
+	}
+}
+
+func TestParadigmKeyHashIncludesPrefix(t *testing.T) {
+	sk := []uint16{0, 1}
+	tk := []uint16{5, 6}
+	h1 := paradigmKeyHash([]uint16{0, 0}, sk, tk)
+	h2 := paradigmKeyHash([]uint16{0, 1}, sk, tk)
+	if h1 == h2 {
+		t.Errorf("paradigmKeyHash must differ when prefix IDs differ (same suffix+tag IDs): got equal hashes for %v vs %v", h1, h2)
+	}
+}
