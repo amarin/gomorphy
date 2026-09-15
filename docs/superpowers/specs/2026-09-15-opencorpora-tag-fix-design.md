@@ -81,22 +81,27 @@ type xmlHandler struct {
     err    error
 
     lemGrams    []string // current lemma's own grammemes (from <l>); persist across all its forms
-    formGrams   []string // current form's own grammemes (from <f>); reset on every OnForm
+    formOwnGrams []string // current form's own grammemes (from <f>); reset on every OnForm
     curFormText string   // current form's text, held between OnForm and OnFormEnd
     inLemmaHead bool     // true between OnLemma and OnLemmaHeadEnd (i.e. while inside <l>)
 }
 ```
 
+(`formOwnGrams`, not `formGrams` — the package already has a type named
+`formGrams` (`type formGrams struct{ text, gramm string }`, used as
+`lem.forms []formGrams`); a same-named field would be legal Go but
+needlessly confusing next to it.)
+
 ### Event flow
 
 | XML event | Handler method | Effect |
 |---|---|---|
-| `<l t="…">` opens | `OnLemma(id, text)` | Append new `lemmaEntry`. Reset `lemGrams=nil`, `formGrams=nil`. Set `inLemmaHead=true`. |
+| `<l t="…">` opens | `OnLemma(id, text)` | Append new `lemmaEntry`. Reset `lemGrams=nil`, `formOwnGrams=nil`. Set `inLemmaHead=true`. |
 | `<g v="X"/>` inside `<l>` | `OnGrammemeRef(v)` | `inLemmaHead==true` ⇒ append to `lemGrams`. |
 | `</l>` closes | `OnLemmaHeadEnd()` | Set `inLemmaHead=false`. **Does not clear `lemGrams`** — this is the actual fix. |
-| `<f t="…">` opens | `OnForm(text)` | Reset `formGrams=nil`, set `curFormText=text`. Tag is **not** built here (own `<g>` children haven't been parsed yet). |
-| `<g v="Y"/>` inside `<f>` | `OnGrammemeRef(v)` | `inLemmaHead==false` ⇒ append to `formGrams`. |
-| `</f>` closes | `OnFormEnd()` | Build `gramm = strings.Join(append(append([]string{}, lemGrams...), formGrams...), ",")` (lemma grammemes first, then the form's own, in XML declaration order — no sorting, no dedup, per the user's explicit answer). Append `formGrams{text: curFormText, gramm}` to the current lemma's `forms`. |
+| `<f t="…">` opens | `OnForm(text)` | Reset `formOwnGrams=nil`, set `curFormText=text`. Tag is **not** built here (own `<g>` children haven't been parsed yet). |
+| `<g v="Y"/>` inside `<f>` | `OnGrammemeRef(v)` | `inLemmaHead==false` ⇒ append to `formOwnGrams`. |
+| `</f>` closes | `OnFormEnd()` | Build `gramm = strings.Join(append(append([]string{}, lemGrams...), formOwnGrams...), ",")` (lemma grammemes first, then the form's own, in XML declaration order — no sorting, no dedup, per the user's explicit answer). Append `formGrams{text: curFormText, gramm}` (the existing `formGrams` *type*, unrelated to the removed field name above) to the current lemma's `forms`. |
 
 The key structural change from the current code: **the tag is assembled
 on `OnFormEnd`, not `OnForm`** — it must wait until the form's own `<g>`
