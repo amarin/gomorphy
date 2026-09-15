@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/amarin/gomorphy/internal/xmlscan"
 	"github.com/amarin/gomorphy/pkg/morphology/internal"
@@ -133,7 +134,11 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 			continue
 		}
 
-		stem := lcp(lem.forms)
+		texts := make([]string, len(lem.forms))
+		for i, f := range lem.forms {
+			texts[i] = f.text
+		}
+		stem := lcp(texts)
 
 		// How many suffixes would this lemma add to the CURRENT shard if
 		// placed there? Dedup within the lemma's own forms too, so a
@@ -346,30 +351,39 @@ func (h *xmlHandler) OnFormEnd() error {
 	return nil
 }
 
-// lcp computes the longest common prefix of all form texts.
-func lcp(forms []formGrams) string {
-	if len(forms) == 0 {
+// lcp computes the longest common prefix of texts, trimmed back to the
+// nearest valid UTF-8 rune boundary so the result (and therefore every
+// "suffix = text minus this prefix") is always valid UTF-8. A raw
+// byte-level cut can otherwise land inside a multi-byte character when
+// two texts share a lead byte but differ in its continuation byte (e.g.
+// any Cyrillic letter in the а-п block compared against "по") — see
+// docs/research/0003-comparative-paradigms-not-merging.md, section 4/6.
+func lcp(texts []string) string {
+	if len(texts) == 0 {
 		return ""
 	}
-	if len(forms) == 1 {
-		return forms[0].text
+	if len(texts) == 1 {
+		return texts[0]
 	}
-	prefix := forms[0].text
-	for i := 1; i < len(forms); i++ {
-		max := len(prefix)
-		if len(forms[i].text) < max {
-			max = len(forms[i].text)
+	n := len(texts[0])
+	for i := 1; i < len(texts); i++ {
+		max := n
+		if len(texts[i]) < max {
+			max = len(texts[i])
 		}
 		j := 0
-		for j < max && prefix[j] == forms[i].text[j] {
+		for j < max && texts[0][j] == texts[i][j] {
 			j++
 		}
-		prefix = prefix[:j]
-		if prefix == "" {
+		n = j
+		if n == 0 {
 			return ""
 		}
 	}
-	return prefix
+	for n > 0 && n < len(texts[0]) && !utf8.RuneStart(texts[0][n]) {
+		n--
+	}
+	return texts[0][:n]
 }
 
 // dedupEntries removes exact (key, val) duplicates from dawg entries.
