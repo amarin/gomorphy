@@ -372,13 +372,25 @@ func lcp(forms []formGrams) string {
 	return prefix
 }
 
-// dedupEntries removes duplicate keys from dawg entries.
+// dedupEntries removes exact (key, val) duplicates from dawg entries.
+// Entries that share a key but differ in val are NOT duplicates - they are
+// distinct homonym readings of the same wordform text (e.g. "кот" as a
+// noun vs. "кот" as a verb), and BuildDAWGWithValues embeds val into the
+// actual DAWG key (via PayloadSeparator, see dawgbuild.go) precisely so
+// such entries coexist; SimilarItems already returns all of them via
+// Item.Values. Deduping on key alone would silently drop every homonym
+// reading but the first.
 func dedupEntries(entries []dawgEntry) []dawgEntry {
-	seen := make(map[string]bool)
+	type entryKey struct {
+		key string
+		val uint32
+	}
+	seen := make(map[entryKey]bool, len(entries))
 	result := make([]dawgEntry, 0, len(entries))
 	for _, e := range entries {
-		if !seen[e.key] {
-			seen[e.key] = true
+		k := entryKey{e.key, e.val}
+		if !seen[k] {
+			seen[k] = true
 			result = append(result, e)
 		}
 	}

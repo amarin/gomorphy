@@ -207,12 +207,32 @@ func TestImportFromXMLWordResolvesOwnLemmaTag(t *testing.T) {
 
 	// Примечание: словоформа "кот" (без учёта регистра/суффиксов)
 	// одновременно является формой леммы 1 (сущ., им.п.) и леммы 2
-	// (глаг.) — двумя РАЗНЫМИ парадигмами. Это не проверяется здесь: их
-	// совпадение по тексту слова обнажает отдельный, не входящий в эту
-	// находку баг (`dedupEntries` в import.go дедуплицирует DAWG-записи
-	// только по ключу-слову, теряя все значения, кроме первого, при
-	// омонимах с одинаковым текстом словоформы) — он не относится к
-	// paradigmKeyHash и не покрывается этим тестом.
+	// (глаг.) — двумя РАЗНЫМИ парадигмами. Их совпадение по тексту слова
+	// проверяется отдельно, ниже — см. TestImportFromXMLHomonymFormsBothSurvive.
+}
+
+// TestImportFromXMLHomonymFormsBothSurvive guards against a dedupEntries
+// bug (import.go): dedupEntries used to dedup DAWG entries by word-text
+// key alone, discarding entries whose key repeated even when val (the
+// paraID<<16|formIdx payload) differed. Since BuildDAWGWithValues embeds
+// the value into the actual DAWG key via PayloadSeparator+base64 (see
+// dawgbuild.go), two entries with the same word text but different values
+// are meant to coexist as distinct DAWG keys - and SimilarItems already
+// returns all of them via Item.Values ([][]byte) - so the DAWG format and
+// the lookup path both fully support homonyms. dedupEntries collapsing by
+// key alone silently discarded every homonym reading but the first.
+//
+// "кот" is simultaneously a form of lemma 1 (NOUN, nominative) and lemma 2
+// (VERB) in testDictXML - two distinct paradigms, same word text. Both
+// readings must resolve.
+func TestImportFromXMLHomonymFormsBothSurvive(t *testing.T) {
+	d, err := opencorpora.CompileFromXML(strings.NewReader(testDictXML), nil)
+	require.NoError(t, err)
+
+	tags := tagsForWord(t, d, 0, "кот")
+	assert.Contains(t, tags, "NOUN,anim,masc,sing,nomn", "лемма 1 (кот, сущ.) должна остаться")
+	assert.Contains(t, tags, "VERB,impf,trans", "лемма 2 (кот, глаг.) должна остаться, а не быть вытеснена омонимом")
+	assert.Len(t, tags, 2, "обе омонимичные формы 'кот' должны выжить после дедупликации DAWG-записей")
 }
 
 func TestImportFromXMLDAWGContains(t *testing.T) {
