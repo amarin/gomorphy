@@ -9,23 +9,17 @@ import (
 )
 
 // isInteractive reports whether stdout is a terminal - used to choose
-// between newProgressReporter's redraw-in-place and one-line-per-step
+// between newProgressReporterTo's redraw-in-place and one-line-per-step
 // output modes.
 func isInteractive() bool {
 	return term.IsTerminal(int(os.Stdout.Fd()))
 }
 
-// newProgressReporter returns a progress callback (the shape already used
-// by opencorpora.CompileFromXML's progress parameter) shaped for the
+// newProgressReporterTo returns a progress callback (the shape already
+// used by opencorpora.CompileFromXML's progress parameter) shaped for the
 // caller's output mode: interactive redraws one line in place;
 // non-interactive prints one line per call, no control characters - safe
-// for a log file or a pipe.
-func newProgressReporter(interactive bool) func(processed, total int) {
-	return newProgressReporterTo(os.Stdout, interactive)
-}
-
-// newProgressReporterTo is newProgressReporter with an explicit writer,
-// for testing without touching the real os.Stdout.
+// for a log file, a pipe, or a cobra command's own output writer.
 func newProgressReporterTo(w io.Writer, interactive bool) func(processed, total int) {
 	if !interactive {
 		return func(processed, total int) {

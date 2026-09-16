@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -31,8 +30,8 @@ func newFuzzyCommand() *cobra.Command {
 			}
 			maxDist := 2
 			if len(args) == 2 {
-				n, err := strconv.Atoi(args[1])
-				if err != nil || n < 0 {
+				n, err := parseNonNegativeInt(args[1])
+				if err != nil {
 					return fmt.Errorf("invalid maxDist %q", args[1])
 				}
 				maxDist = n

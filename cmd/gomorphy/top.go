@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -29,8 +28,8 @@ func newTopCommand() *cobra.Command {
 			if err := configureLogging(cmd); err != nil {
 				return err
 			}
-			n, err := strconv.Atoi(args[1])
-			if err != nil || n <= 0 {
+			n, err := parseNonNegativeInt(args[1])
+			if err != nil || n == 0 {
 				return fmt.Errorf("invalid N %q", args[1])
 			}
 			m, err := resolveDictionaries(cmd)

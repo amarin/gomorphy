@@ -16,7 +16,7 @@ import (
 // is compiled directly (skipping the loader's own unpacked-file/dir
 // path); output, if empty, defaults to .data/<type>/<type>.dat.
 func runBuild(cmd *cobra.Command, typ, input, output string) error {
-	progress := newProgressReporter(isInteractive())
+	progress := newProgressReporterTo(cmd.OutOrStdout(), isInteractive())
 
 	var d *morphology.Dictionary
 	var err error

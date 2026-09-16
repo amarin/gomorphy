@@ -14,12 +14,8 @@ import (
 
 var consoleCommands = []string{"lookup", "lemmas", "fuzzy", "top", "exit", "quit"}
 
-// consoleCompleter is cli.go's own readline completer. It is named
-// distinctly from the old cmd/gomorphy/main.go's package-scope
-// commandCompleter (same package, still present until Task 6 removes it)
-// to avoid a duplicate-declaration compile error; Task 6's rewrite of
-// main.go drops the old declaration entirely, so this name has no
-// external significance beyond this file.
+// consoleCompleter/runInteractiveConsole (not commandCompleter/runConsole) —
+// those names are used elsewhere in this package for the same purpose.
 type consoleCompleter struct{}
 
 func (c *consoleCompleter) Do(line []rune, pos int) ([][]rune, int) {
@@ -65,8 +61,6 @@ func newCLICommand() *cobra.Command {
 	}
 }
 
-// runInteractiveConsole is named distinctly from the old main.go's
-// package-scope runConsole (same reason as consoleCompleter above).
 func runInteractiveConsole(out io.Writer, m *morphology.MultiDictionary) error {
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt:          "gomorphy> ",
@@ -108,9 +102,9 @@ func runInteractiveConsole(out io.Writer, m *morphology.MultiDictionary) error {
 		var runErr error
 		switch cmd {
 		case "lookup":
-			runErr = requireOneArg(cmdArgs, func(word string) error { return doLookup(out, m, word) })
+			runErr = requireOneArg("lookup", cmdArgs, func(word string) error { return doLookup(out, m, word) })
 		case "lemmas":
-			runErr = requireOneArg(cmdArgs, func(word string) error { return doLemmas(out, m, word) })
+			runErr = requireOneArg("lemmas", cmdArgs, func(word string) error { return doLemmas(out, m, word) })
 		case "fuzzy":
 			runErr = runConsoleFuzzy(out, m, cmdArgs)
 		case "top":
@@ -124,9 +118,9 @@ func runInteractiveConsole(out io.Writer, m *morphology.MultiDictionary) error {
 	}
 }
 
-func requireOneArg(args []string, fn func(string) error) error {
+func requireOneArg(cmdName string, args []string, fn func(string) error) error {
 	if len(args) != 1 {
-		return fmt.Errorf("usage: <word>")
+		return fmt.Errorf("usage: %s <word>", cmdName)
 	}
 	return fn(args[0])
 }

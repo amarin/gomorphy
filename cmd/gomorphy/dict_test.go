@@ -51,9 +51,9 @@ func buildFixtureDat(t *testing.T, xml string) string {
 }
 
 // newTestRootCmd builds a throwaway root with the standard global flags
-// registered (mirroring production's real root in main.go, once Task 6
-// wires it) and cmd attached as its only child - the shape every command
-// needs to run the way it really will. Shared by every later task's tests.
+// registered (mirroring production's real root in main.go) and cmd
+// attached as its only child - the shape every command needs to run the
+// way it really will. Shared across this package's command tests.
 func newTestRootCmd(cmd *cobra.Command) *cobra.Command {
 	root := &cobra.Command{Use: "gomorphy"}
 	registerGlobalFlags(root)
