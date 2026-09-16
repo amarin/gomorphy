@@ -36,13 +36,9 @@
 
 This is `cmd/gomorphy/main.go`'s existing `func main()` untouched — all four new files stand alone, not yet wired into the binary.
 
-- [ ] **Step 1: Add dependencies**
+- [ ] **Step 1: Dependencies**
 
-```bash
-go get github.com/spf13/cobra@latest
-go get golang.org/x/term@latest
-go mod tidy
-```
+`github.com/spf13/cobra`, `github.com/spf13/pflag` (cobra's indirect dep), and `golang.org/x/term` are already in `go.mod`/`go.sum` (commit `a056110`, done ahead of this task by the controller — the environment's network proxy returns 403 for these packages via the normal `GOPROXY` chain, so adding them needed `GOPROXY=off` against an already-warm local module cache; see that commit's message for the full story). **Do not run `go mod tidy` yet** — with no `.go` file importing these packages so far, `tidy` will immediately strip them back out of `go.mod` as unused (this was hit and confirmed during controller setup). `go mod tidy` becomes safe and correct only after Steps 4-7 add real imports — it is not a step in this task; the next task-level `go mod tidy` opportunity is naturally covered by Step 9's full build/test/lint pass, which does not itself invoke `tidy`, so nothing here strips the requirement in the meantime either. If `go build ./...` ever reports "inconsistent vendoring" while working on this task, run `GOPROXY=off go mod vendor` (the module cache is warm; no network needed) and retry.
 
 - [ ] **Step 2: Write the failing tests**
 
