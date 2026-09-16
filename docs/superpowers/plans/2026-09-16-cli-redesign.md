@@ -1825,7 +1825,7 @@ func main() {
 }
 ```
 
-Delete every other top-level declaration that used to live in the old `main.go` (the old `usage` const, `commands`/`commandCompleter` at package scope, `runImport`/`importAndSave`/`runConsole`/`runLookup`/`runLemmas`/`runFuzzy`/`runTop` and their flag-based argument parsing) — all of it has a Task 1-5 equivalent now (`commandCompleter` itself moved into `cli.go` in Task 5; do not leave a second copy in `main.go`).
+Delete every other top-level declaration that used to live in the old `main.go` (the old `usage` const, `commands`/`commandCompleter` at package scope, `runImport`/`importAndSave`/`runConsole`/`runLookup`/`runLemmas`/`runFuzzy`/`runTop` and their flag-based argument parsing) — all of it has a Task 1-5 equivalent now. Note: Task 5's `cli.go` had to rename its own versions to `consoleCompleter`/`runInteractiveConsole` (not `commandCompleter`/`runConsole` as originally sketched here) specifically to avoid colliding with these still-present old `main.go` declarations while Tasks 1-5 keep the old CLI working — once this step deletes the old `main.go` declarations, the naming collision that forced the rename no longer exists, but `cli.go` itself is not touched by this step and keeps its renamed identifiers as-is (do not rename them back; nothing in this file's own new content references `commandCompleter`/`runConsole` by name — only `newCLICommand()`, which is unaffected either way).
 
 - [ ] **Step 3: Delete `cmd/gomorphy_build/`**
 
