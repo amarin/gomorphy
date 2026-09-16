@@ -22,6 +22,12 @@ type Handler interface {
 	OnLemmaHeadEnd() error
 	OnForm(text []byte) error
 	OnFormEnd() error
+	// OnLink fires for each <link from="..." to="..." type="..."/> inside
+	// the root <links> section — the grammatical links (INFN-VERB,
+	// INFN-PRTF, ADJF-ADJS, ...) OpenCorpora uses to tie a lexeme's
+	// paradigm back together across the several <lemma> elements it gets
+	// split across. from/to are the linked <lemma id="..."> values.
+	OnLink(from []byte, to []byte, linkType []byte) error
 }
 
 type section int
@@ -30,6 +36,7 @@ const (
 	sectOther section = iota
 	sectGrammemes
 	sectLemmata
+	sectLinks
 )
 
 const defaultBufSize = 1 << 18

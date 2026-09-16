@@ -68,6 +68,7 @@ type counter struct {
 	forms       int
 	grefs       int
 	grammemes   int
+	links       int
 	lastLemmaID uint32
 }
 
@@ -89,6 +90,8 @@ func (c *counter) OnLemmaHeadEnd() error { return nil }
 func (c *counter) OnForm([]byte) error { c.forms++; return nil }
 
 func (c *counter) OnFormEnd() error { return nil }
+
+func (c *counter) OnLink(_, _, _ []byte) error { c.links++; return nil }
 
 func TestIntegrationFirst10kLemmas(t *testing.T) {
 	f := openDict(t)

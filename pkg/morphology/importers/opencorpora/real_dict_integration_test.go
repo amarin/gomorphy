@@ -74,7 +74,8 @@ func TestStripCmp2PrefixRealDictAnomalies(t *testing.T) {
 
 	tagSet := internal.NewTagSet("opencorpora")
 	var lemmas []lemmaEntry
-	handler := &xmlHandler{tagSet: tagSet, lemmas: &lemmas}
+	var links []xmlLink
+	handler := &xmlHandler{tagSet: tagSet, lemmas: &lemmas, links: &links}
 	if err := xmlscan.New(f, handler).Scan(); err != nil {
 		t.Fatalf("scan: %v", err)
 	}
@@ -133,6 +134,16 @@ func TestStripCmp2PrefixRealDictAnomalies(t *testing.T) {
 // matches" rather than requiring every reading to match, mirroring
 // the normalFormsForWord + assert.Contains pattern already used in
 // Task 2's import_test.go.
+//
+// wantNormal values are each word's BASE adjective (e.g. "яснее" ->
+// "ясный"), not the comparative form itself: mergeLinkedLemmas now
+// follows the type="2" (ADJF-COMP) <link> the same as pymorphy2's own
+// dict compiler does, so a COMP lexeme's normal form is its ADJF, same
+// as verified against .data/pymorphy for every case here. Before that
+// fix this test asserted each word normalized to itself, which matched
+// the (buggy) pre-link-merge behavior, not real pymorphy2 — see
+// TestImportFromXMLLinkedLemmasMergeNormalForm in import_test.go for
+// the isolated fixture-based regression test.
 func TestImportFromXMLRealDictComparativeWordsResolve(t *testing.T) {
 	f := openRealDict(t)
 	defer func() { _ = f.Close() }()
@@ -153,14 +164,14 @@ func TestImportFromXMLRealDictComparativeWordsResolve(t *testing.T) {
 		word       string
 		wantNormal string
 	}{
-		{"яснее", "яснее"},
-		{"ясней", "яснее"},
-		{"пояснее", "яснее"},
-		{"поясней", "яснее"},
-		{"абажурнее", "абажурнее"},
-		{"поабажурнее", "абажурнее"}, // "по" + full base word, per docs/research/0003-...md's own example
-		{"поправимее", "поправимее"},
-		{"попоправимее", "поправимее"},
+		{"яснее", "ясный"},
+		{"ясней", "ясный"},
+		{"пояснее", "ясный"},
+		{"поясней", "ясный"},
+		{"абажурнее", "абажурный"},
+		{"поабажурнее", "абажурный"}, // "по" + full base word, per docs/research/0003-...md's own example
+		{"поправимее", "поправимый"},
+		{"попоправимее", "поправимый"},
 	}
 
 	for _, tc := range cases {

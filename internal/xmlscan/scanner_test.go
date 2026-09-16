@@ -46,6 +46,12 @@ func (r *recorder) OnForm(text []byte) error {
 
 func (r *recorder) OnFormEnd() error { r.events = append(r.events, "form-end"); return nil }
 
+func (r *recorder) OnLink(from, to, linkType []byte) error {
+	r.events = append(r.events, fmt.Sprintf("link from=%q to=%q type=%q", string(from), string(to), string(linkType)))
+
+	return nil
+}
+
 func scanAll(t *testing.T, input string, bufSize int) []string {
 	t.Helper()
 
@@ -75,6 +81,9 @@ const sampleDict = `<?xml version="1.0" encoding="utf-8"?>
 <f t="ёжик"><g v="nomn"/></f><f t="ёжика"><g v="gent"/></f></lemma>
 <lemma id="6"><l t="весёлый" t2=""><g v="ADJF"/></l><f t="весёлый"/></lemma>
 </lemmata>
+<links>
+<link id="1" from="5" to="6" type="3"/>
+</links>
 </dictionary>`
 
 func wantEvents() []string {
@@ -99,6 +108,7 @@ func wantEvents() []string {
 		"lemma-end",
 		"form весёлый",
 		"form-end",
+		`link from="5" to="6" type="3"`,
 	}
 }
 

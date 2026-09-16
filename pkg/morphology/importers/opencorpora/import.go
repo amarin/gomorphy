@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -30,6 +31,14 @@ type lemmaEntry struct {
 type formGrams struct {
 	text  string
 	gramm string // combined grammeme string, e.g. "NOUN,anim,masc,sing,nomn"
+}
+
+// xmlLink is one <link from="..." to="..." type="..."/> from dict.xml's
+// root <links> section — see mergeLinkedLemmas.
+type xmlLink struct {
+	from uint32
+	to   uint32
+	typ  string
 }
 
 // dawgEntry maps a DAWG key to its (paradigmID << 16) | formIdx value.
@@ -65,6 +74,80 @@ func encodeU16s(u []uint16) []byte {
 		b[i*2+1] = byte(v)
 	}
 	return b
+}
+
+// excludedLinkTypes are OpenCorpora <link type="..."> ids that connect
+// genuinely distinct words and must NOT merge lemmas: 7 NAME-PATR,
+// 21 FULL-CONTRACTED, 23 CARDINAL-ORDINAL, 27 ADJF_TEXT-ADJF_NUMBER.
+// Every other link type is followed — this matches pymorphy2's own dict
+// compiler (pymorphy2/opencorpora_dict/compile.py, _join_lexemes,
+// EXCLUDED_LINK_TYPES), verified byte-for-byte against the pymorphy2
+// 0.9.1 tag that produced .data/pymorphy's reference dictionary. See
+// mergeLinkedLemmas for why this exists.
+var excludedLinkTypes = map[string]bool{"7": true, "21": true, "23": true, "27": true}
+
+// mergeLinkedLemmas folds forms of linked lemmas into one another,
+// in place, so a paradigm's form[0] (used by readingForm as the "normal
+// form") resolves to the linguistically correct lemma instead of an
+// arbitrary XML fragment's own headword.
+//
+// OpenCorpora's dict.xml splits a single lexeme's full paradigm across
+// several <lemma> elements — e.g. a verb's infinitive ("ложиться") is
+// one <lemma>, its finite/conjugated forms (headword "ложусь", the 1st
+// person singular present) are a SEPARATE <lemma>, and its participle
+// and gerund forms are separate <lemma> elements too. The only thing
+// tying these back into one lexeme is the root <links> section (e.g.
+// type="3" INFN-VERB, type="4" INFN-PRTF, type="5" INFN-GRND). Without
+// this merge, every finite/participle/gerund form gets normalized to
+// its own fragment's headword (e.g. "ложился" -> "ложусь") instead of
+// the infinitive — see docs/research/0008-opencorpora-link-merge-design.md.
+//
+// This mirrors pymorphy2's _join_lexemes exactly: for each <link
+// from="A" to="B" type="T">, unless T is excluded, B's forms move into
+// A (following any earlier move of A itself, so transitive chains
+// resolve to their ultimate root), and B is left empty — the existing
+// `len(lem.forms) == 0` skip in ImportFromXML's Phase 2 loop then drops
+// it, exactly like pymorphy2 keeping only lexemes still non-empty after
+// the join.
+func mergeLinkedLemmas(lemmas []lemmaEntry, links []xmlLink) {
+	byID := make(map[uint32]int, len(lemmas))
+	for i, lem := range lemmas {
+		byID[lem.id] = i
+	}
+
+	// moves[originalToID] = resolved root lemma id it now lives under.
+	moves := make(map[uint32]uint32, len(links))
+	resolve := func(id uint32) uint32 {
+		for {
+			next, ok := moves[id]
+			if !ok {
+				return id
+			}
+			id = next
+		}
+	}
+
+	for _, link := range links {
+		if excludedLinkTypes[link.typ] {
+			continue
+		}
+
+		toIdx, ok := byID[link.to]
+		if !ok {
+			continue
+		}
+
+		root := resolve(link.from)
+
+		fromIdx, ok := byID[root]
+		if !ok || fromIdx == toIdx {
+			continue
+		}
+
+		lemmas[fromIdx].forms = append(lemmas[fromIdx].forms, lemmas[toIdx].forms...)
+		lemmas[toIdx].forms = nil
+		moves[link.to] = root
+	}
 }
 
 // suffixShardLimit — вместимость uint16 id-пространства суффиксов одного
@@ -114,12 +197,14 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 		tagSet = internal.NewTagSet("opencorpora")
 	}
 
-	// Phase 1: scan XML and collect lemmas + forms.
+	// Phase 1: scan XML and collect lemmas + forms + cross-lemma links.
 	var lemmas []lemmaEntry
+	var links []xmlLink
 
 	handler := &xmlHandler{
 		tagSet: tagSet,
 		lemmas: &lemmas,
+		links:  &links,
 		err:    nil,
 	}
 
@@ -129,6 +214,11 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 	if handler.err != nil {
 		return nil, fmt.Errorf("opencorpora: handler: %w", handler.err)
 	}
+
+	// Phase 1.5: fold linked lemmas' forms together (see
+	// mergeLinkedLemmas) so a lexeme split across several <lemma>
+	// elements gets one correct normal form instead of one per fragment.
+	mergeLinkedLemmas(lemmas, links)
 
 	// Phase 2: build suffix text -> ID map and extract paradigms, one
 	// shard at a time.
@@ -305,6 +395,7 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 type xmlHandler struct {
 	tagSet *internal.TagSet
 	lemmas *[]lemmaEntry
+	links  *[]xmlLink
 	err    error
 
 	lemGrams     []string // current lemma's own grammemes (from <l>); persist across all its forms
@@ -328,6 +419,25 @@ func (h *xmlHandler) OnDictionaryRoot(version, revision []byte) error {
 }
 
 func (h *xmlHandler) OnGrammeme(_ []byte, name []byte) error {
+	return nil
+}
+
+// OnLink records one <link from="..." to="..." type="..."/> from the root
+// <links> section, for mergeLinkedLemmas to fold afterwards. Malformed
+// from/to attributes are treated as a scan error, same as OnLemma's id.
+func (h *xmlHandler) OnLink(from, to, linkType []byte) error {
+	fromID, err := strconv.ParseUint(string(from), 10, 32)
+	if err != nil {
+		return fmt.Errorf("opencorpora: link: bad from=%q: %w", from, err)
+	}
+
+	toID, err := strconv.ParseUint(string(to), 10, 32)
+	if err != nil {
+		return fmt.Errorf("opencorpora: link: bad to=%q: %w", to, err)
+	}
+
+	*h.links = append(*h.links, xmlLink{from: uint32(fromID), to: uint32(toID), typ: string(linkType)})
+
 	return nil
 }
 

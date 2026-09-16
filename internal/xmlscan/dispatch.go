@@ -20,8 +20,10 @@ func (s *Scanner) dispatch() error {
 		if err := s.h.OnDictionaryRoot(s.attr("version"), s.attr("revision")); err != nil {
 			return err
 		}
-	case t.is("restrictions"), t.is("link_types"), t.is("links"):
+	case t.is("restrictions"), t.is("link_types"):
 		s.section = sectOther
+	case t.is("links"):
+		s.section = sectLinks
 	case t.is("grammeme"):
 		s.inGrammeme = true
 		s.tmpName = s.tmpName[:0]
@@ -87,6 +89,12 @@ func (s *Scanner) dispatch() error {
 		if s.section == sectLemmata && s.inWord {
 			return s.h.OnGrammemeRef(s.attr("v"))
 		}
+	case t.is("link"):
+		if s.section != sectLinks {
+			return nil
+		}
+
+		return s.h.OnLink(s.attr("from"), s.attr("to"), s.attr("type"))
 	}
 
 	return nil
@@ -94,7 +102,7 @@ func (s *Scanner) dispatch() error {
 
 func (s *Scanner) closeTag(t parsedTag) error {
 	switch {
-	case t.is("grammemes"), t.is("lemmata"):
+	case t.is("grammemes"), t.is("lemmata"), t.is("links"):
 		s.section = sectOther
 	case t.is("grammeme"):
 		if s.inGrammeme {

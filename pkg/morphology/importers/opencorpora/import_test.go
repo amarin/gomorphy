@@ -489,3 +489,106 @@ func TestImportFromXMLPropertyTest(t *testing.T) {
 		assert.GreaterOrEqual(t, len(items), 1, "слово %q должно быть найдено", w)
 	}
 }
+
+// linkedVerbDictXML reproduces the real dict.xml shape for "ложиться":
+// the infinitive is one <lemma> (id 10, headword "ложиться", a single
+// bare <f>), its finite/conjugated forms are a SEPARATE <lemma> (id 11,
+// headword "ложусь" — the 1st person singular present, per OpenCorpora
+// convention), and a <link type="3"> (INFN-VERB) ties them together.
+// Without following that link, "ложился" normalizes to the wrong
+// lemma's own headword ("ложусь") instead of the infinitive.
+const linkedVerbDictXML = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary corpus="opencorpora" russian="yes">
+ <grammemes>
+  <grammeme id="INFN">инфинитив</grammeme>
+  <grammeme id="VERB">глагол</grammeme>
+  <grammeme id="impf">несоверш.</grammeme>
+  <grammeme id="sing">ед. ч.</grammeme>
+  <grammeme id="past">прош. вр.</grammeme>
+  <grammeme id="masc">м. р.</grammeme>
+ </grammemes>
+ <lemmata>
+  <lemma id="10" text="ложиться">
+   <l t="ложиться"><g v="INFN"/><g v="impf"/></l>
+   <f t="ложиться"/>
+  </lemma>
+  <lemma id="11" text="ложусь">
+   <l t="ложусь"><g v="VERB"/><g v="impf"/></l>
+   <f t="ложусь"/>
+   <f t="ложился"><g v="masc"/><g v="sing"/><g v="past"/></f>
+  </lemma>
+ </lemmata>
+ <link_types>
+  <type id="3">INFN-VERB</type>
+  <type id="7">NAME-PATR</type>
+ </link_types>
+ <links>
+  <link id="1" from="10" to="11" type="3"/>
+ </links>
+</dictionary>`
+
+// TestImportFromXMLLinkedLemmasMergeNormalForm guards the fix for the
+// "ложился" -> "ложусь" bug: OpenCorpora splits a verb's paradigm across
+// several <lemma> elements and only <links> ties them back into one
+// lexeme. mergeLinkedLemmas must follow the INFN-VERB link so every
+// form (both the infinitive's own and the finite lemma's) normalizes to
+// the infinitive, and both lemma ids' words must still resolve (merging
+// must not lose the finite lemma's own words).
+func TestImportFromXMLLinkedLemmasMergeNormalForm(t *testing.T) {
+	d, err := opencorpora.CompileFromXML(strings.NewReader(linkedVerbDictXML), nil)
+	require.NoError(t, err)
+	require.Len(t, d.Words, 1)
+
+	assert.Contains(t, normalFormsForWord(t, d, 0, "ложился"), "ложиться",
+		"'ложился' must normalize to the infinitive 'ложиться', not the finite lemma's own headword 'ложусь'")
+	assert.Contains(t, normalFormsForWord(t, d, 0, "ложусь"), "ложиться",
+		"'ложусь' itself must also normalize to the infinitive 'ложиться'")
+	assert.Contains(t, normalFormsForWord(t, d, 0, "ложиться"), "ложиться",
+		"the infinitive must still normalize to itself")
+}
+
+// excludedLinkDictXML mirrors linkedVerbDictXML's shape but with a
+// type="7" (NAME-PATR) link, which pymorphy2's dict compiler explicitly
+// excludes from merging because it connects genuinely distinct words (a
+// first name and a patronymic), each with its own normal form.
+const excludedLinkDictXML = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary corpus="opencorpora" russian="yes">
+ <grammemes>
+  <grammeme id="NOUN">имя</grammeme>
+  <grammeme id="Name">имя собств.</grammeme>
+  <grammeme id="Patr">отчество</grammeme>
+  <grammeme id="masc">м. р.</grammeme>
+  <grammeme id="sing">ед. ч.</grammeme>
+  <grammeme id="nomn">им. п.</grammeme>
+ </grammemes>
+ <lemmata>
+  <lemma id="20" text="Иван">
+   <l t="иван"><g v="NOUN"/><g v="Name"/><g v="masc"/></l>
+   <f t="иван"><g v="sing"/><g v="nomn"/></f>
+  </lemma>
+  <lemma id="21" text="Иванович">
+   <l t="иванович"><g v="NOUN"/><g v="Patr"/><g v="masc"/></l>
+   <f t="иванович"><g v="sing"/><g v="nomn"/></f>
+  </lemma>
+ </lemmata>
+ <link_types>
+  <type id="7">NAME-PATR</type>
+ </link_types>
+ <links>
+  <link id="1" from="20" to="21" type="7"/>
+ </links>
+</dictionary>`
+
+// TestImportFromXMLExcludedLinkTypeDoesNotMerge guards the other half
+// of the fix: not every <link> means "same lexeme". type="7" (NAME-PATR)
+// must NOT merge — "Иванович" must keep its own normal form, not
+// collapse into "иван".
+func TestImportFromXMLExcludedLinkTypeDoesNotMerge(t *testing.T) {
+	d, err := opencorpora.CompileFromXML(strings.NewReader(excludedLinkDictXML), nil)
+	require.NoError(t, err)
+	require.Len(t, d.Words, 1)
+
+	assert.Equal(t, []string{"иванович"}, normalFormsForWord(t, d, 0, "иванович"),
+		"NAME-PATR (type 7) must not merge lemmas — 'иванович' must keep its own normal form")
+	assert.Equal(t, []string{"иван"}, normalFormsForWord(t, d, 0, "иван"))
+}
