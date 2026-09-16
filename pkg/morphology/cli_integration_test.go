@@ -7,33 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/amarin/gomorphy/pkg/morphology/internal/testdawg"
 	"github.com/stretchr/testify/require"
 )
-
-// buildFixtureDir собирает директорию pymorphy2 в t.TempDir() (как buildFixture,
-// но возвращает путь). Переиспользует помощники фикстур из fixture_test.go.
-func buildFixtureDir(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-
-	writeParadigms(t, dir, [][]uint16{
-		{0, 1, 0, 1, 0, 0}, // п.0: кот NOUN — ""(nomn) / "а"(gent)
-		{0, 2, 0},          // п.1: кот VERB — ""(VERB)
-		{0, 1, 0, 1, 0, 0}, // п.2: мышь NOUN
-	})
-	writeFile(t, dir, "suffixes.json", []byte(`["","а"]`))
-	writeFile(t, dir, "paradigm-prefixes.json", []byte(`["","по","наи"]`))
-	writeFile(t, dir, "gramtab-opencorpora-int.json", []byte(
-		`["NOUN,anim,masc,sing,nomn","NOUN,anim,masc,sing,gent","VERB,impf,trans"]`,
-	))
-
-	m := make(map[string]uint32)
-	stdWords(m)
-	wordsDAWG, guide := testdawg.Build(m)
-	writeFile(t, dir, "words.dawg", testdawg.Marshal(wordsDAWG, guide))
-	return dir
-}
 
 func buildCLI(t *testing.T) string {
 	t.Helper()
@@ -45,7 +20,9 @@ func buildCLI(t *testing.T) string {
 }
 
 func TestCLIEndToEnd(t *testing.T) {
-	dir := buildFixtureDir(t)
+	words := make(map[string]uint32)
+	stdWords(words)
+	dir := buildFixtureDir(t, words, nil, nil)
 	bin := buildCLI(t)
 	out := filepath.Join(t.TempDir(), "pymorphy2.dat")
 
