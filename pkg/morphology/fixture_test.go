@@ -77,10 +77,10 @@ func stdWords(m map[string]uint32) {
 	}
 }
 
-// buildFixture собирает директорию pymorphy2 в t.TempDir() и открывает её.
-// words — ключи words.dawg; prediction — prediction-suffixes-0; prob —
+// buildFixtureDir собирает директорию pymorphy2 в t.TempDir(), не открывая
+// её. words — ключи words.dawg; prediction — prediction-suffixes-0; prob —
 // p_t_given_w.intdawg (nil — файл не пишется).
-func buildFixture(t *testing.T, words, prediction, prob map[string]uint32) *morphology.Dictionary {
+func buildFixtureDir(t *testing.T, words, prediction, prob map[string]uint32) string {
 	t.Helper()
 	dir := t.TempDir()
 
@@ -106,6 +106,15 @@ func buildFixture(t *testing.T, words, prediction, prob map[string]uint32) *morp
 		prDAWG, prGuide := testdawg.Build(prob)
 		writeFile(t, dir, "p_t_given_w.intdawg", testdawg.Marshal(prDAWG, prGuide))
 	}
+
+	return dir
+}
+
+// buildFixture собирает директорию pymorphy2 через buildFixtureDir и
+// открывает её через OpenPyMorphy.
+func buildFixture(t *testing.T, words, prediction, prob map[string]uint32) *morphology.Dictionary {
+	t.Helper()
+	dir := buildFixtureDir(t, words, prediction, prob)
 
 	d, err := morphology.OpenPyMorphy(dir)
 	require.NoError(t, err)

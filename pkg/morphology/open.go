@@ -20,6 +20,18 @@ func OpenPyMorphy(dir string) (*Dictionary, error) {
 	return &Dictionary{d: d}, nil
 }
 
+// OpenPyMorphyDense — как OpenPyMorphy, но пересобирает words.dawg под
+// плотный 1-байтовый алфавит перед тем, как завернуть словарь в
+// Dictionary (см. pymorphy2.RecompileDense и
+// docs/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md).
+func OpenPyMorphyDense(dir string) (*Dictionary, error) {
+	d, err := pymorphy2.RecompileDense(dir)
+	if err != nil {
+		return nil, err
+	}
+	return &Dictionary{d: d}, nil
+}
+
 // CompileFromXML компилирует словарь OpenCorpora из dict.xml.
 // progress — необязательный callback для вывода прогресса.
 func CompileFromXML(r interface{ Read([]byte) (int, error) }, progress opencorpora.Progress) (*Dictionary, error) {

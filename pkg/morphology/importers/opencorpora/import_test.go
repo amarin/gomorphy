@@ -113,7 +113,7 @@ func TestImportFromXMLComparativeParadigmsMerge(t *testing.T) {
 	assert.Contains(t, d.Prefixes, "по", "по-приставка Cmp2-форм должна попасть в таблицу префиксов")
 
 	for _, word := range []string{"яснее", "ясней", "пояснее", "поясней", "плотнее", "плотней", "поплотнее", "поплотней"} {
-		items := d.Words[0].SimilarItems(word, d.CharPolicy)
+		items := d.Words[0].SimilarItems(word, d.CharPolicy, nil)
 		assert.Greater(t, len(items), 0, "%q должно быть найдено", word)
 	}
 }
@@ -134,7 +134,7 @@ func TestImportFromXMLBasic(t *testing.T) {
 	require.Len(t, d.Paradigms, 1)
 	assert.Greater(t, len(d.Paradigms[0]), 0)
 
-	items := d.Words[0].SimilarItems("кот", d.CharPolicy)
+	items := d.Words[0].SimilarItems("кот", d.CharPolicy, nil)
 	assert.Greater(t, len(items), 0, "кот должен быть найден")
 	if len(items) > 0 {
 		assert.GreaterOrEqual(t, len(items[0].Values), 1, "кот имеет хотя бы один разбор")
@@ -206,7 +206,7 @@ func tagsForWord(t *testing.T, d *internal.Dictionary, shard int, word string) [
 	require.Less(t, shard, len(d.Words))
 
 	var tags []string
-	for _, it := range d.Words[shard].SimilarItems(word, d.CharPolicy) {
+	for _, it := range d.Words[shard].SimilarItems(word, d.CharPolicy, nil) {
 		if it.Key != word {
 			continue // CharPolicy substitution match (е/ё), not our exact word
 		}
@@ -242,7 +242,7 @@ func normalFormsForWord(t *testing.T, d *internal.Dictionary, shard int, word st
 	}
 
 	var norms []string
-	for _, it := range d.Words[shard].SimilarItems(word, d.CharPolicy) {
+	for _, it := range d.Words[shard].SimilarItems(word, d.CharPolicy, nil) {
 		if it.Key != word {
 			continue
 		}
@@ -358,7 +358,7 @@ func TestImportFromXMLDAWGContains(t *testing.T) {
 
 	// DAWG keys include payload suffixes, so SimilarItems is the correct lookup.
 	for _, w := range []string{"кот", "кота", "мышь", "мыши"} {
-		items := d.Words[0].SimilarItems(w, d.CharPolicy)
+		items := d.Words[0].SimilarItems(w, d.CharPolicy, nil)
 		assert.Greater(t, len(items), 0, "слово %q должно быть найдено через SimilarItems", w)
 	}
 }
@@ -368,7 +368,7 @@ func TestImportFromXMLRoundtrip(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, d.Words, 1)
 
-	items := d.Words[0].SimilarItems("кот", d.CharPolicy)
+	items := d.Words[0].SimilarItems("кот", d.CharPolicy, nil)
 	require.GreaterOrEqual(t, len(items), 1)
 	require.GreaterOrEqual(t, len(items[0].Values), 1, "кот имеет хотя бы один разбор")
 
@@ -401,10 +401,10 @@ func TestImportFromXMLNoForms(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, d.Words, 1)
 
-	items := d.Words[0].SimilarItems("есть", d.CharPolicy)
+	items := d.Words[0].SimilarItems("есть", d.CharPolicy, nil)
 	assert.Greater(t, len(items), 0, "есть должно быть найдено")
 
-	items2 := d.Words[0].SimilarItems("пустая", d.CharPolicy)
+	items2 := d.Words[0].SimilarItems("пустая", d.CharPolicy, nil)
 	assert.Equal(t, 0, len(items2), "пустая не должна быть найдена")
 }
 
@@ -446,7 +446,7 @@ func TestImportFromXMLShardsOnSuffixOverflow(t *testing.T) {
 	for i := 0; i < uniqueSuffixes; i += sampleStride {
 		word := fmt.Sprintf("слово%06d", i)
 		for _, dawg := range d.Words {
-			if len(dawg.SimilarItems(word, d.CharPolicy)) > 0 {
+			if len(dawg.SimilarItems(word, d.CharPolicy, nil)) > 0 {
 				found++
 				break
 			}
@@ -463,7 +463,7 @@ func TestImportFromXMLPropertyTest(t *testing.T) {
 
 	words := []string{"кот", "кота", "мышь", "мыши"}
 	for _, w := range words {
-		items := d.Words[0].SimilarItems(w, d.CharPolicy)
+		items := d.Words[0].SimilarItems(w, d.CharPolicy, nil)
 		assert.GreaterOrEqual(t, len(items), 1, "слово %q должно быть найдено", w)
 	}
 }

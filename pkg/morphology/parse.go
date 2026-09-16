@@ -78,7 +78,7 @@ func (x *Dictionary) exact(word string) []Reading {
 // параллельно с другими шардами из exact — только чтение, общего
 // изменяемого состояния между горутинами нет.
 func (x *Dictionary) exactInShard(shard int, dawg *internal.DAWG, word string) shardExactResult {
-	items := dawg.SimilarItems(word, x.d.CharPolicy)
+	items := dawg.SimilarItems(word, x.d.CharPolicy, x.d.Alphabet)
 	if len(items) == 0 {
 		return shardExactResult{}
 	}
@@ -148,7 +148,11 @@ func (x *Dictionary) predictForPrefix(id int, splits [][2]string, seen map[strin
 
 	for i := len(splits) - 1; i >= 0; i-- {
 		wordStart, wordEnd := splits[i][0], splits[i][1]
-		for _, it := range x.d.Prediction[id].SimilarItems(wordEnd, x.d.CharPolicy) {
+		// Prediction DAWGs are never recompiled under Dictionary.Alphabet
+		// (out of scope — see docs/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md's
+		// non-goals): always nil here, even for a dictionary whose Words
+		// DAWG uses a dense alphabet.
+		for _, it := range x.d.Prediction[id].SimilarItems(wordEnd, x.d.CharPolicy, nil) {
 			for _, v := range it.Values {
 				if len(v) < 6 {
 					continue

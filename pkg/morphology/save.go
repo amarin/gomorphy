@@ -15,6 +15,13 @@ func (x *Dictionary) SaveTo(path string) error {
 	if x == nil || x.d == nil {
 		return fmt.Errorf("morphology: nil dictionary")
 	}
+	if x.d.Alphabet != nil {
+		return fmt.Errorf("morphology: SaveTo: dictionaries with a non-nil Alphabet " +
+			"(e.g. from OpenPyMorphyDense) cannot yet be serialized to .dat — the Alphabet " +
+			"codec has no on-disk representation, so a saved-and-reopened dense dictionary " +
+			"would silently mis-decode; see docs/superpowers/specs/" +
+			"2026-09-16-pymorphy2-dense-recompile-design.md's non-goals")
+	}
 
 	// info — копия x.d.Info (если импортёр её заполнил, например Source),
 	// с BuiltAt/LibraryVersion, проставленными заново при каждом

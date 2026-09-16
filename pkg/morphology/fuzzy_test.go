@@ -95,3 +95,20 @@ func TestFuzzyTopExactProbe(t *testing.T) {
 	assert.Equal(t, "кот", got[0].Word)
 	assert.Empty(t, d.FuzzyTop("неттакогослова", 0))
 }
+
+// TestFuzzyDenseAlphabetReturnsNil — находка финального ревью: на плотном
+// словаре (OpenPyMorphyDense) внутренний обход fuzzy.go декодирует байты
+// DAWG как raw UTF-8, что для 1-байтовых плотных кодов "успешно" даёт
+// мусорные строки без ошибки. Fuzzy/FuzzyTop должны вместо этого вернуть
+// nil, а не мусор и не паниковать.
+func TestFuzzyDenseAlphabetReturnsNil(t *testing.T) {
+	words := map[string]uint32{}
+	stdWords(words)
+	dir := buildFixtureDir(t, words, nil, nil)
+
+	dense, err := morphology.OpenPyMorphyDense(dir)
+	require.NoError(t, err)
+
+	assert.Nil(t, dense.Fuzzy("кот", 3))
+	assert.Nil(t, dense.FuzzyTop("кот", 3))
+}

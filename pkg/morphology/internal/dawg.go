@@ -270,6 +270,27 @@ func (d *DAWG) HasPayloadChild(index uint32) bool {
 	return found
 }
 
+// Walk visits every (key, values) pair stored in the DAWG, in trie order.
+// It reuses ForEachChild (edge traversal) and ValuesForIndex (payload
+// enumeration under a PayloadSeparator edge) — the same primitives
+// SimilarItems and ValuesForIndex already use for single-key lookups, just
+// exhaustively instead of following a caller-given key. See
+// docs/research/0005-pymorphy2-full-dawg-walk-cost.md for the validated
+// approach and real-corpus timing (3,064,708 keys, 570ms).
+func (d *DAWG) Walk(fn func(key string, values [][]byte)) {
+	var walk func(index uint32, prefix []byte)
+	walk = func(index uint32, prefix []byte) {
+		d.ForEachChild(index, func(label byte, next uint32) {
+			if label == PayloadSeparator {
+				fn(string(prefix), d.ValuesForIndex(next))
+				return
+			}
+			walk(next, append(prefix, label))
+		})
+	}
+	walk(0, nil)
+}
+
 func b64d(p []byte) []byte {
 	dst := make([]byte, base64.StdEncoding.DecodedLen(len(p)))
 	n, err := base64.StdEncoding.Decode(dst, p)

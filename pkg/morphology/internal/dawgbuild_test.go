@@ -75,14 +75,14 @@ func TestBuildDAWGSimilarItems(t *testing.T) {
 	d, err := BuildDAWG(keys)
 	require.NoError(t, err)
 
-	items := d.SimilarItems("кот", RussianCharPolicy())
+	items := d.SimilarItems("кот", RussianCharPolicy(), nil)
 	require.Len(t, items, 1)
 	assert.Equal(t, "кот", items[0].Key)
 	assert.Len(t, items[0].Values, 2, "ожидались два чтения омонима")
 	assert.Equal(t, []byte{0, 0, 0, 0}, items[0].Values[0])
 
 	// е/ё подмена работает для построенного словаря: "ежик" находит "ёжик".
-	items = d.SimilarItems("ежик", RussianCharPolicy())
+	items = d.SimilarItems("ежик", RussianCharPolicy(), nil)
 	require.Len(t, items, 1)
 	assert.Equal(t, "ёжик", items[0].Key)
 	// payload(2, 0) = {0, 2, 0, 0} — para=2, form=0 в big-endian.

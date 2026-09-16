@@ -166,7 +166,7 @@ func TestImportFromXMLRealDictComparativeWordsResolve(t *testing.T) {
 	for _, tc := range cases {
 		var norms []string
 		for shard := range d.Words {
-			for _, it := range d.Words[shard].SimilarItems(tc.word, d.CharPolicy) {
+			for _, it := range d.Words[shard].SimilarItems(tc.word, d.CharPolicy, nil) {
 				if it.Key != tc.word {
 					continue
 				}
