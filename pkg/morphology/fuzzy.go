@@ -20,7 +20,15 @@ type FuzzyMatch struct {
 // дубликаты слова (несколько чтений, в том числе из разных шардов)
 // схлопнуты. Отрицательное maxDist трактуется как 0 (точный поиск).
 // Пустой результат — слов нет.
+//
+// Словари с плотным алфавитом (Dictionary.Alphabet != nil, например
+// открытые через OpenPyMorphyDense) пока не поддерживаются: внутренний
+// обход декодирует байты DAWG как raw UTF-8, что для плотного кода даёт
+// не ошибку, а тихий мусор. Для такого словаря Fuzzy возвращает nil.
 func (x *Dictionary) Fuzzy(word string, maxDist int) []FuzzyMatch {
+	if x.d.Alphabet != nil {
+		return nil
+	}
 	if maxDist < 0 {
 		maxDist = 0
 	}
@@ -32,7 +40,13 @@ func (x *Dictionary) Fuzzy(word string, maxDist int) []FuzzyMatch {
 // границы (len(query)+наибольшая длина слова в рунах среди всех шардов),
 // пока не набраны maxWords слов или не пройден весь словарь. maxWords ≤ 0
 // — точный поиск (слово само по себе, либо пусто).
+//
+// Как и Fuzzy, не поддерживает словари с плотным алфавитом
+// (Dictionary.Alphabet != nil) — возвращает nil.
 func (x *Dictionary) FuzzyTop(word string, maxWords int) []FuzzyMatch {
+	if x.d.Alphabet != nil {
+		return nil
+	}
 	if maxWords <= 0 {
 		return x.Fuzzy(word, 0)
 	}

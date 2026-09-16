@@ -198,6 +198,41 @@ func TestSaveToCreatesMissingDir(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestSaveToRejectsDenseAlphabet проверяет находку финального ревью: словарь
+// с ненулевым Alphabet (OpenPyMorphyDense) нельзя сохранять через SaveTo —
+// у Alphabet нет дискового представления, и сохранённый-и-переоткрытый
+// словарь тихо мис-декодировался бы (см. docs/superpowers/specs/
+// 2026-09-16-pymorphy2-dense-recompile-design.md, non-goals).
+func TestSaveToRejectsDenseAlphabet(t *testing.T) {
+	words := map[string]uint32{}
+	stdWords(words)
+	dir := buildFixtureDir(t, words, nil, nil)
+
+	dense, err := morphology.OpenPyMorphyDense(dir)
+	require.NoError(t, err)
+
+	out := filepath.Join(t.TempDir(), "dense.dat")
+	err = dense.SaveTo(out)
+	require.Error(t, err)
+
+	_, statErr := os.Stat(out)
+	assert.True(t, os.IsNotExist(statErr), "SaveTo не должна создавать файл при отказе")
+}
+
+// TestSaveToNilAlphabetStillWorks — регрессия: обычный (не dense) словарь
+// по-прежнему сохраняется без ошибок.
+func TestSaveToNilAlphabetStillWorks(t *testing.T) {
+	words := map[string]uint32{}
+	stdWords(words)
+	d := buildFixture(t, words, nil, nil)
+
+	out := filepath.Join(t.TempDir(), "plain.dat")
+	require.NoError(t, d.SaveTo(out))
+
+	_, err := os.Stat(out)
+	require.NoError(t, err)
+}
+
 func TestSaveToBadPath(t *testing.T) {
 	words := map[string]uint32{}
 	stdWords(words)
