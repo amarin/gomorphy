@@ -14,8 +14,6 @@ import (
 
 var consoleCommands = []string{"lookup", "lemmas", "fuzzy", "top", "exit", "quit"}
 
-// consoleCompleter/runInteractiveConsole (not commandCompleter/runConsole) —
-// those names are used elsewhere in this package for the same purpose.
 type consoleCompleter struct{}
 
 func (c *consoleCompleter) Do(line []rune, pos int) ([][]rune, int) {
