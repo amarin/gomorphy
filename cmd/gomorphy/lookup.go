@@ -10,16 +10,17 @@ import (
 )
 
 // doLookup writes every reading of word to w, tab-separated: Word, Normal,
-// Tag, and a para#Dict/Shard/Para composite (Dict is always 0 for a
+// Tag, a para#Dict/Shard/Para composite (Dict is always 0 for a
 // single-dictionary resolution, since resolveDictionaries always produces
-// a MultiDictionary).
+// a MultiDictionary), and the source dictionary's name/version (dictLabel).
 func doLookup(w io.Writer, m *morphology.MultiDictionary, word string) error {
 	readings := m.Parse(word)
 	if len(readings) == 0 {
 		return fmt.Errorf("lookup %q: no readings", word)
 	}
 	for _, r := range readings {
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\tpara#%d/%d/%d\n", r.Word, r.Normal, r.Tag, r.Dict, r.Shard, r.Para)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\tpara#%d/%d/%d\t%s\n",
+			r.Word, r.Normal, r.Tag, r.Dict, r.Shard, r.Para, dictLabel(m, r.Dict))
 	}
 	return nil
 }

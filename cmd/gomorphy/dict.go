@@ -89,3 +89,22 @@ func parseNonNegativeInt(s string) (int, error) {
 	}
 	return n, nil
 }
+
+// dictLabel returns a "name/version" label for dictionary index i in m
+// (e.g. "opencorpora/0.92/417127" or "pymorphy2/0.92/417127"), for the
+// extra column lookup/fuzzy/top append after their own
+// para#Dict/Shard/Para or dict#Dict composite — so a reading's source
+// dictionary and its build version are visible without a separate
+// lookup. Falls back to "dict#i" when the dictionary carries no
+// BuildInfo.Source: .dat files built before BuildInfo existed, or a
+// bare Builder never round-tripped through SaveTo.
+func dictLabel(m *morphology.MultiDictionary, i int) string {
+	info := m.DictInfo(i)
+	if info == nil || info.Source == "" {
+		return fmt.Sprintf("dict#%d", i)
+	}
+	if info.SourceVersion == "" {
+		return info.Source
+	}
+	return info.Source + "/" + info.SourceVersion
+}

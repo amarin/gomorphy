@@ -10,11 +10,12 @@ import (
 )
 
 // doTop writes up to n nearest matches of word to w, tab-separated:
-// Distance, Word, dict#Dict.
+// Distance, Word, dict#Dict, and the source dictionary's name/version
+// (dictLabel).
 func doTop(w io.Writer, m *morphology.MultiDictionary, word string, n int) error {
 	matches := m.FuzzyTop(word, n)
 	for _, mt := range matches {
-		_, _ = fmt.Fprintf(w, "%d\t%s\tdict#%d\n", mt.Distance, mt.Word, mt.Dict)
+		_, _ = fmt.Fprintf(w, "%d\t%s\tdict#%d\t%s\n", mt.Distance, mt.Word, mt.Dict, dictLabel(m, mt.Dict))
 	}
 	return nil
 }

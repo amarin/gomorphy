@@ -10,11 +10,12 @@ import (
 )
 
 // doFuzzy writes every fuzzy match within maxDist of word to w,
-// tab-separated: Distance, Word, dict#Dict.
+// tab-separated: Distance, Word, dict#Dict, and the source dictionary's
+// name/version (dictLabel).
 func doFuzzy(w io.Writer, m *morphology.MultiDictionary, word string, maxDist int) error {
 	matches := m.Fuzzy(word, maxDist)
 	for _, mt := range matches {
-		_, _ = fmt.Fprintf(w, "%d\t%s\tdict#%d\n", mt.Distance, mt.Word, mt.Dict)
+		_, _ = fmt.Fprintf(w, "%d\t%s\tdict#%d\t%s\n", mt.Distance, mt.Word, mt.Dict, dictLabel(m, mt.Dict))
 	}
 	return nil
 }
