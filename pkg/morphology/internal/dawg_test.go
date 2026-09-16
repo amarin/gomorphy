@@ -202,3 +202,35 @@ func TestParseDAWGErrors(t *testing.T) {
 	_, err = ParseDAWG([]byte{5, 0, 0, 0, 1, 2, 3})
 	require.Error(t, err)
 }
+
+func TestDAWGWalk(t *testing.T) {
+	dict, guide := testdawg.Build(map[string]uint32{
+		"кот" + string(PayloadSeparator) + base64.StdEncoding.EncodeToString([]byte{0, 0, 0, 1}):  0,
+		"кот" + string(PayloadSeparator) + base64.StdEncoding.EncodeToString([]byte{0, 1, 0, 0}):  0,
+		"кота" + string(PayloadSeparator) + base64.StdEncoding.EncodeToString([]byte{0, 2, 0, 0}): 0,
+		"мышь" + string(PayloadSeparator) + base64.StdEncoding.EncodeToString([]byte{0, 3, 0, 0}): 0,
+	})
+	d := NewDAWG(dict, guide)
+
+	found := map[string][][]byte{}
+	d.Walk(func(key string, values [][]byte) {
+		found[key] = append(found[key], values...)
+	})
+
+	require.Len(t, found, 3, "3 distinct words: кот, кота, мышь")
+	require.Len(t, found["кот"], 2, "кот has 2 payload values (homonym)")
+	assert.ElementsMatch(t, [][]byte{{0, 0, 0, 1}, {0, 1, 0, 0}}, found["кот"])
+	require.Len(t, found["кота"], 1)
+	assert.Equal(t, []byte{0, 2, 0, 0}, found["кота"][0])
+	require.Len(t, found["мышь"], 1)
+	assert.Equal(t, []byte{0, 3, 0, 0}, found["мышь"][0])
+}
+
+func TestDAWGWalkEmpty(t *testing.T) {
+	dict, guide := testdawg.Build(map[string]uint32{})
+	d := NewDAWG(dict, guide)
+
+	calls := 0
+	d.Walk(func(key string, values [][]byte) { calls++ })
+	assert.Equal(t, 0, calls)
+}
