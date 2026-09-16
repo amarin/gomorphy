@@ -18,6 +18,7 @@ type Reading struct {
 	Para   uint16  // id парадигмы — уникален только вместе с Shard
 	Form   uint16  // индекс формы в парадигме
 	Shard  int     // индекс шарда словаря; всегда 0 для нешардированных словарей
+	Dict   int     // индекс словаря в MultiDictionary; всегда 0 для Dictionary.Parse напрямую
 	Prob   float64 // вероятность разбора (0, если probability недоступен)
 }
 
