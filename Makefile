@@ -8,7 +8,6 @@ DEPLOYMENT_PREFIX=./deploy
 
 all: build
 CLI_MAIN=gomorphy
-CLI_UPDATER=gomorphy_build
 
 $(DEPLOYMENT_PREFIX):
 	@echo "make folder for compiled binaries at ${DEPLOYMENT_PREFIX}"
@@ -18,17 +17,13 @@ $(DEPLOYMENT_PREFIX)/${CLI_MAIN}: $(DEPLOYMENT_PREFIX)
 	@echo "build ${CLI_MAIN}"
 	$(GOBUILD) -o $(DEPLOYMENT_PREFIX)/${CLI_MAIN} ./cmd/gomorphy
 
-$(DEPLOYMENT_PREFIX)/${CLI_UPDATER}: $(DEPLOYMENT_PREFIX)
-	@echo "build ${CLI_UPDATER}"
-	$(GOBUILD) -o $(DEPLOYMENT_PREFIX)/${CLI_UPDATER} ./cmd/gomorphy_build
+build: $(DEPLOYMENT_PREFIX)/${CLI_MAIN} ## Build CLI binary
 
-build: $(DEPLOYMENT_PREFIX)/${CLI_MAIN} $(DEPLOYMENT_PREFIX)/${CLI_UPDATER} ## Build CLI binaries
+update: $(DEPLOYMENT_PREFIX)/${CLI_MAIN} ## Download, unpack and build OpenCorpora dictionary
+	$(DEPLOYMENT_PREFIX)/${CLI_MAIN} update opencorpora
 
-update: $(DEPLOYMENT_PREFIX)/${CLI_UPDATER} ## Download, unpack and compile OpenCorpora dictionary
-	$(DEPLOYMENT_PREFIX)/${CLI_UPDATER} update
-
-compile: $(DEPLOYMENT_PREFIX)/${CLI_UPDATER} ## Compile existing dict.xml to .dat
-	$(DEPLOYMENT_PREFIX)/${CLI_UPDATER} compile
+compile: $(DEPLOYMENT_PREFIX)/${CLI_MAIN} ## Compile existing dict.xml to .dat
+	$(DEPLOYMENT_PREFIX)/${CLI_MAIN} build opencorpora
 
 test: ## Run all unit tests with race detector
 	$(GOTEST) -race -count=1 ./...

@@ -12,6 +12,8 @@ func main() {
 		Use:   "gomorphy",
 		Short: "gomorphy — морфологический анализ слов по словарям в едином формате (GMOR)",
 	}
+	root.SilenceErrors = true
+	root.SilenceUsage = true
 
 	registerGlobalFlags(root)
 
