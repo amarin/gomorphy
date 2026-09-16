@@ -43,7 +43,7 @@ func TestFullDictStructure(t *testing.T) {
 func TestFullDictVseReadings(t *testing.T) {
 	d := importFullDict(t)
 
-	items := d.Words[0].SimilarItems("все", d.CharPolicy)
+	items := d.Words[0].SimilarItems("все", d.CharPolicy, nil)
 	total := 0
 	for _, it := range items {
 		total += len(it.Values)

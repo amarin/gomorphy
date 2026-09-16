@@ -93,7 +93,7 @@ func TestImportFromDir(t *testing.T) {
 
 	require.Len(t, d.Words, 1)
 	require.NotNil(t, d.Words[0])
-	items := d.Words[0].SimilarItems("кот", d.CharPolicy)
+	items := d.Words[0].SimilarItems("кот", d.CharPolicy, nil)
 	require.Len(t, items, 1)
 	assert.Equal(t, "кот", items[0].Key)
 	require.Len(t, items[0].Values, 1)

@@ -19,6 +19,7 @@ type Dictionary struct {
 	Prediction  []*DAWG
 	Probability *DAWG
 	CharPolicy  *CharPolicy
+	Alphabet    Alphabet // nil = raw UTF-8 keys (today's behavior, unchanged)
 	Info        *BuildInfo
 }
 

@@ -33,7 +33,7 @@ func TestDebugBuildDAWG(t *testing.T) {
 		})
 	}
 
-	items := d.SimilarItems("кот", RussianCharPolicy())
+	items := d.SimilarItems("кот", RussianCharPolicy(), nil)
 	for _, it := range items {
 		t.Logf("item %q values=%v", it.Key, it.Values)
 	}
