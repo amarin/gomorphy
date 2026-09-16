@@ -101,6 +101,27 @@ func TestImportFromDir(t *testing.T) {
 
 	assert.Empty(t, d.Prediction)
 	assert.Nil(t, d.Probability)
+
+	require.NotNil(t, d.Info)
+	assert.Equal(t, "pymorphy2", d.Info.Source)
+	assert.Empty(t, d.Info.SourceVersion, "fixture has no meta.json")
+}
+
+func TestImportFromDirSourceVersion(t *testing.T) {
+	dir := makeFixtureDir(t)
+	writeFile(t, dir, "meta.json", []byte(`[
+		["language_code", "ru"],
+		["format_version", "2.4"],
+		["source", "opencorpora.org"],
+		["source_version", "0.92"],
+		["source_revision", "417127"],
+		["source_lexemes_count", 391764]
+	]`))
+
+	d, err := pymorphy2.ImportFromDir(dir)
+	require.NoError(t, err)
+	require.NotNil(t, d.Info)
+	assert.Equal(t, "0.92/417127", d.Info.SourceVersion)
 }
 
 func TestImportFromDirDefaultPrefixes(t *testing.T) {

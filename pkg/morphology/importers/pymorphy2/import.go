@@ -30,6 +30,11 @@ func ImportFromDir(dir string) (*internal.Dictionary, error) {
 		internal.RussianCharPolicy(),
 	)
 	d.Info = &internal.BuildInfo{Source: "pymorphy2"}
+	sourceVersion, err := readMetaSourceVersion(filepath.Join(dir, "meta.json"))
+	if err != nil {
+		return nil, fmt.Errorf("pymorphy2: meta.json: %w", err)
+	}
+	d.Info.SourceVersion = sourceVersion
 
 	tags, err := readStringArray(filepath.Join(dir, "gramtab-opencorpora-int.json"))
 	if err != nil {
@@ -86,6 +91,52 @@ func ImportFromDir(dir string) (*internal.Dictionary, error) {
 	}
 
 	return d, nil
+}
+
+// readMetaSourceVersion читает meta.json (формат pymorphy2: список пар
+// [key, value] вместо объекта, значения — строки или числа вперемешку)
+// и возвращает "<source_version>/<source_revision>", если оба ключа
+// найдены и являются строками; иначе "" (в т.ч. если meta.json
+// отсутствует — не все словари pymorphy2 его несут).
+func readMetaSourceVersion(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", nil
+		}
+		return "", err
+	}
+
+	var pairs [][]json.RawMessage
+	if err := json.Unmarshal(data, &pairs); err != nil {
+		return "", fmt.Errorf("parse %s: %w", filepath.Base(path), err)
+	}
+
+	var version, revision string
+	for _, pair := range pairs {
+		if len(pair) != 2 {
+			continue
+		}
+		var key string
+		if err := json.Unmarshal(pair[0], &key); err != nil {
+			continue
+		}
+		var value string
+		if err := json.Unmarshal(pair[1], &value); err != nil {
+			continue // e.g. a numeric value - not something we need here
+		}
+		switch key {
+		case "source_version":
+			version = value
+		case "source_revision":
+			revision = value
+		}
+	}
+
+	if version == "" && revision == "" {
+		return "", nil
+	}
+	return fmt.Sprintf("%s/%s", version, revision), nil
 }
 
 // readStringArray читает JSON-массив строк (suffixes.json, gramtab-*.json).
