@@ -164,6 +164,26 @@ func TestResolveDictionaries_EnvFallback(t *testing.T) {
 	assert.NotEmpty(t, got.Parse("кот"))
 }
 
+// mustResolveOne wraps a single fixture .dat path into a *MultiDictionary
+// via the real resolveDictionaries code path (not a direct
+// NewMultiDictionary call) - every command test in this package needs
+// exactly this, and going through resolveDictionaries is what proves the
+// "always MultiDictionary, even for one path" contract at every call site
+// that uses this helper.
+func mustResolveOne(t *testing.T, path string) *morphology.MultiDictionary {
+	t.Helper()
+	var got *morphology.MultiDictionary
+	probe := &cobra.Command{Use: "probe", RunE: func(cmd *cobra.Command, args []string) error {
+		var err error
+		got, err = resolveDictionaries(cmd)
+		return err
+	}}
+	root := newTestRootCmd(probe)
+	root.SetArgs([]string{"probe", "-d", path})
+	require.NoError(t, root.Execute())
+	return got
+}
+
 func TestResolveDictionaries_FlagTakesPriorityOverEnv(t *testing.T) {
 	envPath := buildFixtureDat(t, fixtureXML("груша"))
 	flagPath := buildFixtureDat(t, fixtureXML("кот"))
