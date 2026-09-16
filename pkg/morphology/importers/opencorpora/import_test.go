@@ -118,6 +118,28 @@ func TestImportFromXMLComparativeParadigmsMerge(t *testing.T) {
 	}
 }
 
+func TestImportFromXMLSourceVersion(t *testing.T) {
+	xml := strings.Replace(testDictXML,
+		`<dictionary corpus="opencorpora" russian="yes">`,
+		`<dictionary corpus="opencorpora" russian="yes" version="0.92" revision="417257">`,
+		1)
+
+	d, err := opencorpora.CompileFromXML(strings.NewReader(xml), nil)
+	require.NoError(t, err)
+	require.NotNil(t, d.Info)
+	assert.Equal(t, "opencorpora", d.Info.Source)
+	assert.Equal(t, "0.92/417257", d.Info.SourceVersion)
+}
+
+func TestImportFromXMLSourceVersionAbsent(t *testing.T) {
+	// testDictXML's root tag carries no version/revision - SourceVersion
+	// must stay empty, not "/" or some other placeholder.
+	d, err := opencorpora.CompileFromXML(strings.NewReader(testDictXML), nil)
+	require.NoError(t, err)
+	require.NotNil(t, d.Info)
+	assert.Empty(t, d.Info.SourceVersion)
+}
+
 func TestImportFromXMLBasic(t *testing.T) {
 	d, err := opencorpora.CompileFromXML(strings.NewReader(testDictXML), nil)
 	require.NoError(t, err)

@@ -9,6 +9,9 @@ import (
 // Handler receives dictionary events. Slices point into scanner-owned
 // buffers and are valid only until the next handler call.
 type Handler interface {
+	// OnDictionaryRoot fires once, for the root <dictionary version="..."
+	// revision="..."> tag's own attributes.
+	OnDictionaryRoot(version []byte, revision []byte) error
 	OnGrammeme(parent []byte, name []byte) error
 	OnGrammemeRef(value []byte) error
 	OnLemma(id uint32, text []byte) error

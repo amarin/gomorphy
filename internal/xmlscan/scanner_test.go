@@ -32,6 +32,12 @@ func (r *recorder) OnLemma(id uint32, text []byte) error {
 
 func (r *recorder) OnLemmaHeadEnd() error { r.events = append(r.events, "lemma-end"); return nil }
 
+func (r *recorder) OnDictionaryRoot(version, revision []byte) error {
+	r.events = append(r.events, fmt.Sprintf("root version=%q revision=%q", string(version), string(revision)))
+
+	return nil
+}
+
 func (r *recorder) OnForm(text []byte) error {
 	r.events = append(r.events, "form "+string(text))
 
@@ -54,7 +60,7 @@ func scanAll(t *testing.T, input string, bufSize int) []string {
 }
 
 const sampleDict = `<?xml version="1.0" encoding="utf-8"?>
-<dictionary version="0.92">
+<dictionary version="0.92" revision="417257">
 <grammemes>
 <grammeme parent="">POST</grammeme>
 <grammeme parent="POST"><name>NOUN</name><alias>сущ</alias><description>noun</description></grammeme>
@@ -73,6 +79,7 @@ const sampleDict = `<?xml version="1.0" encoding="utf-8"?>
 
 func wantEvents() []string {
 	return []string{
+		`root version="0.92" revision="417257"`,
 		`grammeme parent="" name=""`,
 		`grammeme parent="POST" name="NOUN"`,
 		`grammeme parent="NOUN" name=""`,
@@ -145,6 +152,7 @@ func TestScanEntitiesAndSelfClosing(t *testing.T) {
 		`</lemmata></dictionary>`
 
 	want := []string{
+		`root version="0.92" revision=""`,
 		`lemma 1 "a & b <c>"`,
 		"gref X",
 		"lemma-end",
@@ -197,6 +205,7 @@ func TestScanCommentAcrossBufferBoundary(t *testing.T) {
 		`</lemmata></dictionary>`
 
 	want := []string{
+		`root version="" revision=""`,
 		`lemma 1 "ёж"`,
 		"gref NOUN",
 		"lemma-end",
@@ -220,6 +229,7 @@ func TestScanNumericEntities(t *testing.T) {
 		`</lemmata></dictionary>`
 
 	want := []string{
+		`root version="" revision=""`,
 		"lemma 1 \"'a'Ж\"",
 		"lemma-end",
 	}

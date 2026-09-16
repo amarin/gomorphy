@@ -71,6 +71,8 @@ type counter struct {
 	lastLemmaID uint32
 }
 
+func (c *counter) OnDictionaryRoot(_, _ []byte) error { return nil }
+
 func (c *counter) OnGrammeme(_, _ []byte) error { c.grammemes++; return nil }
 
 func (c *counter) OnGrammemeRef([]byte) error { c.grefs++; return nil }

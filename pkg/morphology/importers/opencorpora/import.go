@@ -283,6 +283,9 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 		internal.RussianCharPolicy(),
 	)
 	dict.Info = &internal.BuildInfo{Source: "opencorpora"}
+	if handler.sourceVersion != "" {
+		dict.Info.SourceVersion = fmt.Sprintf("%s/%s", handler.sourceVersion, handler.sourceRevision)
+	}
 
 	return dict, nil
 }
@@ -308,6 +311,20 @@ type xmlHandler struct {
 	formOwnGrams []string // current form's own grammemes (from <f>); reset on every OnForm
 	curFormText  string   // current form's text, held between OnForm and OnFormEnd
 	inLemmaHead  bool     // true between OnLemma and OnLemmaHeadEnd (i.e. while inside <l>)
+
+	sourceVersion  string // root <dictionary version="..."> attribute
+	sourceRevision string // root <dictionary revision="..."> attribute
+}
+
+// OnDictionaryRoot copies the root <dictionary> tag's version/revision
+// attributes for BuildInfo.SourceVersion (set by ImportFromXML after Scan
+// returns) — s.attr's byte slices are scanner-owned and only valid until
+// the next handler call, so they must be copied to a string here.
+func (h *xmlHandler) OnDictionaryRoot(version, revision []byte) error {
+	h.sourceVersion = string(version)
+	h.sourceRevision = string(revision)
+
+	return nil
 }
 
 func (h *xmlHandler) OnGrammeme(_ []byte, name []byte) error {

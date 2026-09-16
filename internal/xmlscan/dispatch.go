@@ -14,7 +14,13 @@ func (s *Scanner) dispatch() error {
 		s.section = sectGrammemes
 	case t.is("lemmata"):
 		s.section = sectLemmata
-	case t.is("dictionary"), t.is("restrictions"), t.is("link_types"), t.is("links"):
+	case t.is("dictionary"):
+		s.section = sectOther
+
+		if err := s.h.OnDictionaryRoot(s.attr("version"), s.attr("revision")); err != nil {
+			return err
+		}
+	case t.is("restrictions"), t.is("link_types"), t.is("links"):
 		s.section = sectOther
 	case t.is("grammeme"):
 		s.inGrammeme = true
