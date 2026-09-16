@@ -181,12 +181,15 @@ func main() {
 
 Each `new<X>Command()` constructor returns a `*cobra.Command` whose `RunE`
 calls `configureLogging(cmd)` first, then (for dictionary-reading commands)
-`resolveDictionaries(cmd)`, then does the command's own work. `-t/--type`,
-`-i/--input`, `-o/--output` are declared per-command (not global — only
-`download`/`unpack`/`build`/`update` use `-t`, only those and a future
-`merge`/`split` use `-i`/`-o`), keeping the flag contract's letters stable
-in *meaning* without forcing every command to expose flags it has no use
-for.
+`resolveDictionaries(cmd)`, then does the command's own work. `-i/--input`,
+`-o/--output` are declared per-command (not global — only
+`download`/`unpack`/`build`/`update` and a future `merge`/`split` use
+`-i`/`-o`), keeping the flag contract's letters stable in *meaning*
+without forcing every command to expose flags it has no use for. The
+source type (`opencorpora`|`pymorphy`) is a required positional argument
+(`<type>`) on `download`/`unpack`/`build`/`update`, not a flag — there is
+only ever one type per invocation, so a flag would add ceremony without
+adding meaning.
 
 ### Dictionary resolution (`dict.go`)
 
@@ -343,7 +346,7 @@ into whichever commands need it (`download`/`build`/`update`).
 
 ### `download`/`unpack`/`build`/`update` — source dispatch
 
-Each takes `-t/--type` (`opencorpora`|`pymorphy`), `-o/--output` (for
+Each takes a required positional `<type>` argument (`opencorpora`|`pymorphy`), `-o/--output` (for
 `build`/`update`; ignored/rejected for `download`/`unpack`, which write to
 the loader's own fixed layout under `.data/<type>/`). `build` additionally
 takes an **optional** `-i/--input <path>`: when given, `build` compiles

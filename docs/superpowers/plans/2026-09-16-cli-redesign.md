@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace `cmd/gomorphy` + `cmd/gomorphy_build` with one cobra-based `gomorphy` binary: unified `-t/-i/-o/-d` flag letters, `-d/--dictionary` always resolves through `MultiDictionary` (single or many), `$GOMORPHY_DICTIONARY` fallback, `-v/-l` logging, per-command help, and `download`/`unpack`/`build`/`update`/`merge`(stub)/`split`(stub)/`version` alongside the existing `lookup`/`lemmas`/`fuzzy`/`top`/`cli`.
+**Goal:** Replace `cmd/gomorphy` + `cmd/gomorphy_build` with one cobra-based `gomorphy` binary: unified `-i/-o/-d` flag letters plus a positional `<type>` argument on the source-dispatch commands, `-d/--dictionary` always resolves through `MultiDictionary` (single or many), `$GOMORPHY_DICTIONARY` fallback, `-v/-l` logging, per-command help, and `download`/`unpack`/`build`/`update`/`merge`(stub)/`split`(stub)/`version` alongside the existing `lookup`/`lemmas`/`fuzzy`/`top`/`cli`.
 
 **Architecture:** Tasks 1-5 add new, independently-unit-testable files under `cmd/gomorphy/` (each a `new<X>Command() *cobra.Command` plus, where other code needs to call the same logic, a plain `do<X>`/`run<X>` function the command's `RunE` is a thin wrapper over) — the *existing* `cmd/gomorphy/main.go` and all of `cmd/gomorphy_build/` are untouched and still fully functional through all five tasks, so nothing regresses along the way. Task 6 is the atomic cutover: replace `main.go` with the cobra root wiring every command built in tasks 1-5, delete `cmd/gomorphy_build/`, and update the one black-box test that exercises the old CLI surface.
 
@@ -15,7 +15,7 @@
 - `cmd/gomorphy_build` is deleted only in Task 6, once `cmd/gomorphy build`/`update` fully replace it — not before.
 - No backward compatibility for either old binary's flags/commands — pre-1.0.0, breaking is fine (same precedent as every other breaking change this project has made).
 - Every dictionary-reading command goes through `resolveDictionaries`, which always returns `*morphology.MultiDictionary` — never a bare `*morphology.Dictionary`, not even for one resolved path.
-- `-t/--type`, `-i/--input`, `-o/--output` are local flags on the commands that use them, never persistent/global. `-d/--dictionary`, `-v/--verbose`, `-l/--log` are persistent on the root only.
+- `-i/--input`, `-o/--output` are local flags on the commands that use them, never persistent/global. `-d/--dictionary`, `-v/--verbose`, `-l/--log` are persistent on the root only. The source type (`opencorpora`|`pymorphy`) is a required positional `<type>` argument on `download`/`unpack`/`build`/`update`, not a flag.
 - No `--debug` flag anywhere.
 - `version` is a command only — no `--version` flag.
 - `merge`/`split` are registered commands with working `-h`, but their `RunE` returns an error saying the feature isn't implemented yet — no dictionary-merging logic in this plan.
