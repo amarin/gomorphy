@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -77,4 +78,14 @@ func expandDictionaryPath(p string) ([]string, error) {
 		return nil, fmt.Errorf("no .dat files found in directory %s", p)
 	}
 	return matches, nil
+}
+
+// parseNonNegativeInt parses s as a non-negative int, for the CLI flags
+// and console commands that take a distance or count.
+func parseNonNegativeInt(s string) (int, error) {
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("invalid number %q", s)
+	}
+	return n, nil
 }
