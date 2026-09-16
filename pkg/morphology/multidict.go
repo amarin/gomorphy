@@ -5,6 +5,7 @@ package morphology
 
 import (
 	"errors"
+	"sort"
 	"sync"
 )
 
@@ -91,6 +92,84 @@ func (m *MultiDictionary) Lemma(word string) []LemmaRef {
 	var out []LemmaRef
 	for _, r := range results {
 		out = append(out, r...)
+	}
+	return out
+}
+
+// Fuzzy ищет слова в пределах расстояния Левенштейна maxDist от word во
+// всех словарях набора параллельно. Результат — конкатенация Fuzzy
+// каждого словаря в порядке регистрации набора, с проставленным
+// FuzzyMatch.Dict; без сортировки/дедупликации между словарями сверх
+// того, что каждый Dictionary.Fuzzy уже делает сам внутри себя (та же
+// политика, что у Parse/Lemma) — Fuzzy не ограничивает число результатов,
+// поэтому объединение "как есть" корректно.
+func (m *MultiDictionary) Fuzzy(word string, maxDist int) []FuzzyMatch {
+	results := make([][]FuzzyMatch, len(m.dicts))
+
+	var wg sync.WaitGroup
+	for i, d := range m.dicts {
+		wg.Add(1)
+		go func(i int, d *Dictionary) {
+			defer wg.Done()
+			matches := d.Fuzzy(word, maxDist)
+			for j := range matches {
+				matches[j].Dict = i
+			}
+			results[i] = matches
+		}(i, d)
+	}
+	wg.Wait()
+
+	var out []FuzzyMatch
+	for _, r := range results {
+		out = append(out, r...)
+	}
+	return out
+}
+
+// FuzzyTop возвращает до maxWords ближайших слов по всему набору,
+// упорядоченных по (расстояние, слово). В отличие от Parse/Lemma/Fuzzy,
+// maxWords — потолок на общий результат, не на словарь, поэтому здесь
+// нужно настоящее слияние: у каждого словаря запрашивается его
+// собственный top-maxWords (этого достаточно — любой кандидат глобального
+// top-maxWords обязан входить и в top-maxWords своего словаря, иначе в
+// этом же словаре нашлось бы maxWords кандидатов не хуже него), после
+// чего все кандидаты сортируются заново и обрезаются до maxWords.
+// maxWords <= 0 — точный поиск, как и у Dictionary.FuzzyTop.
+func (m *MultiDictionary) FuzzyTop(word string, maxWords int) []FuzzyMatch {
+	if maxWords <= 0 {
+		return m.Fuzzy(word, 0)
+	}
+
+	results := make([][]FuzzyMatch, len(m.dicts))
+
+	var wg sync.WaitGroup
+	for i, d := range m.dicts {
+		wg.Add(1)
+		go func(i int, d *Dictionary) {
+			defer wg.Done()
+			matches := d.FuzzyTop(word, maxWords)
+			for j := range matches {
+				matches[j].Dict = i
+			}
+			results[i] = matches
+		}(i, d)
+	}
+	wg.Wait()
+
+	var out []FuzzyMatch
+	for _, r := range results {
+		out = append(out, r...)
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Distance != out[j].Distance {
+			return out[i].Distance < out[j].Distance
+		}
+		return out[i].Word < out[j].Word
+	})
+	if len(out) > maxWords {
+		out = out[:maxWords]
 	}
 	return out
 }

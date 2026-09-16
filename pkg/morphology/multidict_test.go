@@ -131,6 +131,75 @@ func TestMultiDictionary_DictInfo(t *testing.T) {
 	assert.Nil(t, m.DictInfo(2))
 }
 
+func TestMultiDictionary_Fuzzy(t *testing.T) {
+	dictA, dictB := twoDictFixture(t)
+	m := morphology.NewMultiDictionary(dictA, dictB)
+
+	// "яблоко" only exists in dictA, "груша" only in dictB - an exact
+	// (maxDist=0) fuzzy search for each should find exactly that one word,
+	// tagged with its dictionary's index.
+	matches := m.Fuzzy("яблоко", 0)
+	require.NotEmpty(t, matches)
+	for _, mt := range matches {
+		assert.Equal(t, "яблоко", mt.Word)
+		assert.Equal(t, 0, mt.Dict)
+	}
+
+	matches = m.Fuzzy("груша", 0)
+	require.NotEmpty(t, matches)
+	for _, mt := range matches {
+		assert.Equal(t, "груша", mt.Word)
+		assert.Equal(t, 1, mt.Dict)
+	}
+}
+
+func TestMultiDictionary_FuzzyTop_MergesAcrossDicts(t *testing.T) {
+	dictA, dictB := twoDictFixture(t)
+	m := morphology.NewMultiDictionary(dictA, dictB)
+
+	// "кот" is an exact match in both dictionaries (distance 0). Asking
+	// for the top 1 word overall must not silently prefer dictA just
+	// because it was registered first: with maxWords=1, only one of the
+	// two distance-0 "кот" matches can survive the merge. Assert the cap
+	// is honored globally, not per-dictionary (a naive concatenation of
+	// each dict's own FuzzyTop would return 2 results here, not 1).
+	top := m.FuzzyTop("кот", 1)
+	require.Len(t, top, 1)
+	assert.Equal(t, "кот", top[0].Word)
+	assert.Equal(t, 0, top[0].Distance)
+
+	// A larger cap must surface matches from both dictionaries, each
+	// tagged correctly, sorted by (distance, word).
+	top = m.FuzzyTop("кот", 10)
+	require.NotEmpty(t, top)
+	var dicts []int
+	for _, mt := range top {
+		dicts = append(dicts, mt.Dict)
+	}
+	assert.Contains(t, dicts, 0)
+	assert.Contains(t, dicts, 1)
+	for i := 1; i < len(top); i++ {
+		prev, cur := top[i-1], top[i]
+		if prev.Distance == cur.Distance {
+			assert.LessOrEqual(t, prev.Word, cur.Word, "ties must be ordered by word")
+		} else {
+			assert.Less(t, prev.Distance, cur.Distance)
+		}
+	}
+}
+
+func TestMultiDictionary_FuzzyTop_ZeroMaxWordsIsExactSearch(t *testing.T) {
+	dictA, dictB := twoDictFixture(t)
+	m := morphology.NewMultiDictionary(dictA, dictB)
+
+	top := m.FuzzyTop("кот", 0)
+	require.NotEmpty(t, top)
+	for _, mt := range top {
+		assert.Equal(t, "кот", mt.Word)
+		assert.Equal(t, 0, mt.Distance)
+	}
+}
+
 func TestMultiDictionary_Close(t *testing.T) {
 	dictA, dictB := twoDictFixture(t)
 	m := morphology.NewMultiDictionary(dictA, dictB)

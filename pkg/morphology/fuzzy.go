@@ -12,6 +12,7 @@ import (
 type FuzzyMatch struct {
 	Word     string
 	Distance int
+	Dict     int // индекс словаря в MultiDictionary; всегда 0 для Dictionary.Fuzzy/FuzzyTop напрямую
 }
 
 // Fuzzy возвращает слова словаря в пределах расстояния Левенштейна maxDist
