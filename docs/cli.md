@@ -2,47 +2,53 @@
 
 Утилита морфологического анализа слов на основе скомпилированного словаря
 GMOR (`.dat`, единый формат для источников pymorphy2/OpenCorpora/UniMorph
-— см. [library.md](library.md)).
+— см. [library.md](library.md)), а также утилита получения и сборки
+исходных словарей.
 
 ## Общая форма вызова
 
 ```bash
-gomorphy [flags] <command> [args]
-gomorphy [flags]                    # интерактивная консоль (без команды)
-gomorphy import <source> <path> -o <out.dat>
+gomorphy <command> [flags] [args]
+gomorphy cli [flags]        # интерактивная консоль
 ```
 
-### Флаги
+### Глобальные флаги (общие для всех команд поиска)
 
 | Флаг | Описание |
 |------|----------|
-| `-dict <path>` | путь к скомпилированному словарю `.dat` (обязателен для всех команд, кроме `import`) |
-| `-o <path>` | выходной файл для `import` |
+| `-d, --dictionary <path>` | путь к `.dat`-файлу или каталогу с `.dat`-файлами (можно указывать несколько раз — словари объединяются в один индекс с сохранением порядка) |
+| `-v, --verbose` | подробное логирование |
+| `-l, --log <path>` | писать лог в файл вместо stderr |
 
-## Команды
+Если `-d/--dictionary` не задан, используется путь из переменной окружения
+`GOMORPHY_DICTIONARY`.
+
+## Команды поиска
 
 ### `lookup` — точный поиск словоформы
 
 Возвращает все грамматические разборы заданного слова.
 
 ```bash
-gomorphy -dict opencorpora.dat lookup кота
+gomorphy lookup -d opencorpora.dat кота
 ```
 
 Вывод (по одной строке на разбор, поля через TAB):
 
 ```
-кота	кот	sing,nomn	para#33
+кота	кот	sing,nomn	para#0/33/1
 ```
 
-Формат: `<слово>\t<лемма>\t<тег>\tpara#<id>`.
+Формат: `<слово>\t<лемма>\t<тег>\tpara#<dict>/<shard>/<para>` — компонент
+`dict` указывает, из какого по счёту (начиная с 0) объединённого словаря
+пришёл разбор, если указано несколько `-d`.
 
 ### `lemmas` — поиск начальных форм
 
 Находит начальную форму (лемму) для заданного слова.
 
 ```bash
-gomorphy -dict opencorpora.dat lemmas кота
+gomorphy lemmas -d opencorpora.dat кота
 ```
 
 Вывод: `<лемма>\t<тег начальной формы>` — по одной строке на омоним
@@ -53,108 +59,108 @@ gomorphy -dict opencorpora.dat lemmas кота
 Слова словаря в пределах расстояния Левенштейна `maxDist` (по умолчанию 2).
 
 ```bash
-gomorphy -dict opencorpora.dat fuzzy кот 1
+gomorphy fuzzy -d opencorpora.dat кот 1
 ```
 
 Вывод (отсортирован по расстоянию, затем по слову):
 
 ```
-0	кот
-1	бот
-1	вот
-1	гот
+0	кот	dict#0
+1	бот	dict#0
+1	вот	dict#0
+1	гот	dict#0
 ...
 ```
 
-Формат: `<расстояние>\t<слово>`.
+Формат: `<расстояние>\t<слово>\tdict#<dict>`.
 
 ### `top` — N ближайших слов
 
 Как `fuzzy`, но расстояние расширяется итеративно, пока не набрано `N` слов.
 
 ```bash
-gomorphy -dict opencorpora.dat top кот 5
+gomorphy top -d opencorpora.dat кот 5
 ```
 
 ```
-0	кот
-1	бот
-1	вот
-1	гот
-1	дот
+0	кот	dict#0
+1	бот	dict#0
+1	вот	dict#0
+1	гот	dict#0
+1	дот	dict#0
 ```
 
-## Интерактивная консоль
-
-Запустите без команды (с `-dict`) для входа в интерактивный режим:
+### `cli` — интерактивная консоль
 
 ```bash
-gomorphy -dict opencorpora.dat
+gomorphy cli -d opencorpora.dat
 ```
 
 ```
 gomorphy> lookup кота
-кота	кот	sing,nomn	para#33
+кота	кот	sing,nomn	para#0/33/1
 gomorphy> exit
 ```
 
-TAB — автодополнение команд (`lookup`, `lemmas`, `fuzzy`, `top`, `import`),
-`exit`/`quit` — выход.
+TAB — автодополнение команд (`lookup`, `lemmas`, `fuzzy`, `top`, `exit`,
+`quit`), `exit`/`quit` — выход.
 
-## Импорт словарей — `gomorphy import`
+## Получение и сборка словарей
 
-```bash
-gomorphy import pymorphy2 <dir> -o out.dat
-gomorphy import opencorpora <dict.xml> -o out.dat
-```
-
-`-o` должен идти после `<source> <path>` (или в любом месте — CLI сам
-достаёт `-o`/`-o=...` из позиционных аргументов).
-
-## CLI: gomorphy_build
-
-Утилита для полного цикла работы со словарём OpenCorpora: загрузка,
-распаковка, компиляция (для одноразовых/CI-сценариев; для программного
-импорта нескольких источников используйте `gomorphy import`, см. выше).
+### `download` — скачать исходный архив
 
 ```bash
-gomorphy_build <command> [flags]
+gomorphy download opencorpora
+gomorphy download pymorphy
 ```
 
-### Команды
+### `unpack` — распаковать уже скачанный архив
 
-| Команда | Описание |
-|---|---|
-| `update` | Скачать (если нужно) + распаковать + скомпилировать |
-| `compile` | Скомпилировать уже распакованный `dict.xml` (без сети) |
+```bash
+gomorphy unpack opencorpora
+gomorphy unpack pymorphy
+```
 
-### Флаги
+### `build` — скомпилировать источник в `.dat`
 
-Важно: флаги `flag`-пакета Go должны идти **до** команды, не после
-(`gomorphy_build -o out.dat compile`, не `gomorphy_build compile -o out.dat`).
+По умолчанию берёт уже распакованный источник; `-i/--input` позволяет
+указать путь явно (например, чтобы скомпилировать `dict.xml` напрямую,
+без сети).
+
+```bash
+gomorphy build opencorpora -i dict.xml -o out.dat
+gomorphy build pymorphy -i /path/to/unpacked/dir -o out.dat
+```
+
+Флаги:
 
 | Флаг | Описание |
 |------|----------|
-| `-l` | не скачивать, использовать локальный `dict.xml` (только для `update`) |
-| `-d` | отладочное логирование |
-| `-o <path>` | путь выходного `.dat`-файла (по умолчанию — `.data/opencorpora/opencorpora.dat`) |
+| `-i, --input <path>` | скомпилировать этот путь напрямую, минуя загрузчик |
+| `-o, --output <path>` | путь выходного `.dat`-файла (по умолчанию `.data/<type>/<type>.dat`) |
 
-### Примеры
+### `update` — download + unpack + build одной командой
 
 ```bash
-# Полный цикл: скачивание + распаковка + компиляция
-gomorphy_build update
-
-# Пропустить скачивание, только компиляция уже распакованного dict.xml
-gomorphy_build update -l
-
-# Компиляция dict.xml без обращения к сети/загрузчику
-gomorphy_build compile
-
-# Свой путь для результата
-gomorphy_build -o /tmp/oc.dat compile
+gomorphy update opencorpora
+gomorphy update pymorphy -o /tmp/pymorphy.dat
 ```
 
-По умолчанию результат сохраняется в `.data/opencorpora/opencorpora.dat`.
+Флаги: `-o, --output <path>` — как у `build`.
+
+### `merge` / `split` — пока не реализованы
+
+Команды-заглушки для будущего объединения/разбиения `.dat`-словарей;
+сейчас завершаются ошибкой `not yet implemented`.
+
+### `version`
+
+```bash
+gomorphy version
+```
+
+Печатает версию библиотеки.
+
+---
 
 Подробнее о программном использовании библиотеки → [library.md](library.md).

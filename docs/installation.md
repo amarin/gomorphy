@@ -7,19 +7,18 @@
   использует mmap через пакет `syscall` напрямую (см.
   `docs/code-review-pre-1.0.md`)
 
-## Установка CLI-утилит
+## Установка CLI-утилиты
 
 ```bash
 go install github.com/amarin/gomorphy/cmd/gomorphy@latest
-go install github.com/amarin/gomorphy/cmd/gomorphy_build@latest
 ```
 
-Утилиты будут доступны в `$GOPATH/bin` (убедитесь, что директория добавлена в `$PATH`).
+Утилита будет доступна в `$GOPATH/bin` (убедитесь, что директория добавлена в `$PATH`).
 
-- `gomorphy` — морфологический анализ по скомпилированному словарю
-  (`lookup`/`lemmas`/`fuzzy`/`top`, интерактивная консоль, `import`).
-- `gomorphy_build` — загрузка, распаковка и компиляция словаря OpenCorpora
-  (`update`/`compile`).
+`gomorphy` — единый бинарь: морфологический анализ по скомпилированному
+словарю (`lookup`/`lemmas`/`fuzzy`/`top`, интерактивная консоль `cli`), а
+также загрузка, распаковка и компиляция исходных словарей
+(`download`/`unpack`/`build`/`update`).
 
 Подробнее → [cli.md](cli.md).
 
@@ -42,16 +41,16 @@ import "github.com/amarin/gomorphy/pkg/morphology"
 ```bash
 git clone https://github.com/amarin/gomorphy.git
 cd gomorphy
-make build     # скомпилирует CLI-утилиты в ./deploy/
+make build     # скомпилирует CLI-утилиту в ./deploy/
 ```
 
 Доступные цели Makefile:
 
 | Цель | Описание |
 |------|----------|
-| `make build` | Сборка CLI-утилит (`gomorphy`, `gomorphy_build`) в `./deploy/` |
-| `make update` | Собрать `gomorphy_build` и выполнить полный цикл: скачать + распаковать + скомпилировать словарь OpenCorpora |
-| `make compile` | Собрать `gomorphy_build` и скомпилировать уже распакованный `dict.xml` |
+| `make build` | Сборка CLI-утилиты (`gomorphy`) в `./deploy/` |
+| `make update` | Собрать `gomorphy` и выполнить полный цикл: скачать + распаковать + собрать словарь OpenCorpora (`gomorphy update opencorpora`) |
+| `make compile` | Собрать `gomorphy` и скомпилировать уже распакованный `dict.xml` (`gomorphy build opencorpora`) |
 | `make test` | Запуск unit-тестов с детектором гонок |
 | `make test-integration` | Интеграционные тесты (`-tags integration`; часть требует сеть и реальные данные OpenCorpora в `.data/`) |
 | `make lint` | golangci-lint |
@@ -59,10 +58,10 @@ make build     # скомпилирует CLI-утилиты в ./deploy/
 
 ## Загрузка словаря OpenCorpora
 
-После сборки (`make build`) загрузите и скомпилируйте словарь:
+После сборки (`make build`) загрузите и соберите словарь:
 
 ```bash
-./deploy/gomorphy_build update
+./deploy/gomorphy update opencorpora
 ```
 
 Результат: файл `.data/opencorpora/opencorpora.dat` (десятки МБ, зависит

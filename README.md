@@ -23,13 +23,12 @@ at runtime; native Windows mmap support is tracked in `docs/todo.md`.
 ```bash
 # Install
 go install github.com/amarin/gomorphy/cmd/gomorphy@latest
-go install github.com/amarin/gomorphy/cmd/opencorpora_update@latest
 
 # Download and compile dictionary
-opencorpora_update -l
+gomorphy update opencorpora
 
 # Query
-gomorphy -dict .data/opencorpora/opencorpora.dict lookup кота
+gomorphy lookup -d .data/opencorpora/opencorpora.dat кота
 ```
 
 ## Documentation
@@ -44,8 +43,7 @@ gomorphy -dict .data/opencorpora/opencorpora.dict lookup кота
 ## Project structure
 
 ```
-cmd/gomorphy           CLI: lookup, lemmas, fuzzy, top
-cmd/opencorpora_update CLI: download + compile dictionary
+cmd/gomorphy           CLI: lookup, lemmas, fuzzy, top, download, unpack, build, update
 pkg/dictionary         public API (Open, Lookup, Lemmas, Fuzzy, FuzzyTop, Builder)
 internal/build         Builder + CSR snapshot
 internal/format        sectioned binary format (varint/delta, xxh3 checksums)

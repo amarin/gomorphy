@@ -102,8 +102,10 @@ internal/xmlscan              (переиспользуется) сканер di
 internal/mmapx                (переиспользуется) mmap-ридер
 pkg/opencorpora               (переиспользуется) загрузчик OpenCorpora
 
-cmd/gomorphy                  CLI: lookup/fuzzy/top/lemmas/import
-cmd/gomorphy_build            CLI: update/compile (OpenCorpora → GMOR)
+cmd/gomorphy                  CLI: lookup/fuzzy/top/lemmas, cli, download/unpack/build/update
+                               (folded cmd/gomorphy_build's update/compile into this single
+                               binary during the CLI redesign, see docs/superpowers/specs/
+                               2026-09-16-cli-redesign-design.md)
 ```
 
 ### Модель данных в памяти (новая)
