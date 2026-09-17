@@ -64,7 +64,7 @@ func TestShardedDictionaryPublicAPIRoundtrip(t *testing.T) {
 
 	opened, err := morphology.Open(path)
 	require.NoError(t, err)
-	defer opened.Close()
+	defer func() { _ = opened.Close() }()
 
 	for _, word := range []string{early, late} {
 		before := d.Parse(word)

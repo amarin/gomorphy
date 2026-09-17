@@ -604,7 +604,7 @@ func dedupEntries(entries []dawgEntry) []dawgEntry {
 	seen := make(map[entryKey]bool, len(entries))
 	result := make([]dawgEntry, 0, len(entries))
 	for _, e := range entries {
-		k := entryKey{e.key, e.val}
+		k := entryKey(e)
 		if !seen[k] {
 			seen[k] = true
 			result = append(result, e)

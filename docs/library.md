@@ -6,102 +6,213 @@
 import "github.com/amarin/gomorphy/pkg/morphology"
 ```
 
-## Подключение и получение данных словаря
+Публичный API целиком лежит в пакете `morphology` — вложенный пакет
+`morphology/internal` не экспортируется и не предназначен для прямого
+использования.
 
-### Открытие скомпилированного словаря
+## Открытие словаря
 
-Словарь загружается через mmap и готов к использованию немедленно:
+Четыре точки входа, все возвращают `*morphology.Dictionary`:
 
 ```go
-d, err := dictionary.Open(".data/opencorpora/opencorpora.dict")
+func Open(path string) (*Dictionary, error)
+func OpenPyMorphy(dir string) (*Dictionary, error)
+func OpenPyMorphyDense(dir string) (*Dictionary, error)
+func CompileFromXML(r io.Reader, progress opencorpora.Progress) (*Dictionary, error)
+func CompileFromXMLFile(path string, progress opencorpora.Progress) (*Dictionary, error)
+```
+
+- **`Open(path)`** — загружает уже скомпилированный единый формат
+  (`.dat`, секции + mmap). Горячие секции (`words.dawg`) отображаются
+  без копирования; результат нужно закрыть `Close()`.
+- **`OpenPyMorphy(dir)`** — читает словарь pymorphy2 прямо из
+  директории с исходными файлами (`words.dawg`, `paradigms.array`,
+  ...), без предварительной компиляции в `.dat`.
+- **`OpenPyMorphyDense(dir)`** — как `OpenPyMorphy`, но пересобирает
+  `words.dawg` под плотный 1-байтовый алфавит (см.
+  [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md)).
+  Даёт те же разборы, что `OpenPyMorphy`, но быстрее и компактнее в
+  памяти; словарь с плотным алфавитом **нельзя** сохранить через
+  `SaveTo` (см. ниже) и не поддерживает `Fuzzy`/`FuzzyTop` (возвращают
+  `nil`).
+- **`CompileFromXML`/`CompileFromXMLFile`** — компилирует словарь
+  OpenCorpora из `dict.xml`. `progress` — необязательный callback
+  `func(processed, total int)` для индикации хода компиляции (можно
+  передать `nil`).
+
+```go
+d, err := morphology.Open(".data/opencorpora/opencorpora.dat")
 if err != nil {
     log.Fatal(err)
 }
 defer d.Close()
 ```
 
-### Точный поиск словоформы
+`Dictionary.Close()` — no-op для словарей, открытых не через `Open`
+(`OpenPyMorphy*`/`CompileFromXML*` не используют mmap), вызывать можно
+безусловно.
 
-`Lookup` возвращает все грамматические разборы заданного слова:
+### Получение исходных данных
+
+Для CLI-утилиты (`gomorphy download`/`unpack`/`update`, см.
+[cli.md](cli.md)) загрузку исходников делают `pkg/opencorpora.Loader` и
+`pkg/pymorphy.Loader` — тот же API доступен и из библиотеки:
 
 ```go
-forms, err := d.Lookup("кота")
-for _, f := range forms {
-    fmt.Printf("%s %s lemma#%d\n", f.Text, f.Ancode, f.LemmaID)
+loader := pymorphy.NewLoader("") // "" — путь по умолчанию, .data/pymorphy
+if err := loader.Sync(false); err != nil { // false — не пропускать скачивание
+    log.Fatal(err)
 }
-// кота NOUN,anim,masc,sing,gent lemma#140411
-// кота NOUN,anim,masc,sing,accs lemma#140411
+d, err := morphology.OpenPyMorphy(loader.UnpackedDirPath())
 ```
 
-Тип `Wordform`:
+`opencorpora.Loader` — то же самое для `dict.xml`
+(`loader.UnpackedFilePath()` вместо `UnpackedDirPath()`, дальше —
+`morphology.CompileFromXMLFile`).
+
+## Точный поиск словоформы
+
+`Parse` возвращает все грамматические разборы слова, отсортированные
+по вероятности (убыванию), либо `nil`, если слово не найдено ни точно,
+ни предсказанием по окончанию:
 
 ```go
-type Wordform struct {
-    Text      string   // словоформа
-    Ancode    string   // полный грамматический разбор
-    Grammemes []string // разложенные граммемы
-    LemmaID   uint32   // идентификатор леммы
+readings := d.Parse("кота")
+for _, r := range readings {
+    fmt.Printf("%s -> %s (%s)\n", r.Word, r.Normal, r.Tag)
+}
+// кота -> кот (NOUN,anim,masc,sing,gent)
+// кота -> кот (NOUN,anim,masc,sing,accs)
+```
+
+Тип `Reading`:
+
+```go
+type Reading struct {
+    Word   string  // словоформа как в словаре (с «ё»)
+    Normal string  // начальная форма (лемма)
+    Tag    string  // граммемный тег, например "NOUN,anim,masc,sing,nomn"
+    Para   uint16  // id парадигмы — уникален только вместе с Shard
+    Form   uint16  // индекс формы в парадигме
+    Shard  int     // индекс шарда словаря; всегда 0 для нешардированных словарей
+    Dict   int     // индекс словаря в MultiDictionary; всегда 0 для Dictionary.Parse напрямую
+    Prob   float64 // вероятность разбора (0, если probability недоступен)
 }
 ```
 
-### Начальные формы (леммы)
+Формат `Tag` зависит от источника словаря: `TagSet.Name` различает
+`"opencorpora"` (comma-joined, из `dict.xml`) и `"opencorpora-int"`
+(pymorphy2, свой синтаксис) — оба описывают один и тот же набор
+граммем, но по-разному сериализованы. Для сравнения тегов между
+словарями разного происхождения см.
+[implementation/tag-mapping.md](implementation/tag-mapping.md)
+(`pkg/morphology/tagmap`).
 
-`Lemmas` находит начальную форму и базовые граммемы:
+Вход приводится к нижнему регистру автоматически.
+
+## Начальные формы (леммы)
+
+`Lemma` возвращает начальную форму (лемму) и её собственный тег для
+каждого омонима слова:
 
 ```go
-lemmas, err := d.Lemmas("кота")
+lemmas := d.Lemma("кота")
 for _, l := range lemmas {
-    fmt.Printf("#%d %s %s\n", l.ID, l.Text, strings.Join(l.Grammemes, ","))
+    fmt.Printf("%s (%s)\n", l.Normal, l.Tag)
 }
-// #140411 кот NOUN,anim,masc
+// кот (NOUN,anim,masc,sing,nomn)
 ```
 
 Тип `LemmaRef`:
 
 ```go
 type LemmaRef struct {
-    ID        uint32
-    Text      string
-    Grammemes []string
+    Normal string // начальная форма
+    Tag    string // тег начальной формы (форма 0 парадигмы)
+    Para   uint16
+    Shard  int
+    Dict   int
 }
 ```
 
-### Нечёткий поиск
+## Нечёткий поиск
 
-`Fuzzy` — поиск слов с расстоянием Левенштейна до `maxDist`:
-
-```go
-matches, err := d.Fuzzy("кот", 1)
-for _, m := range matches {
-    fmt.Printf("%d %s\n", m.Distance, m.Text)
-}
-// 0 кот
-// 1 код
-// 1 крот
-```
-
-`FuzzyTop` — N ближайших слов по расстоянию:
+`Fuzzy` — все слова словаря в пределах расстояния Левенштейна
+`maxDist` (по рунам; «е»/«ё» считаются одной заменой). `FuzzyTop` —
+`maxWords` ближайших слов, с итеративным расширением расстояния.
+Оба возвращают `[]FuzzyMatch`, отсортированный по (расстояние, слово),
+без дублей слова:
 
 ```go
-top, err := d.FuzzyTop("кот", 5)
-// 0  кот
-// 1  бот
-// 1  вот
-// ...
+matches := d.Fuzzy("кот", 1)
+top := d.FuzzyTop("кот", 5)
 ```
-
-Тип `FuzzyMatch`:
 
 ```go
 type FuzzyMatch struct {
-    Text     string
+    Word     string
     Distance int
+    Dict     int
 }
 ```
 
-### Параллельная работа
+Не работает (возвращает `nil`) для словарей с плотным алфавитом
+(`OpenPyMorphyDense`) — см. «Открытие словаря» выше.
 
-Чтение словаря потокобезопасно. Несколько горутин могут одновременно вызывать Lookup/Lemmas/Fuzzy:
+## Диагностические метаданные
+
+`Info()` возвращает секцию `info` файла (когда и чем собран словарь),
+или `nil`, если её нет (словари без `SaveTo`, либо собранные до
+появления секции):
+
+```go
+type BuildInfo struct {
+    BuiltAt        time.Time
+    LibraryVersion string
+    Source         string // "pymorphy2" / "opencorpora"
+    SourceVersion  string
+    Author         string
+    Description    string
+    SourceURL      string
+}
+```
+
+## Несколько словарей одновременно: `MultiDictionary`
+
+`MultiDictionary` агрегирует `Parse`/`Lemma`/`Fuzzy`/`FuzzyTop`/`Close`
+по произвольному набору уже открытых словарей — сам он ничего не
+открывает. Подробный дизайн:
+[implementation/multi-dict.md](implementation/multi-dict.md).
+
+```go
+oc, _ := morphology.Open("opencorpora.dat")
+pm, _ := morphology.OpenPyMorphy(".data/pymorphy/data")
+m := morphology.NewMultiDictionary(oc, pm)
+defer m.Close()
+
+for _, r := range m.Parse("кота") {
+    fmt.Printf("dict#%d: %s -> %s (%s)\n", r.Dict, r.Word, r.Normal, r.Tag)
+}
+```
+
+- `Reading.Dict`/`LemmaRef.Dict`/`FuzzyMatch.Dict` — индекс словаря в
+  порядке, переданном в `NewMultiDictionary` (0-based).
+- `Parse`/`Lemma`/`Fuzzy` — конкатенация результатов всех словарей, где
+  слово нашлось, в порядке регистрации, без приоритетов и дедупа между
+  словарями (каждый словарь уже дедуплицирует сам себя).
+- `FuzzyTop(word, maxWords)` — единственный метод, где `maxWords`
+  ограничивает **общий** результат, а не результат на каждый словарь:
+  берёт top-`maxWords` от каждого словаря, затем сортирует и обрезает
+  весь набор заново.
+- `DictInfo(i)` — `BuildInfo` словаря с индексом `i` (`nil` для
+  индекса вне диапазона или словаря без секции `info`).
+- `Close()` закрывает каждый словарь набора, объединяя ошибки через
+  `errors.Join`.
+
+## Параллельная работа
+
+Чтение открытого `*Dictionary` потокобезопасно — несколько горутин
+могут одновременно вызывать `Parse`/`Lemma`/`Fuzzy`/`FuzzyTop`:
 
 ```go
 var wg sync.WaitGroup
@@ -109,148 +220,36 @@ for _, word := range words {
     wg.Add(1)
     go func(w string) {
         defer wg.Done()
-        forms, _ := d.Lookup(w)
-        // обработка forms
+        readings := d.Parse(w)
+        // обработка readings
     }(word)
 }
 wg.Wait()
 ```
 
-### Компиляция из XML
+## Сохранение на диск
 
-Словарь можно собрать из `dict.xml` без использования `opencorpora_update`:
+`SaveTo` сохраняет словарь (в т.ч. собранный из XML или загруженный
+через `OpenPyMorphy`) в единый формат:
 
 ```go
-d, err := dictionary.CompileFromXMLFile("path/to/dict.xml")
+d, err := morphology.CompileFromXMLFile("dict.xml", nil)
 if err != nil {
     log.Fatal(err)
 }
-defer d.Close()
-
-err = d.SaveTo("output.dict")
-```
-
-### Ошибки
-
-| Ошибка | Описание |
-|--------|----------|
-| `ErrClosed` | словарь закрыт (после `Close()`) |
-| `ErrNotFound` | слово не найдено в словаре |
-| `ErrInvalidMaxDist` | отрицательное значение maxDist |
-| `ErrInvalidMaxWords` | отрицательное значение maxWords |
-
----
-
-## Создание собственных словарей
-
-Библиотека позволяет программно создавать словари без XML-файла.
-
-### Базовый пример
-
-```go
-b := dictionary.NewBuilder()
-
-// Регистрация граммем
-b.AddGrammeme("NOUN")
-b.AddGrammeme("anim")
-b.AddGrammeme("masc")
-b.AddGrammeme("sing")
-b.AddGrammeme("nomn")
-b.AddGrammeme("gent")
-b.AddGrammeme("accs")
-
-// Добавление леммы с начальной формой и базовыми граммемами
-lemmaID, _ := b.AddLemma("кот", "NOUN", "anim", "masc")
-
-// Добавление словоформ
-b.AddForm(lemmaID, "кот", "NOUN", "anim", "masc", "sing", "nomn")
-b.AddForm(lemmaID, "кота", "NOUN", "anim", "masc", "sing", "gent")
-b.AddForm(lemmaID, "кота", "NOUN", "anim", "masc", "sing", "accs")
-
-// Компиляция в иммутабельный словарь
-d := b.Compile()
-defer d.Close()
-
-// Использование
-forms, _ := d.Lookup("кота")
-// [{кота NOUN,anim,masc,sing,gent ...} {кота NOUN,anim,masc,sing,accs ...}]
-```
-
-### API Builder
-
-```go
-func dictionary.NewBuilder() *Builder
-```
-
-Создаёт новый пустой Builder.
-
-#### `AddGrammeme`
-
-```go
-func (b *Builder) AddGrammeme(name string) (uint32, error)
-```
-
-Регистрирует граммему и возвращает её ID. Повторный вызов с тем же именем возвращает тот же ID.
-
-#### `AddLemma`
-
-```go
-func (b *Builder) AddLemma(text string, grammemes ...string) (int, error)
-```
-
-Добавляет лемму (начальную форму). `grammemes` — базовые граммемы леммы (POS и др.). Возвращает ID леммы для передачи в `AddForm`.
-
-#### `AddForm`
-
-```go
-func (b *Builder) AddForm(lemma int, text string, grammemes ...string) error
-```
-
-Добавляет словоформу, привязанную к лемме. `grammemes` — полные граммемы словоформы (включая падеж, число и т.д.).
-
-#### `Compile`
-
-```go
-func (b *Builder) Compile() *Dictionary
-```
-
-Компилирует наполненный Builder в иммутабельный Dictionary. После вызова Builder использовать нельзя.
-
-### Сохранение на диск
-
-Скомпилированный словарь можно сохранить и загрузить позже:
-
-```go
-d := b.Compile()
-defer d.Close()
-
-// Атомарная запись (temp-файл + rename)
-err := d.SaveToAtomic("my.dict")
-if err != nil {
+if err := d.SaveTo("opencorpora.dat"); err != nil {
     log.Fatal(err)
 }
-
-// Загрузка
-d2, err := dictionary.Open("my.dict")
 ```
 
-### Изменение существующего словаря
+Словарь с плотным алфавитом (`OpenPyMorphyDense`) сохранить нельзя —
+`SaveTo` возвращает ошибку (см. «Открытие словаря» выше).
 
-Можно получить Builder от существующего словаря, добавить данные и перекомпилировать:
+## Ошибки
 
-```go
-d, _ := dictionary.Open("existing.dict")
-b, _ := d.Builder()
-
-b.AddLemma("новое_слово", "NOUN")
-b.AddForm(/* ... */)
-
-d2 := b.Compile()
-d2.SaveTo("extended.dict")
-```
-
-### Примечания
-
-- Формат файла един для словарей из XML и программно созданных.
-- Builder непотокобезопасен — используйте из одной горутины.
-- Чтение Dictionary потокобезопасно после компиляции.
+Пакет не определяет собственных экспортируемых ошибок (`Err...`) —
+все функции возвращают обёрнутые (`fmt.Errorf("...: %w", err)`) ошибки
+нижележащего слоя (файловая система, разбор формата и т.п.). Проверяйте
+`err != nil` и, если нужно отличить конкретную причину, разворачивайте
+через `errors.Is`/`errors.As` на известные ошибки стандартной
+библиотеки (например, `os.ErrNotExist`).

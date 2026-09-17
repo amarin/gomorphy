@@ -13,10 +13,11 @@ at runtime; native Windows mmap support is tracked in `docs/todo.md`.
 
 - **Exact lookup** — all grammatical readings of a wordform (POS, case, number, ...)
 - **Lemma resolution** — initial form + base tags for any wordform
-- **Fuzzy search** — Levenshtein automaton over a CSR trie, rune-level metrics
+- **Fuzzy search** — Levenshtein automaton over a paradigm/DAWG trie, rune-level metrics
 - **Nearest-N** — iterative distance widening to find the true N closest words
-- **Programmatic building** — create dictionaries in memory without XML
-- **Compact binary format** — delta/varint encoding, mmap-backed, ~300 MB for the full OpenCorpora dictionary
+- **Multiple dictionaries at once** — `MultiDictionary` aggregates Parse/Lemma/Fuzzy across several open dictionaries
+- **Multiple sources** — pymorphy2 (as-is or recompiled with a dense alphabet) and OpenCorpora `dict.xml`
+- **Compact binary format** — sectioned, mmap-backed: ~13 MB for the full OpenCorpora dictionary (source `dict.xml` is ~400 MB)
 
 ## Quick start
 
@@ -36,30 +37,32 @@ gomorphy lookup -d .data/opencorpora/opencorpora.dat кота
 | Document | Description |
 |----------|-------------|
 | [docs/installation.md](docs/installation.md) | Установка библиотеки и CLI-утилит |
-| [docs/cli.md](docs/cli.md) | Использование CLI: lookup, lemmas, fuzzy, top |
-| [docs/library.md](docs/library.md) | Программное использование: подключение словаря, поиск, создание собственных словарей |
+| [docs/cli.md](docs/cli.md) | Использование CLI: lookup, lemmas, fuzzy, top, download, build, update |
+| [docs/library.md](docs/library.md) | Программное использование: открытие словаря, поиск, MultiDictionary |
 | [docs/mcp.md](docs/mcp.md) | Почему нет встроенного MCP-сервера |
+| [docs/index.md](docs/index.md) | Полный указатель документации проекта |
 
 ## Project structure
 
 ```
-cmd/gomorphy           CLI: lookup, lemmas, fuzzy, top, download, unpack, build, update
-pkg/dictionary         public API (Open, Lookup, Lemmas, Fuzzy, FuzzyTop, Builder)
-internal/build         Builder + CSR snapshot
-internal/format        sectioned binary format (varint/delta, xxh3 checksums)
-internal/xmlscan       streaming dict.xml parser
-internal/intern        string interning table (zero-alloc on hit)
-internal/stringsx      byte arena + offset table
-internal/mmapx         mmap reader
-pkg/opencorpora        OpenCorpora download/unpack
+cmd/gomorphy               CLI: lookup, lemmas, fuzzy, top, cli, download, unpack, build, update
+pkg/morphology              public API (Open, OpenPyMorphy, CompileFromXML, Parse, Lemma, Fuzzy, MultiDictionary)
+pkg/morphology/internal     TagSet + Paradigm + DAWG + sectioned binary format (not for direct use)
+pkg/morphology/tagmap       native tag -> universal (UniMorph) feature bundle normalizer
+pkg/morphology/importers    pymorphy2 and OpenCorpora dict.xml importers
+pkg/opencorpora             OpenCorpora dict.xml download/unpack
+pkg/pymorphy                pymorphy2-dicts-ru (PyPI) download/unpack
+internal/xmlscan            streaming dict.xml parser
+internal/mmapx              mmap reader
 ```
 
 ## Building from source
 
 ```bash
-make build          # compile CLI binaries
-make lint           # golangci-lint
-make test           # go test -race ./...
+make build              # compile CLI binaries
+make lint                # golangci-lint
+make test                # go test -race ./...
+make test-integration    # + integration tests (needs real dictionary data, see docs/todo.md)
 ```
 
 ## License

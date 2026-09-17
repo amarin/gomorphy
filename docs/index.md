@@ -41,18 +41,35 @@
 - [Исправление минимизации DAWG (баг в chainSig)](implementation/dawg-minimization-fix.md)
 - [Этап 17. Сужение типов ID + формат-задел под сжатие](implementation/stage-17-optimize.md)
 - [Секция info: метаданные сборки словаря](implementation/info-section.md)
-- [Этап 18. Финализация: CLI, документация, тесты (план)](implementation/stage-18-finalize.md)
+- [Ревью кода перед 1.0.0: разбор находок + оба критических бага](implementation/code-review-pre-1.0-triage.md)
+- [Multi-dict: `morphology.MultiDictionary`](implementation/multi-dict.md)
+- [Плотный 1-байтовый DAWG-алфавит для pymorphy2](implementation/pymorphy2-dense-alphabet.md)
+- [Источник pymorphy2 (`pkg/pymorphy`) и интеграция в CLI `gomorphy`](implementation/pymorphy-source-and-cli.md)
+- [Универсальный маппинг тегов между словарями (`pkg/morphology/tagmap`)](implementation/tag-mapping.md)
+- [Этап 18. Финализация: документация, тесты (план)](implementation/stage-18-finalize.md)
 - [Этап 19. Тематические словари: TSV-импорт, CLI-батчи, навыки, решение по MCP](todo.md)
 - [Этап 20. База синонимов: группы, теги, sidecar-файл](todo.md)
 
+## Использование
+
+- [CLI: gomorphy](cli.md)
+- [Программное использование библиотеки](library.md)
+- [Установка](installation.md)
+
 ## Ревью и находки
 
-- [Ревью кода перед 1.0.0](code-review-pre-1.0.md)
+- [Ревью кода перед 1.0.0 (полный отчёт)](code-review-pre-1.0.md)
 
 ## Исследования
 
 - [Плотность упаковки DAWG при плотном алфавите меток](research/0001-dawg-alphabet-density.md)
 - [Бинарное кодирование парадигм и списка тегов вместо текста](research/0002-paradigm-tagset-binary-encoding.md)
+- [Сравнительные парадигмы не мержились (Cmp2/«по-»)](research/0003-comparative-paradigms-not-merging.md)
+- [Плотный DAWG-алфавит с payload](research/0004-dawg-dense-alphabet-with-payload.md)
+- [Стоимость полного обхода pymorphy2 words.dawg](research/0005-pymorphy2-full-dawg-walk-cost.md)
+- [План импорта UniMorph](research/0006-unimorph-import-plan.md)
+- [План импорта Universal Dependencies](research/0007-universal-dependencies-import-plan.md)
+- [Оценка реализуемости экспорта словарей (pymorphy2/OpenCorpora)](research/0008-dictionary-export-feasibility.md)
 
 ## Решения
 
