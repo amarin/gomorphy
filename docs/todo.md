@@ -851,6 +851,7 @@ TSV-импорт) уже заложены **opaque-теги** — произво
   (дизайн обсуждается там же) отдаёт `Reading.Tag` как есть, тегом
   породившего словаря, без нормализации; если маппинг появится, он
   логично встраивается именно в этот путь.
+
 **Открытые вопросы — решены 2026-09-17, см.
 [docs/superpowers/specs/2026-09-17-tag-mapping-design.md](superpowers/specs/2026-09-17-tag-mapping-design.md)
 и [docs/research/0008-dictionary-export-feasibility.md](research/0008-dictionary-export-feasibility.md):**
