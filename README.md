@@ -2,12 +2,12 @@
 
 Morphological analysis library for Russian, powered by OpenCorpora dictionary.
 
-Go reimplementation of PyMorphy2 with a compact binary format, mmap loading and
-zero-allocation lookups.
+Go reimplementation of [pymorphy2](https://github.com/pymorphy2/pymorphy2)
+with a compact binary format, mmap loading and zero-allocation lookups.
 
 **Platforms**: Unix only (Linux, macOS, BSD) — dictionary loading uses
 `syscall.Mmap`. Windows builds compile but `morphology.Open` returns an error
-at runtime; native Windows mmap support is tracked in `docs/todo.md`.
+at runtime; native Windows mmap support is tracked in `docs/en/todo.md`.
 
 ## Features
 
@@ -25,22 +25,42 @@ at runtime; native Windows mmap support is tracked in `docs/todo.md`.
 # Install
 go install github.com/amarin/gomorphy/cmd/gomorphy@latest
 
-# Download and compile dictionary
-gomorphy update opencorpora
+# Download and compile a dictionary (pymorphy2-dicts-ru, from PyPI)
+gomorphy update pymorphy
 
 # Query
-gomorphy lookup -d .data/opencorpora/opencorpora.dat кота
+gomorphy lookup -d .data/pymorphy/pymorphy.dat кота
 ```
+
+> **Note:** `gomorphy update opencorpora` (downloading `dict.opcorpora.xml.bz2`
+> from opencorpora.org) is also supported, but opencorpora.org is currently
+> unreachable and its continued availability is not guaranteed — `pymorphy`
+> is the recommended source for new setups. See [docs/en/cli.md](docs/en/cli.md).
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [docs/installation.md](docs/installation.md) | Установка библиотеки и CLI-утилит |
-| [docs/cli.md](docs/cli.md) | Использование CLI: lookup, lemmas, fuzzy, top, download, build, update |
-| [docs/library.md](docs/library.md) | Программное использование: открытие словаря, поиск, MultiDictionary |
-| [docs/mcp.md](docs/mcp.md) | Почему нет встроенного MCP-сервера |
-| [docs/index.md](docs/index.md) | Полный указатель документации проекта |
+Full documentation (English): **[docs/en/index.md](docs/en/index.md)**.
+Minimal Russian subset (installation/CLI/library basics only):
+[docs/ru/index.md](docs/ru/index.md).
+
+| Document | English | Русский |
+|----------|---------|---------|
+| Installation | [docs/en/installation.md](docs/en/installation.md) | [docs/ru/installation.md](docs/ru/installation.md) |
+| CLI: lookup, lemmas, fuzzy, top, download, build, update | [docs/en/cli.md](docs/en/cli.md) | [docs/ru/cli.md](docs/ru/cli.md) |
+| Programmatic use: opening a dictionary, lookups, MultiDictionary | [docs/en/library.md](docs/en/library.md) | [docs/ru/library.md](docs/ru/library.md) |
+| Why there's no built-in MCP server | [docs/en/mcp.md](docs/en/mcp.md) | [docs/ru/mcp.md](docs/ru/mcp.md) |
+| Roadmap, implementation history, research, design specs | [docs/en/todo.md](docs/en/todo.md) | — (English only) |
+
+## Related projects
+
+Other Go implementations of Russian morphological analysis:
+
+- [jus1d/gomorphy](https://github.com/jus1d/gomorphy)
+- [AlexMaxy/gomorphy](https://github.com/AlexMaxy/gomorphy)
+- [SteosOfficial/SteosMorphy](https://github.com/SteosOfficial/SteosMorphy)
+
+A feature/architecture comparison against these is tracked in
+[docs/en/todo.md](docs/en/todo.md).
 
 ## Project structure
 
@@ -62,7 +82,7 @@ internal/mmapx              mmap reader
 make build              # compile CLI binaries
 make lint                # golangci-lint
 make test                # go test -race ./...
-make test-integration    # + integration tests (needs real dictionary data, see docs/todo.md)
+make test-integration    # + integration tests (needs real dictionary data, see docs/en/todo.md)
 ```
 
 ## License

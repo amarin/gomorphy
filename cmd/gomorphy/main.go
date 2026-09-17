@@ -1,3 +1,7 @@
+// Command gomorphy is the CLI for morphological analysis over dictionaries
+// compiled into the unified GMOR format (lookup/lemmas/fuzzy/top), plus
+// utilities to download, unpack, and build dictionaries from their sources
+// (opencorpora, pymorphy2). See docs/cli.md for the full command reference.
 package main
 
 import (
@@ -10,7 +14,7 @@ import (
 func main() {
 	root := &cobra.Command{
 		Use:   "gomorphy",
-		Short: "gomorphy — морфологический анализ слов по словарям в едином формате (GMOR)",
+		Short: "gomorphy - morphological analysis over dictionaries in a unified format (GMOR)",
 	}
 	root.SilenceErrors = true
 	root.SilenceUsage = true

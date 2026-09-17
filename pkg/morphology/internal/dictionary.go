@@ -1,3 +1,7 @@
+// Package internal holds gomorphy's internal dictionary representation and
+// on-disk format: TagSet, Paradigm, the DAWG engine and builder, and the
+// sectioned GMOR container format. Not part of the public API — external
+// code should use pkg/morphology instead.
 package internal
 
 // Dictionary — иммутабельный снимок словаря.

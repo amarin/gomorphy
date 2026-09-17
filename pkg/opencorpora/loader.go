@@ -1,3 +1,7 @@
+// Package opencorpora downloads and unpacks the OpenCorpora dictionary
+// source archive (dict.opcorpora.xml.bz2 from opencorpora.org).
+// Compilation/loading of the unpacked dict.xml is handled externally via
+// pkg/morphology (CompileFromXML/CompileFromXMLFile).
 package opencorpora
 
 import (
