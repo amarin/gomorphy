@@ -43,7 +43,8 @@ type Feature struct {
 // assert.Equal, independent of source token order. Unmapped holds,
 // verbatim and in encounter order, every input token that had no entry
 // in the source's mapping table — never merged into Features, never
-// dropped silently.
+// dropped silently. If two tokens both map to the same Dimension, the
+// later token's Feature silently replaces the earlier one (later wins).
 type Bundle struct {
 	Features []Feature
 	Unmapped []string
@@ -55,8 +56,8 @@ type Bundle struct {
 // result's Features is sorted by Dimension's declaration order.
 func buildBundle(tokens []string, table map[string]Feature) Bundle {
 	var (
-		byDim map[Dimension]Feature
-		order []Dimension
+		byDim    map[Dimension]Feature
+		order    []Dimension
 		unmapped []string
 	)
 

@@ -64,8 +64,8 @@ func TestBuildBundleTwoSourcesSameMeaningCompareEqual(t *testing.T) {
 		"sing": {DimNumber, "SG"},
 	}
 	tableB := map[string]Feature{
-		"N_TAG":   {DimPartOfSpeech, "N"},
-		"SG_TAG":  {DimNumber, "SG"},
+		"N_TAG":  {DimPartOfSpeech, "N"},
+		"SG_TAG": {DimNumber, "SG"},
 	}
 
 	a := buildBundle([]string{"NOUN", "sing"}, tableA)
