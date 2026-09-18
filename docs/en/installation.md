@@ -1,70 +1,70 @@
-# Установка
+# Installation
 
-## Требования
+## Requirements
 
 - Go 1.27.1+
-- ОС: Linux, macOS (amd64/arm64); Windows не поддерживается — библиотека
-  использует mmap через пакет `syscall` напрямую (см.
+- OS: Linux, macOS (amd64/arm64); Windows is not supported — the library
+  uses mmap directly through the `syscall` package (see
   `docs/code-review-pre-1.0.md`)
 
-## Установка CLI-утилиты
+## Installing the CLI utility
 
 ```bash
 go install github.com/amarin/gomorphy/cmd/gomorphy@latest
 ```
 
-Утилита будет доступна в `$GOPATH/bin` (убедитесь, что директория добавлена в `$PATH`).
+The utility will be available in `$GOPATH/bin` (make sure that directory is on your `$PATH`).
 
-`gomorphy` — единый бинарь: морфологический анализ по скомпилированному
-словарю (`lookup`/`lemmas`/`fuzzy`/`top`, интерактивная консоль `cli`), а
-также загрузка, распаковка и компиляция исходных словарей
+`gomorphy` is a single binary: morphological analysis against a compiled
+dictionary (`lookup`/`lemmas`/`fuzzy`/`top`, interactive `cli` console), as
+well as downloading, unpacking, and compiling source dictionaries
 (`download`/`unpack`/`build`/`update`).
 
-Подробнее → [cli.md](cli.md).
+More details -> [cli.md](cli.md).
 
-## Установка как Go-библиотеки
+## Installing as a Go library
 
 ```bash
 go get github.com/amarin/gomorphy/pkg/morphology
 ```
 
-Импорт в коде:
+Import in code:
 
 ```go
 import "github.com/amarin/gomorphy/pkg/morphology"
 ```
 
-Подробнее о публичном API → [library.md](library.md).
+More details on the public API -> [library.md](library.md).
 
-## Сборка из исходников
+## Building from source
 
 ```bash
 git clone https://github.com/amarin/gomorphy.git
 cd gomorphy
-make build     # скомпилирует CLI-утилиту в ./deploy/
+make build     # builds the CLI utility into ./deploy/
 ```
 
-Доступные цели Makefile:
+Available Makefile targets:
 
-| Цель | Описание |
+| Target | Description |
 |------|----------|
-| `make build` | Сборка CLI-утилиты (`gomorphy`) в `./deploy/` |
-| `make update` | Собрать `gomorphy` и выполнить полный цикл: скачать + распаковать + собрать словарь OpenCorpora (`gomorphy update opencorpora`) |
-| `make compile` | Собрать `gomorphy` и скомпилировать уже распакованный `dict.xml` (`gomorphy build opencorpora`) |
-| `make test` | Запуск unit-тестов с детектором гонок |
-| `make test-integration` | Интеграционные тесты (`-tags integration`; часть требует сеть и реальные данные OpenCorpora в `.data/`) |
+| `make build` | Build the CLI utility (`gomorphy`) into `./deploy/` |
+| `make update` | Build `gomorphy` and run the full cycle: download + unpack + build the OpenCorpora dictionary (`gomorphy update opencorpora`) |
+| `make compile` | Build `gomorphy` and compile an already-unpacked `dict.xml` (`gomorphy build opencorpora`) |
+| `make test` | Run unit tests with the race detector |
+| `make test-integration` | Integration tests (`-tags integration`; some require network access and real OpenCorpora data in `.data/`) |
 | `make lint` | golangci-lint |
-| `make clean` | Удаление артефактов сборки (`./deploy/`) |
+| `make clean` | Remove build artifacts (`./deploy/`) |
 
-## Загрузка словаря OpenCorpora
+## Downloading the OpenCorpora dictionary
 
-После сборки (`make build`) загрузите и соберите словарь:
+After building (`make build`), download and build the dictionary:
 
 ```bash
 ./deploy/gomorphy update opencorpora
 ```
 
-Результат: файл `.data/opencorpora/opencorpora.dat` (десятки МБ, зависит
-от версии `dict.xml`).
+Result: the file `.data/opencorpora/opencorpora.dat` (tens of MB, depending
+on the `dict.xml` version).
 
-Подробнее о работе со словарём через CLI → [cli.md](cli.md).
+More details on working with the dictionary via the CLI -> [cli.md](cli.md).

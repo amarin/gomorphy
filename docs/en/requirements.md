@@ -1,149 +1,152 @@
-# Требования к библиотеке gomorphy
+# gomorphy library requirements
 
-## Контекст
+## Context
 
-Библиотека морфологического анализа на основе словарей OpenCorpora (`dict.xml`)
-и PyMorphy2 (скомпилированные `words.dawg` + `paradigms.array`). Поддержка
-множественных источников морфологии с разными наборами грамматических тегов.
-Библиотека не управляет параллельными словарями — пользователь создаёт и
-закрывает экземпляры `Dictionary` самостоятельно (FT9).
+A morphological analysis library based on the OpenCorpora (`dict.xml`)
+and PyMorphy2 (compiled `words.dawg` + `paradigms.array`) dictionaries.
+Supports multiple morphology sources with different grammatical tag
+sets. The library doesn't manage concurrent dictionaries — the user
+creates and closes `Dictionary` instances themselves (FT9).
 
-Опорные метрики словаря OpenCorpora (замерено на `dict.xml`, rev 417257):
+Reference metrics for the OpenCorpora dictionary (measured on
+`dict.xml`, rev 417257):
 
-| Сущность | Значение |
+| Entity | Value |
 |---|---|
-| Леммы | 391 842 (уникальных текстов: 380 900) |
-| Строк словоформ `<f>` | 5 141 267 |
-| Всего атрибутированных строк (`l`+`f`) | 5 533 109 |
-| Уникальных текстов словоформ | 3 065 312 (~77,6 МБ UTF-8) |
-| Уникальных наборов граммем («анкодов») | 876 |
-| Уникальных пар (текст, анкод) | 5 393 737 |
-| Ссылок / типов ссылок / граммем | 258 650 / 27 / ~120 |
+| Lemmas | 391,842 (unique texts: 380,900) |
+| Wordform `<f>` lines | 5,141,267 |
+| Total attributed lines (`l`+`f`) | 5,533,109 |
+| Unique wordform texts | 3,065,312 (~77.6 MB UTF-8) |
+| Unique grammeme sets ("ancodes") | 876 |
+| Unique (text, ancode) pairs | 5,393,737 |
+| Links / link types / grammemes | 258,650 / 27 / ~120 |
 
-Опорные метрики словаря PyMorphy2 (pymorphy2-dicts-ru):
+Reference metrics for the PyMorphy2 dictionary (pymorphy2-dicts-ru):
 
-| Сущность | Значение |
+| Entity | Value |
 |---|---|
-| Лексемы (словарные статьи) | ~400 000 |
-| Слов в DAWG | ~5 000 000 |
-| Уникальных парадигм | ~3 000 |
-| Уникальных суффиксов | ~5 000 |
-| Размер на диске (всё) | ~19 МБ |
-| Размер в памяти (всё) | ~15 МБ |
+| Lexemes (dictionary entries) | ~400,000 |
+| Words in the DAWG | ~5,000,000 |
+| Unique paradigms | ~3,000 |
+| Unique suffixes | ~5,000 |
+| On-disk size (all) | ~19 MB |
+| In-memory size (all) | ~15 MB |
 
-## Функциональные требования
+## Functional requirements
 
-### FT1 — быстрое заполнение памяти из dict.xml
-Чтение `dict.xml` с минимальным числом аллокаций. Специализированный сканер
-фиксированной схемы (`internal/xmlscan`) без generic XML-парсера.
-Метрика успеха: сборка полного словаря без роста GC-давления, крупные
-выделения памяти только под итоговые структуры.
+### FT1 — fast in-memory loading from dict.xml
+Reading `dict.xml` with a minimal number of allocations. A
+specialized, fixed-schema scanner (`internal/xmlscan`), no generic XML
+parser. Success metric: building the full dictionary with no growth in
+GC pressure, with large allocations only for the final structures.
 
-### FT2 — быстрая выборка параметров словоформы
-Получение грамматических характеристик словоформы без аллокаций на запросе.
-В новом формате: обход DAWG до финального состояния → `(para_id, form_idx)`
-→ индексная арифметика по парадигме → суффикс + тег. O(len) обход + O(1)
-восстановление текста.
+### FT2 — fast wordform attribute lookup
+Getting a wordform's grammatical characteristics with no per-query
+allocations. In the new format: traversing the DAWG to a final state
+-> `(para_id, form_idx)` -> index arithmetic over the paradigm ->
+suffix + tag. O(len) traversal + O(1) text reconstruction.
 
-### FT3 — быстрая запись и чтение скомпилированного словаря
-Файл компилированного словаря: чтение — mmap (или крупноблочное чтение)
-+ разрезание по секциям каталога. Формат совместим с форматом PyMorphy2
-(`words.dawg` + `paradigms.array` + `suffixes.json` + `gramtab-*.json`)
-или является расширением этого формата с дополнительными секциями.
+### FT3 — fast writing and reading of a compiled dictionary
+The compiled dictionary file: reads via mmap (or a large-block read) +
+slicing by the catalog's sections. The format is compatible with
+PyMorphy2's format (`words.dawg` + `paradigms.array` +
+`suffixes.json` + `gramtab-*.json`) or is an extension of it with
+additional sections.
 
-### FT4 — минимизация размера скомпилированного словаря
-Парадигмы + DAWG обеспечивают базовое сжатие (~15 МБ для русского).
-Дополнительно: zstd-сжатие холодных секций, сужение типов ID (uint16/uint8).
-Ориентир: 15–25 МБ без zstd, 8–15 МБ с zstd.
+### FT4 — minimizing the compiled dictionary's size
+Paradigms + a DAWG provide baseline compression (~15 MB for Russian).
+Additionally: zstd-compressing the cold sections, narrowing ID types
+(uint16/uint8). Target: 15-25 MB without zstd, 8-15 MB with zstd.
 
-### FT5 — начальная форма по заданной словоформе
-Начальная форма вычисляется из парадигмы: `stem + suffix[form_idx=0]`.
-Поиск лемм: DAWG → `(para_id, form_idx)` → `stem + suffix[0]`.
-Для слов с несколькими леммами (омонимия): все варианты из DAWG-значений.
+### FT5 — the base form for a given wordform
+The base form is computed from the paradigm: `stem +
+suffix[form_idx=0]`. Lemma lookup: DAWG -> `(para_id, form_idx)` ->
+`stem + suffix[0]`. For words with several lemmas (homonymy): every
+variant from the DAWG's values.
 
-### FT6 — нечёткий поиск
-Поиск слов с расстоянием Левенштейна ≤ k. Совместный обход DAWG и DFA
-Левенштейна с отсечением по порогу. Метрика по рунам (не по байтам).
-Результаты упорядочены по (дистанция, слово). Для FuzzyTop — итеративное
-расширение дистанции.
+### FT6 — fuzzy search
+Finding words within Levenshtein distance <= k. A joint traversal of
+the DAWG and a Levenshtein DFA, pruned by the threshold. A rune-level
+metric (not byte-level). Results ordered by (distance, word). For
+FuzzyTop — iterative distance widening.
 
-### FT7 — библиотечный сценарий обновления словарей
-Полный цикл: загрузка → компиляция → запись на диск → загрузка с диска.
-Поддержка двух источников:
-- OpenCorpora: `dict.xml.bz2` → сканирование → извлечение парадигм → DAWG → .dat
-- PyMorphy2: директория с `words.dawg` + `paradigms.array` → прямая загрузка
-  или конвертация в единый формат.
+### FT7 — the library's dictionary-update scenario
+The full cycle: download -> compile -> write to disk -> load from
+disk. Support for two sources:
+- OpenCorpora: `dict.xml.bz2` -> scanning -> paradigm extraction -> DAWG -> .dat
+- PyMorphy2: a directory with `words.dawg` + `paradigms.array` -> a
+  direct load or conversion into the unified format.
 
-### FT8 — программное создание и наполнение словарей
-Builder API: `AddGrammeme`, `AddLemma`, `AddForm` → `Compile` → `SaveTo`.
-Формат файла един для словарей из всех источников.
+### FT8 — programmatically creating and populating dictionaries
+Builder API: `AddGrammeme`, `AddLemma`, `AddForm` -> `Compile` ->
+`SaveTo`. The file format is the same for dictionaries from every source.
 
-### FT9 — потокобезопасность чтения
-Иммутабельный снимок после загрузки/компиляции. Чтение конкурентно безопасно
-без блокировок. Один экземпляр `Dictionary` — один язык/источник.
-Несколько словарей — несколько экземпляров (управление на стороне вызывающего).
-Сборка (Builder) — непотокобезопасна, один писатель.
+### FT9 — thread safety for reads
+An immutable snapshot after loading/compiling. Reads are
+concurrency-safe with no locks. One `Dictionary` instance is one
+language/source. Several dictionaries are several instances (managed
+by the caller). The Builder isn't thread-safe — a single writer.
 
-### FT10 — независимость от языка
-Внутренний формат не содержит логики, специфичной для конкретного языка.
-Обработка буквы Ё, правила склонения, набор граммем — всё определяется
-конфигурацией словаря (TagSet + CharPolicy), а не кодом библиотеки.
-Поддерживаются словари разных языков (русский, украинский, английский и т.д.)
-с произвольными наборами грамматических тегов.
+### FT10 — language independence
+The internal format contains no language-specific logic. Handling the
+letter Ё, inflection rules, the grammeme set — all of this is defined
+by the dictionary's configuration (TagSet + CharPolicy), not by the
+library's code. Dictionaries for different languages (Russian,
+Ukrainian, English, etc.) are supported with arbitrary grammatical tag sets.
 
-### FT11 — импорт из разных форматов
-Библиотека предоставляет импортёры для разных источников:
-- OpenCorpora XML (`dict.xml`) — извлечение парадигм из лемм
-- PyMorphy2 (`words.dawg` + `paradigms.array`) — прямое чтение
-- Программный API (Builder) — наполнение вручную
+### FT11 — importing from different formats
+The library provides importers for different sources:
+- OpenCorpora XML (`dict.xml`) — extracting paradigms from lemmas
+- PyMorphy2 (`words.dawg` + `paradigms.array`) — reading directly
+- The programmatic API (Builder) — populating by hand
 
-Импортёр конвертирует источник во внутренний формат. Формат на диске
-единый, независимо от источника.
+An importer converts a source into the internal format. The on-disk
+format is the same regardless of the source.
 
-### FT12 — нормализация наборов тегов
-Разные источники морфологии используют разные наборы граммем:
+### FT12 — normalizing tag sets
+Different morphology sources use different grammeme sets:
 - OpenCorpora: `NOUN,anim,masc,sing,nomn`
-- Другие системы: `S,animate,masculine,singular,nominative`
-- Пользовательские: произвольные строки
+- Other systems: `S,animate,masculine,singular,nominative`
+- Custom ones: arbitrary strings
 
-Библиотека хранит теги как opaque строки. TagSet определяет маппинг
-из исходного набора в канонический. Неизвестные теги сохраняются как есть.
+The library stores tags as opaque strings. TagSet defines the mapping
+from a source's set into the canonical one. Unknown tags are kept as-is.
 
-## Влияние требований на реализацию
+## Requirements' impact on the implementation
 
-- **FT1** → переиспользование `internal/xmlscan` (сканер dict.xml)
-- **FT2** → DAWG + парадигмы: обход DAWG O(len) → индексная арифметика O(1)
-- **FT3** → единый формат файла (совместимый или близкий к pymorphy2)
-- **FT4** → парадигмы (~3K шаблонов) + DAWG (минимизированный граф слов)
-- **FT5** → начальная форма = `stem + suffix[0]` из парадигмы
-- **FT6** → Levenshtein-over-DAWG (совместный обход)
-- **FT7** → два импортёра (OpenCorpora XML, PyMorphy2) + Builder API
-- **FT8** → Builder: AddGrammeme/AddLemma/AddForm → paradigm extraction → DAWG
-- **FT9** → иммутабельный снимок, нет глобальных состояний, несколько экземпляров
-- **FT10** → CharPolicy (набор подменяемых символов) — конфигурируется per-словарь
-- **FT11** → `pkg/morphology/importers/` — отдельные пакеты для каждого формата
-- **FT12** → `pkg/morphology/tags` — TagSet с маппингом имён
+- **FT1** -> reusing `internal/xmlscan` (the dict.xml scanner)
+- **FT2** -> paradigms + a DAWG: an O(len) DAWG traversal -> O(1) index arithmetic
+- **FT3** -> a unified file format (compatible with or close to pymorphy2's)
+- **FT4** -> paradigms (~3K templates) + a DAWG (a minimized word graph)
+- **FT5** -> the base form = `stem + suffix[0]` from the paradigm
+- **FT6** -> Levenshtein-over-DAWG (a joint traversal)
+- **FT7** -> two importers (OpenCorpora XML, PyMorphy2) + the Builder API
+- **FT8** -> Builder: AddGrammeme/AddLemma/AddForm -> paradigm extraction -> DAWG
+- **FT9** -> an immutable snapshot, no global state, several instances
+- **FT10** -> CharPolicy (a set of substitutable characters) — configured per dictionary
+- **FT11** -> `pkg/morphology/importers/` — a separate package per format
+- **FT12** -> `pkg/morphology/tags` — TagSet with name mapping
 
-## Архитектура (слоистая модель)
+## Architecture (a layered model)
 
 ```
 ┌─────────────────────────────────────────────────┐
 │  CLI (cmd/gomorphy)                             │
-│  интерактивный режим + CLI-аргументы             │
+│  interactive mode + CLI arguments                │
 │  lookup/fuzzy/top/lemmas/import                  │
 └────────────────┬────────────────────────────────┘
                  │
 ┌────────────────▼────────────────────────────────┐
 │  Public API (pkg/morphology)                    │
 │  Dictionary: Open/Import/Parse/Lemma/Fuzzy/Close │
-│  иммутабельный, потокобезопасный при чтении      │
+│  immutable, thread-safe for reads                │
 └────────────────┬────────────────────────────────┘
                  │
 ┌────────────────▼────────────────────────────────┐
 │  Internal format (pkg/morphology/internal)      │
-│  paradigm + DAWG (единый для всех языков)        │
-│  TagSet: нормализация тегов                      │
-│  CharPolicy: подмены символов (Ё и т.д.)        │
+│  paradigm + DAWG (unified across all languages)  │
+│  TagSet: tag normalization                       │
+│  CharPolicy: character substitutions (Ё, etc.)   │
 └────────────────┬────────────────────────────────┘
                  │
 ┌────────────────▼────────────────────────────────┐
@@ -153,17 +156,17 @@ Builder API: `AddGrammeme`, `AddLemma`, `AddForm` → `Compile` → `SaveTo`.
 └─────────────────────────────────────────────────┘
 ```
 
-## Переиспользуемый код (из текущей реализации)
+## Reusable code (from the current implementation)
 
-| Пакет | Статус | Использование |
+| Package | Status | Usage |
 |---|---|---|
-| `internal/xmlscan` | Переиспользуется | Сканер dict.xml для импортёра OpenCorpora |
-| `internal/intern` | Переиспользуется | Интернирование строк (суффиксы, префиксы) |
-| `internal/stringsx` | Переиспользуется | Строковая арена (при компиляции) |
-| `internal/mmapx` | Переиспользуется | mmap-ридер для чтения .dat файлов |
-| `pkg/opencorpora` | Переиспользуется | Загрузка/распаковка dict.xml.bz2 |
-| `cmd/gomorphy` | Адаптируется | CLI: новые команды (import), multi-dict |
-| `cmd/opencorpora_update` | Адаптируется | CLI: объединение с import |
-| `internal/build` | **Заменяется** | Новая модель: paradigm + DAWG |
-| `internal/format` | **Заменяется** | Новый формат файла |
-| `pkg/dictionary` | **Заменяется** | Новый публичный фасад |
+| `internal/xmlscan` | Reused | The dict.xml scanner, for the OpenCorpora importer |
+| `internal/intern` | Reused | String interning (suffixes, prefixes) |
+| `internal/stringsx` | Reused | The string arena (during compilation) |
+| `internal/mmapx` | Reused | An mmap reader for `.dat` files |
+| `pkg/opencorpora` | Reused | Downloading/unpacking dict.xml.bz2 |
+| `cmd/gomorphy` | Adapted | CLI: new commands (import), multi-dict |
+| `cmd/opencorpora_update` | Adapted | CLI: merged with import |
+| `internal/build` | **Replaced** | The new model: paradigm + DAWG |
+| `internal/format` | **Replaced** | The new file format |
+| `pkg/dictionary` | **Replaced** | The new public facade |

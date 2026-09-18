@@ -7,8 +7,8 @@ import (
 	"sort"
 )
 
-// BuildDAWGWithValuesProgress строит DAWG с прогресс-отчётами.
-// progress вызывается periodically с (processed, total) — total=len(keys).
+// BuildDAWGWithValuesProgress builds a DAWG with progress reporting.
+// progress is called periodically with (processed, total) — total=len(keys).
 func BuildDAWGWithValuesProgress(keys []string, values []uint32, progress func(processed, total int)) (*DAWG, error) {
 	if len(keys) != len(values) {
 		return nil, fmt.Errorf("dawg: keys and values must have same length")
@@ -23,11 +23,11 @@ func BuildDAWGWithValuesProgress(keys []string, values []uint32, progress func(p
 		payloadKeys[i] = k + string([]byte{PayloadSeparator}) + base64.StdEncoding.EncodeToString(b)
 	}
 
-	// Phase 2: sort — один раз, без progress (пользователь видит это как "подготовка").
+	// Phase 2: sort — once, no progress (the user sees this as "preparing").
 	sort.Strings(payloadKeys)
 
 	// Phase 3: build list-form DAWG (insertion + merging).
-	// Это самая медленная фаза — отчёт каждые 1% ключей.
+	// This is the slowest phase — report every 1% of keys.
 	b := newDawgBuilder()
 
 	// Progress every 1% of keys, but at least every 1000 keys.

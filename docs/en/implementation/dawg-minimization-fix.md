@@ -1,40 +1,43 @@
-# Исправление: минимизация DAWG не работала (баг в chainSig) — ВЫПОЛНЕНО
+# Fix: DAWG minimization was not working (bug in chainSig) — DONE
 
-> Перенесено из `docs/todo.md` при уборке документации (2026-09-14).
+> Moved from `docs/todo.md` during the documentation cleanup (2026-09-14).
 
-## Проблема
+## Problem
 
-При подготовке Этапа 17 (сжатие «холодных» секций) замер секций
-реального `.dat` показал, что `words.dawg` — 99.33% файла (425.8 МБ из
-428.7 МБ), а double-array раскладка занимала 70 968 276 слотов при
-3 065 312 узлах трая (плотность ~4.3%). Причина оказалась глубже
-плотности упаковки: `chainSig` (`dawgbuild.go`) кодировала в подпись
-цепочки братьев id **самого узла** вместо id его **ребёнка**
-(комментарий над функцией прямо говорил «ребёнок сравнивается по id»,
-код сравнивал не ребёнка). Id узла всегда свежий/уникальный, поэтому
-подписи двух структурно идентичных суффиксных цепочек никогда не
-совпадали — `register` не находил совпадений вообще (0 срабатываний из
-35 484 001 на полном словаре), минимизация суффиксов не работала, и
-DAWG фактически собирался как неминимизированный trie.
+While preparing Stage 17 (compressing "cold" sections), measuring the
+sections of the real `.dat` showed that `words.dawg` was 99.33% of the
+file (425.8 MB out of 428.7 MB), and the double-array layout occupied
+70,968,276 slots for 3,065,312 trie nodes (density ~4.3%). The cause
+turned out to run deeper than packing density: `chainSig`
+(`dawgbuild.go`) encoded the id of the node **itself** into the
+sibling-chain signature instead of the id of its **child** (the
+comment above the function literally said "the child is compared by
+id", but the code compared something else). A node's id is always
+fresh/unique, so the signatures of two structurally identical suffix
+chains never matched — `register` found zero matches at all (0 hits
+out of 35,484,001 on the full dictionary), suffix minimization did not
+work, and the DAWG was effectively built as an unminimized trie.
 
-## Решение
+## Solution
 
-Однострочный фикс — кодировать в подпись `b.nodes[n].first` (id ребёнка)
-вместо `n`. Регрессионный тест `TestBuildDAWGMinimizesSharedSuffixes`
-(`dawgbuild_test.go`) строит DAWG из ключей с общим длинным суффиксом и
-проверяет, что double-array остаётся на порядок меньше
-«неминимизированной» оценки — без фикса тест падает (18 176 слотов
-вместо ожидаемых <3 150).
+A one-line fix: encode `b.nodes[n].first` (the child's id) into the
+signature instead of `n`. The regression test
+`TestBuildDAWGMinimizesSharedSuffixes` (`dawgbuild_test.go`) builds a
+DAWG from keys with a common long suffix and checks that the
+double-array stays an order of magnitude smaller than the
+"unminimized" estimate — without the fix the test fails (18,176 slots
+instead of the expected <3,150).
 
-## Результат (полный `dict.xml`, `gomorphy_build compile`)
+## Result (full `dict.xml`, `gomorphy_build compile`)
 
-| Метрика | До фикса | После фикса |
+| Metric | Before the fix | After the fix |
 |---|---|---|
-| Размер `.dat` (OpenCorpora) | 428.7 МБ | 14.6 МБ (**~29×**) |
-| Слотов double-array | 70 968 276 | ~2М |
-| Плотность упаковки | ~4.3% | ~51% |
+| `.dat` size (OpenCorpora) | 428.7 MB | 14.6 MB (**~29×**) |
+| Double-array slots | 70,968,276 | ~2M |
+| Packing density | ~4.3% | ~51% |
 
-Результаты `lookup`/`fuzzy` идентичны до и после фикса (сверено вручную
-и полным прогоном `go test ./... -race`, 125/125 зелёных). Заодно
-закрывает большую часть исходной цели Этапа 17 (размер `.dat`) без
-zstd и без изменения формата — см. `docs/todo.md`.
+`lookup`/`fuzzy` results are identical before and after the fix
+(verified both manually and with a full `go test ./... -race` run,
+125/125 green). This also closes most of the original Stage 17 goal
+(`.dat` size) without zstd and without changing the format — see
+`docs/en/todo.md`.

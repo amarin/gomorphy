@@ -10,8 +10,8 @@ import (
 	"github.com/amarin/gomorphy/pkg/morphology/internal"
 )
 
-// OpenPyMorphy загружает словарь pymorphy2 из директории (прямое чтение
-// файлов формата pymorphy2) в иммутабельный Dictionary.
+// OpenPyMorphy loads a pymorphy2 dictionary from a directory (a direct read
+// of pymorphy2-format files) into an immutable Dictionary.
 func OpenPyMorphy(dir string) (*Dictionary, error) {
 	d, err := pymorphy2.ImportFromDir(dir)
 	if err != nil {
@@ -20,10 +20,10 @@ func OpenPyMorphy(dir string) (*Dictionary, error) {
 	return &Dictionary{d: d}, nil
 }
 
-// OpenPyMorphyDense — как OpenPyMorphy, но пересобирает words.dawg под
-// плотный 1-байтовый алфавит перед тем, как завернуть словарь в
-// Dictionary (см. pymorphy2.RecompileDense и
-// docs/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md).
+// OpenPyMorphyDense is like OpenPyMorphy, but recompiles words.dawg to a
+// dense 1-byte alphabet before wrapping the dictionary into a Dictionary
+// (see pymorphy2.RecompileDense and
+// docs/en/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md).
 func OpenPyMorphyDense(dir string) (*Dictionary, error) {
 	d, err := pymorphy2.RecompileDense(dir)
 	if err != nil {
@@ -32,8 +32,8 @@ func OpenPyMorphyDense(dir string) (*Dictionary, error) {
 	return &Dictionary{d: d}, nil
 }
 
-// CompileFromXML компилирует словарь OpenCorpora из dict.xml.
-// progress — необязательный callback для вывода прогресса.
+// CompileFromXML compiles an OpenCorpora dictionary from dict.xml.
+// progress is an optional callback for reporting progress.
 func CompileFromXML(r interface{ Read([]byte) (int, error) }, progress opencorpora.Progress) (*Dictionary, error) {
 	d, err := opencorpora.CompileFromXML(r, progress)
 	if err != nil {
@@ -42,7 +42,7 @@ func CompileFromXML(r interface{ Read([]byte) (int, error) }, progress opencorpo
 	return &Dictionary{d: d}, nil
 }
 
-// CompileFromXMLFile открывает path (dict.xml) и вызывает CompileFromXML.
+// CompileFromXMLFile opens path (dict.xml) and calls CompileFromXML.
 func CompileFromXMLFile(path string, progress opencorpora.Progress) (*Dictionary, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -52,12 +52,12 @@ func CompileFromXMLFile(path string, progress opencorpora.Progress) (*Dictionary
 	return CompileFromXML(f, progress)
 }
 
-// Language возвращает код языка словаря.
+// Language returns the dictionary's language code.
 func (x *Dictionary) Language() string { return x.d.Language }
 
-// Open загружает словарь из файла GMOR (единый дисковый формат, SaveTo).
-// Горячие секции (words.dawg) отображаются через mmap без копирования;
-// результат необходимо закрывать методом Close.
+// Open loads a dictionary from a GMOR file (the single on-disk format,
+// SaveTo). Hot sections (words.dawg) are mapped via mmap without copying;
+// the result must be closed with the Close method.
 func Open(path string) (*Dictionary, error) {
 	mm, err := mmapx.Open(path)
 	if err != nil {
@@ -78,8 +78,9 @@ func Open(path string) (*Dictionary, error) {
 	return &Dictionary{d: d, mm: mm}, nil
 }
 
-// Close освобождает ресурсы словаря, открытого через Open (mmap-регион).
-// Для словарей импортёров — no-op. После Close словарь использовать нельзя.
+// Close releases the resources of a dictionary opened via Open (the mmap
+// region). It is a no-op for importer dictionaries. The dictionary must
+// not be used after Close.
 func (x *Dictionary) Close() error {
 	if x == nil || x.mm == nil {
 		return nil
@@ -89,7 +90,8 @@ func (x *Dictionary) Close() error {
 	return err
 }
 
-// parseContainer собирает внутренний словарь из секций GMOR-файла.
+// parseContainer assembles the internal dictionary from a GMOR file's
+// sections.
 func parseContainer(cont *internal.Container) (*internal.Dictionary, error) {
 	meta, _, err := cont.Section("meta")
 	if err != nil {

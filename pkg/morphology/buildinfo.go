@@ -2,9 +2,9 @@ package morphology
 
 import "time"
 
-// BuildInfo — диагностические метаданные словаря (секция "info" файла
-// GMOR): когда и чем собран, откуда данные. Ни одно поле не требуется
-// для работы Parse/Lemma/Fuzzy — все поля опциональны.
+// BuildInfo — diagnostic metadata of a dictionary (the "info" section of a
+// GMOR file): when and with what it was built, where the data came from. No
+// field is required for Parse/Lemma/Fuzzy to work — all fields are optional.
 type BuildInfo struct {
 	BuiltAt        time.Time
 	LibraryVersion string
@@ -15,10 +15,10 @@ type BuildInfo struct {
 	SourceURL      string
 }
 
-// Info возвращает диагностические метаданные словаря, если они есть в
-// файле. nil — для словарей без секции "info": файлы, собранные до её
-// появления, или словари, собранные вручную через Builder API и ни разу
-// не прошедшие через SaveTo.
+// Info returns the dictionary's diagnostic metadata, if present in the
+// file. nil is returned for dictionaries without an "info" section: files
+// built before it was introduced, or dictionaries assembled manually via
+// the Builder API and never passed through SaveTo.
 func (x *Dictionary) Info() *BuildInfo {
 	if x == nil || x.d == nil || x.d.Info == nil {
 		return nil

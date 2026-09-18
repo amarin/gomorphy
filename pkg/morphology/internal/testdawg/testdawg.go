@@ -1,8 +1,9 @@
-// Package testdawg строит валидные DAWG-фикстуры формата dawgdic для тестов.
+// Package testdawg builds valid dawgdic-format DAWG fixtures for tests.
 //
-// Build раскладывает ключи по double-array схеме (children: base^label,
-// значение узла — отдельная value-unit в слоте base с битом isLeaf), т.е.
-// фикстуры читаются тем же DAWG-кодом, что и реальные словари pymorphy2.
+// Build lays out keys using the double-array scheme (children:
+// base^label, a node's value is a separate value unit in slot base with
+// the isLeaf bit set), so fixtures are read by the same DAWG code as
+// real pymorphy2 dictionaries.
 package testdawg
 
 import (
@@ -16,7 +17,8 @@ const (
 	hasLeafBit = 1 << 8
 )
 
-// node — элемент тестового DAWG (trie). label — байт перехода из родителя.
+// node is one element of the test DAWG (trie). label is the transition
+// byte from the parent.
 type node struct {
 	label    byte
 	children map[byte]*node
@@ -24,7 +26,7 @@ type node struct {
 	value    uint32
 }
 
-// Build собирает dictionary+guide из набора ключей с целочисленными значениями.
+// Build assembles a dictionary+guide from a set of keys with integer values.
 func Build(keys map[string]uint32) ([]uint32, []byte) {
 	root := &node{children: make(map[byte]*node)}
 	keysSorted := make([]string, 0, len(keys))
@@ -128,8 +130,8 @@ func Build(keys map[string]uint32) ([]uint32, []byte) {
 	return dict, guide
 }
 
-// firstFitBase подбирает base: слоты base^label (и сам base при hasValue)
-// должны быть свободны.
+// firstFitBase picks a base: the base^label slots (and base itself when
+// hasValue) must all be free.
 func firstFitBase(used map[uint32]bool, labels []byte, hasValue bool) uint32 {
 	for b := uint32(0); ; b++ {
 		if hasValue && used[b] {
@@ -148,8 +150,8 @@ func firstFitBase(used map[uint32]bool, labels []byte, hasValue bool) uint32 {
 	}
 }
 
-// Marshal сериализует dictionary+guide в потоковый формат words.dawg:
-// [uint32 count][count×uint32 единиц][uint32 gsize][gsize×2 байт guide].
+// Marshal serializes a dictionary+guide into the words.dawg stream format:
+// [uint32 count][count×uint32 units][uint32 gsize][gsize×2 bytes of guide].
 func Marshal(dict []uint32, guide []byte) []byte {
 	var buf bytes.Buffer
 	_ = binary.Write(&buf, binary.LittleEndian, uint32(len(dict)))

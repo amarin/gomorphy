@@ -1,77 +1,79 @@
-# Секция info: диагностические метаданные словаря — ВЫПОЛНЕНО
+# The info section: dictionary build diagnostics — DONE
 
-> Перенесено из `docs/todo.md` при уборке документации (2026-09-14).
-> Не входила в исходный план Этапа 17 — добавлена по итогам обсуждения
-> формат-задела под сжатие (см. [stage-17-optimize.md](stage-17-optimize.md)).
+> Moved from `docs/todo.md` during the documentation cleanup (2026-09-14).
+> Not part of Stage 17's original plan — added as a result of the
+> discussion about format groundwork for compression (see
+> [stage-17-optimize.md](stage-17-optimize.md)).
 
-## Мотивация
+## Motivation
 
-Новая опциональная секция `info` в формате GMOR — не нужна для работы
-`Parse`/`Lemma`/`Fuzzy`, но отвечает на вопрос «чем и когда собран этот
-`.dat`», который явно всплыл на фиксе минимизации DAWG (см.
-[dawg-minimization-fix.md](dawg-minimization-fix.md)): `Version`
-(формат) не меняется годами, а поведение сборки — может, и раньше нечем
-было это различить постфактум.
+A new optional `info` section in the GMOR format — not needed for
+`Parse`/`Lemma`/`Fuzzy` to work, but it answers the question "when and
+with what was this `.dat` built", which came up explicitly during the
+DAWG minimization fix (see
+[dawg-minimization-fix.md](dawg-minimization-fix.md)): `Version` (the
+format) doesn't change for years, but build behavior can, and there was
+previously nothing to tell the two apart after the fact.
 
-## Реализовано
+## What's implemented
 
 `pkg/morphology/internal/buildinfo.go`, `pkg/morphology/buildinfo.go`,
 `pkg/morphology/version.go`:
 
 - `BuildInfo{BuiltAt, LibraryVersion, Source, SourceVersion, Author,
-  Description, SourceURL}` — JSON-секция, все поля опциональны, секция
-  целиком опциональна (старые файлы и словари, собранные вручную через
-  Builder API без `SaveTo`, открываются как раньше —
-  `Dictionary.Info()` вернёт `nil`).
-- `BuiltAt`/`LibraryVersion` проставляет сама `SaveTo` при каждом
-  сохранении (не мутируя исходный `Dictionary` — он иммутабелен);
-  заранее заданные импортёром значения этих двух полей перезаписываются.
-- `Source` заполняют импортёры: `"opencorpora"`
+  Description, SourceURL}` — a JSON section, every field optional, the
+  section as a whole optional (old files and dictionaries built by hand
+  through the Builder API without `SaveTo` still open as before —
+  `Dictionary.Info()` returns `nil`).
+- `BuiltAt`/`LibraryVersion` are set by `SaveTo` itself on every save
+  (without mutating the source `Dictionary` — it's immutable); any
+  values an importer set for these two fields beforehand are overwritten.
+- `Source` is filled in by the importers: `"opencorpora"`
   (`importers/opencorpora`), `"pymorphy2"` (`importers/pymorphy2`).
-- `LibraryVersion` берётся из новой `pkg/morphology.Version = "0.1.0"`
-  (первая версия этой константы в репозитории — раньше нигде не была
-  нужна). Это ручная строка; переход на значение, встраиваемое при
-  сборке (ldflags/VCS info) — отдельная правка при груминге CLI (см.
-  `docs/todo.md`, Этап 18).
-- `Dictionary.Info() *BuildInfo` — публичный accessor для чтения.
+- `LibraryVersion` comes from the new `pkg/morphology.Version = "0.1.0"`
+  (the first time this constant exists in the repository — it was never
+  needed anywhere before). It's a manually maintained string; switching
+  to a value embedded at build time (ldflags/VCS info) is a separate
+  change during the CLI grooming (see `docs/en/todo.md`, Stage 18).
+- `Dictionary.Info() *BuildInfo` — a public accessor for reading it.
 
-## Сознательно не сделано сейчас
+## Deliberately not done now
 
-Рассмотрено при проектировании, часть — сознательно отложена, часть —
-отклонена:
+Considered during design; some items deliberately deferred, some rejected:
 
-- **`SourceVersion` для OpenCorpora не заполняется**: у `dict.xml` есть
-  `<dictionary version="0.92" revision="417257">`, но `internal/xmlscan`
-  сейчас не отдаёт атрибуты корневого тега наружу (`dispatch.go`:
-  `case t.is("dictionary"): s.section = sectOther` — тег распознаётся
-  только как маркер секции, без извлечения атрибутов). Нужно: новый
-  метод `Handler` (например `OnDictionaryMeta(version, revision
-  []byte)`) + ветка в `dispatch()` + чтение в
-  `opencorpora.ImportFromXML`. Небольшая, но отдельная задача — по мере
-  того, как импортёры «научатся» парсить версию своего источника (так и
-  для будущих `pymorphy2`/`unimorph` источников).
-- **Стабильный хэш содержимого** (независимый от даты сборки/версии
-  библиотеки, чтобы сравнивать два по-разному собранных `.dat` на
-  идентичность лингвистических данных) — рассмотрено и отклонено:
-  решили, что пары (`BuiltAt`, `SourceVersion`) достаточно.
-- **Посекционные чек-суммы** — рассмотрено и отклонено: файл целиком
-  проверяется одним xxh3 при `Open`, отдельные чек-суммы на секцию
-  ничего не добавляют для этого формата.
-- **Tooling для проверки/подкачки свежей версии словаря** по
-  `SourceURL` — сознательно только задел на уровне поля. Сценарий
-  вперёд: `SourceURL` — просто ссылка для ручного/агентского скачивания
-  уже сейчас; в будущем — свой мини-стандарт списка версий (аналог
-  index-файлов yum/pip: JSON с перечислением доступных версий словаря по
-  URL), но это отдельная фича со своим контрактом (что считается «новой
-  версией», как сравнивать), а не просто поле формата — проектируется
-  отдельно, когда появится конкретный публичный ресурс с версиями
-  словарей.
-- Ни один CLI-флаг пока не заполняет `Author`/`Description`/`SourceURL`
-  — это часть груминга CLI перед Этапом 18.
+- **`SourceVersion` isn't filled in for OpenCorpora**: `dict.xml` has
+  `<dictionary version="0.92" revision="417257">`, but `internal/xmlscan`
+  currently doesn't surface the root tag's attributes
+  (`dispatch.go`: `case t.is("dictionary"): s.section = sectOther` — the
+  tag is only recognized as a section marker, its attributes aren't
+  extracted). Needed: a new `Handler` method (e.g.
+  `OnDictionaryMeta(version, revision []byte)`) + a branch in
+  `dispatch()` + reading it in `opencorpora.ImportFromXML`. A small but
+  separate task — as importers "learn" to parse their source's version
+  (the same applies to future `pymorphy2`/`unimorph` sources).
+- **A stable content hash** (independent of the build date/library
+  version, to compare two differently-built `.dat` files for identical
+  linguistic data) — considered and rejected: decided the
+  (`BuiltAt`, `SourceVersion`) pair is enough.
+- **Per-section checksums** — considered and rejected: the whole file
+  is already checked with one xxh3 on `Open`; per-section checksums add
+  nothing for this format.
+- **Tooling to check for/fetch a fresher dictionary version** via
+  `SourceURL` — deliberately only a field-level placeholder for now.
+  The forward-looking scenario: `SourceURL` is just a link for
+  manual/agent-driven download today; in the future, its own small
+  standard for a version listing (similar to yum/pip index files: JSON
+  enumerating the dictionary's available versions by URL), but that's a
+  separate feature with its own contract (what counts as a "new
+  version," how to compare), not just a format field — to be designed
+  separately once a concrete public resource with dictionary versions
+  exists.
+- No CLI flag fills in `Author`/`Description`/`SourceURL` yet — that's
+  part of the CLI grooming before Stage 18.
 
-## Находка для будущего ревью кода
+## A finding for a future code review
 
-`cmd/gomorphy_build/main.go` уже содержит `const programVersion =
-"0.1.0"`, но нигде не использует — мёртвый код, обнаружен по
-касательной при добавлении `LibraryVersion`. Не тронут (не в объёме
-этой правки) — см. `docs/todo.md`, раздел «Ревью кода перед 1.0.0».
+`cmd/gomorphy_build/main.go` already has `const programVersion =
+"0.1.0"`, but never uses it — dead code, found in passing while adding
+`LibraryVersion`. Left untouched (out of scope for this change) — see
+`docs/en/todo.md`, the "Pre-1.0.0 code review" section.

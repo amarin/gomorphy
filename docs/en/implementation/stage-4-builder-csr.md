@@ -1,17 +1,18 @@
-# Этап 4. Builder и CSR-структуры (internal/build) — ВЫПОЛНЕН
+# Stage 4. Builder and CSR structures (internal/build) — DONE
 
-## Содержание этапа
+## Stage contents
 
-Инкремент: программное наполнение словаря (FT8) + структуры памяти.
+Increment: programmatic dictionary population (FT8) + in-memory structures.
 
-- Builder: `AddGrammeme`/`AddLemma`/`AddForm`, справочники анкодов, CSR-массивы
-  лемм/строк, trie (временный, узлы-структуры) → компиляция в CSR
-  (`stateOff`/`transitions`/`finals`), постинг-листы с дедупликацией, exact-hash.
-- Метод `Build()` → иммутабельный снимок (значения, не указатели).
+- Builder: `AddGrammeme`/`AddLemma`/`AddForm`, ancode tables, CSR arrays
+  of lemmas/strings, a trie (temporary, struct nodes) -> compiled into CSR
+  (`stateOff`/`transitions`/`finals`), posting lists with deduplication, exact-hash.
+- The `Build()` method -> an immutable snapshot (values, not pointers).
 
-## Проверка (выполнена)
+## Verification (done)
 
-- unit-тесты Builder: маленький словарь (5–10 лемм) вручную; проверка
-  lookup по каждому слову, дубликаты форм, одинаковые тексты у разных лемм.
-- property-тест: N случайных слов → все найдены; отсутствующие — не найдены.
+- Builder unit tests: a small dictionary (5-10 lemmas) built by hand;
+  checking lookup for every word, duplicate forms, identical texts across
+  different lemmas.
+- A property test: N random words -> all found; missing ones -> not found.
 - `go test ./internal/build -race`.

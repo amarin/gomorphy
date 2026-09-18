@@ -1,67 +1,71 @@
-# Этап 15. Импорт OpenCorpora — ВЫПОЛНЕН
+# Stage 15. OpenCorpora import — DONE
 
-## Содержание этапа
+## Stage contents
 
-Импорт словаря OpenCorpora (`dict.xml`) через извлечение парадигм из лемм.
-Переиспользование `internal/xmlscan` для чтения XML. Результат — тот же
-внутренний формат (paradigm + DAWG с payload).
+Importing the OpenCorpora dictionary (`dict.xml`) by extracting
+paradigms from lemmas. Reuses `internal/xmlscan` to read the XML. The
+result is the same internal format (paradigm + a DAWG with a payload).
 
-### Импортёр (`pkg/morphology/importers/opencorpora/`)
+### The importer (`pkg/morphology/importers/opencorpora/`)
 
-Функция `ImportFromXML(r io.Reader, tagSet *TagSet) (*Dictionary, error)`:
+Function `ImportFromXML(r io.Reader, tagSet *TagSet) (*Dictionary, error)`:
 
 #### Pipeline
 
-1. **Сканирование XML** через `xmlscan`:
-   - Событие `Grammeme`: сбор имён граммем (опционально, используется для <grammeme> с <name>).
-   - Событие `Lemma`: начало леммы (id, text).
-   - Событие `Form`: словоформа (text из атрибута `t`, грамммы из `<g>` тегов).
+1. **Scanning the XML** via `xmlscan`:
+   - Event `Grammeme`: collecting grammeme names (optional, used for
+     `<grammeme>` with `<name>`).
+   - Event `Lemma`: the start of a lemma (id, text).
+   - Event `Form`: a wordform (text from the `t` attribute, grammemes
+     from `<g>` tags).
 
-2. **Извлечение парадигм** (core algorithm):
+2. **Extracting paradigms** (the core algorithm):
    ```
-   Для каждой леммы:
-     Собрать все формы: forms = [{text, gramm}, ...]
-     Вычислить стем: stem = LCP(forms.map(_.text))
-     Для каждой формы:
+   For each lemma:
+     Collect all forms: forms = [{text, gramm}, ...]
+     Compute the stem: stem = LCP(forms.map(_.text))
+     For each form:
        suffix = form.text[len(stem):]
-       tag_id = tagSet.ID(form.gramm)  // комбинированная строка тегов
-       парадигма.add(suffix_id, tag_id, 0)  // prefix = 0 (пустой)
-     Дедуплицировать парадигму (hash → paradigmID)
-     Сохранить пару (stem, paradigmID)
+       tag_id = tagSet.ID(form.gramm)  // the combined tag string
+       paradigm.add(suffix_id, tag_id, 0)  // prefix = 0 (empty)
+     Deduplicate the paradigm (hash -> paradigmID)
+     Store the pair (stem, paradigmID)
    ```
 
-3. **Построение DAWG**:
+3. **Building the DAWG**:
    ```
-   Для каждого (stem, paradigmID):
-     Для каждой формы парадигмы (form_idx):
+   For each (stem, paradigmID):
+     For each form of the paradigm (form_idx):
        key = stem + suffix[form_idx] + "\x01" + base64(para_id << 16 | form_idx)
    BuildDAWGWithValues(keys, values)
    ```
 
-4. **Возврат Dictionary** с наполненными Suffixes, Prefixes (nil), Paradigms, Words.
+4. **Returning a Dictionary** with Suffixes, Prefixes (nil), Paradigms,
+   and Words populated.
 
-#### Дедупликация парадигм
+#### Paradigm deduplication
 
-Парадигма = упорядоченный список `(suffix_id, tag_id)` (prefix = 0 для
-OpenCorpora). Хэш вычисляется как сериализация байтов suffixes + tags.
-Результат: из ~391K лемм → ~3K уникальных парадигм (для полного dict.xml).
+A paradigm is an ordered list of `(suffix_id, tag_id)` (prefix = 0 for
+OpenCorpora). The hash is computed by serializing the suffix and tag
+bytes. Result: ~391K lemmas -> ~3K unique paradigms (for the full dict.xml).
 
 #### TagSet
 
-Теги собираются из `<g v="...">` тегов в каждой форме. Каждый уникальный
-`gramm` (комбинированная строка типа `"NOUN,anim,masc,sing,nomn"`) добавляется
-в TagSet через `Add()`.
+Tags are collected from the `<g v="...">` tags on each form. Every
+unique `gramm` (a combined string like `"NOUN,anim,masc,sing,nomn"`) is
+added to the TagSet via `Add()`.
 
-### Публичный API
+### Public API
 
 ```go
-// В pkg/morphology/
+// In pkg/morphology/
 func CompileFromXML(r io.Reader) (*Dictionary, error)
 func CompileFromXMLFile(path string) (*Dictionary, error)
 ```
 
-`CompileFromXMLFile` открывает `dict.xml`, парсит граммемы, строит
-Dictionary. `CompileFromXML` — обёртка над `opencorpora.ImportFromXML`.
+`CompileFromXMLFile` opens `dict.xml`, parses the grammemes, and builds
+the Dictionary. `CompileFromXML` is a wrapper over
+`opencorpora.ImportFromXML`.
 
 ### CLI
 
@@ -70,35 +74,35 @@ gomorphy import opencorpora dict.xml -o oc.dat
 gomorphy -dict oc.dat lookup кота
 ```
 
-## Проверка (выполнена)
+## Verification (done)
 
-- unit-тест: маленький XML (3 леммы) → парадигмы извлечены корректно.
-- unit-тест: число парадигм ≤ число лемм (dedup работает).
-- unit-тест: стем = LCP всех форм (проверка суффикса "" = index 0).
-- unit-тест: DAWG через SimilarItems находит все словоформы.
-- unit-тест: roundtrip — значения из DAWG имеют правильную структуру (4 байта).
-- unit-тест: леммы без словоформ игнорируются.
-- `go test ./pkg/morphology/importers/opencorpora/... -count=1` — зелёные.
+- Unit test: a small XML (3 lemmas) -> paradigms extracted correctly.
+- Unit test: the paradigm count <= the lemma count (dedup works).
+- Unit test: stem = LCP of all forms (checking the "" suffix = index 0).
+- Unit test: the DAWG via SimilarItems finds every wordform.
+- Unit test: roundtrip — DAWG values have the correct structure (4 bytes).
+- Unit test: lemmas with no wordforms are ignored.
+- `go test ./pkg/morphology/importers/opencorpora/... -count=1` — green.
 
-## Ручные проверки
+## Manual verification
 
-- `gomorphy import opencorpora dict.xml -o oc.dat` → файл создан.
-- `gomorphy -dict oc.dat lookup кота` → корректный разбор.
+- `gomorphy import opencorpora dict.xml -o oc.dat` -> the file is created.
+- `gomorphy -dict oc.dat lookup кота` -> a correct reading.
 
-## Реализация (итог)
+## Implementation (result)
 
-- `pkg/morphology/importers/opencorpora/import.go` — полный импортёр:
-  xmlscan Handler → LCP-stem → suffix ID map → paradigm dedup → DAWG.
-- `internal.BuildDAWGWithValues` — расширение dawgdic builder для хранения
-  значений как payload (ключ = `word\x01<base64_value>`).
-- `pkg/morphology/open.go` — добавлены `CompileFromXML` и `CompileFromXMLFile`.
-- `cmd/gomorphy/main.go` — подкоманда `import opencorpora <xml> -o <out.dat>`.
+- `pkg/morphology/importers/opencorpora/import.go` — the full importer:
+  an xmlscan Handler -> LCP stem -> a suffix ID map -> paradigm dedup -> DAWG.
+- `internal.BuildDAWGWithValues` — an extension of the dawgdic builder
+  to store values as a payload (key = `word\x01<base64_value>`).
+- `pkg/morphology/open.go` — `CompileFromXML` and `CompileFromXMLFile` added.
+- `cmd/gomorphy/main.go` — the `import opencorpora <xml> -o <out.dat>` subcommand.
 
-### Отклонения от плана
+### Deviations from the plan
 
-- **Suffixes vs paradigms**: в оригинальном плане suffixes — отдельный пул,
-  но фактическая реализация хранит suffix texts в `Dictionary.Suffixes` как
-  ordered list из `suffixTexts` map. Это совместимо с pymorphy2 importer.
-- **Prefixes**: OpenCorpora не хранит префиксы в парадигмах (леммы уже
-  содержат полный текст), поэтому `Prefixes = nil`.
-
+- **Suffixes vs. paradigms**: in the original plan, suffixes were a
+  separate pool, but the actual implementation stores suffix texts in
+  `Dictionary.Suffixes` as an ordered list built from a `suffixTexts`
+  map. This is compatible with the pymorphy2 importer.
+- **Prefixes**: OpenCorpora doesn't store prefixes in paradigms (lemmas
+  already contain the full text), so `Prefixes = nil`.

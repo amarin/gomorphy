@@ -1,58 +1,58 @@
-# Этап 11. Внутренний формат: TagSet + Paradigm + DAWG reader
+# Stage 11. Internal format: TagSet + Paradigm + DAWG reader
 
-## Содержание этапа
+## Stage contents
 
-Создание фундамента нового внутреннего формата: примитивы для хранения
-морфологических данных. Этот этап не зависит от текущего `internal/build`
-и создаёт новый пакет `pkg/morphology/internal/`.
+Building the foundation of the new internal format: primitives for
+storing morphological data. This stage is independent of the current
+`internal/build` and creates a new package, `pkg/morphology/internal/`.
 
 ### TagSet (`tagset.go`)
 
-Набор грамматических тегов для конкретного словаря/языка.
+The set of grammatical tags for a specific dictionary/language.
 
 ```go
 type TagSet struct {
     Name     string
-    Tags     []string          // id → name
-    TagIndex map[string]uint16 // name → id
+    Tags     []string          // id -> name
+    TagIndex map[string]uint16 // name -> id
 }
 ```
 
-- Добавление тегов: `Add(name string) uint16` (дедупликация по имени)
-- Поиск: `ID(name string) (uint16, bool)`, `Name(id uint16) string`
-- Сериализация: JSON-массив строк (как в pymorphy2 gramtab)
+- Adding tags: `Add(name string) uint16` (deduplicated by name)
+- Lookup: `ID(name string) (uint16, bool)`, `Name(id uint16) string`
+- Serialization: a JSON string array (as in pymorphy2's gramtab)
 
 ### Paradigm (`paradigm.go`)
 
-Шаблон склонения/спряжения. Плоский массив uint16:
+An inflection/conjugation template. A flat uint16 array:
 
 ```
 [suffix_0, ..., suffix_N-1 | tag_0, ..., tag_N-1 | prefix_0, ..., prefix_N-1]
 ```
 
-- Длина парадигмы = `len(data) / 3`
-- Суффикс формы i: `Suffix(id, i) uint16`
-- Тег формы i: `Tag(id, i) uint16`
-- Префикс формы i: `Prefix(id, i) uint16`
+- Paradigm length = `len(data) / 3`
+- Form i's suffix: `Suffix(id, i) uint16`
+- Form i's tag: `Tag(id, i) uint16`
+- Form i's prefix: `Prefix(id, i) uint16`
 
 ### DAWG reader (`dawg.go`)
 
-Чтение формата dawgdic (words.dawg из pymorphy2). Формат:
-- `dictionary`: uint32 array. Каждый узел — uint32 с label (8 бит),
-  offset (22 бита), leaf/extension флагами.
-- `guide`: byte array. По 2 байта на узел: child + sibling.
+Reading the dawgdic format (pymorphy2's words.dawg). Format:
+- `dictionary`: a uint32 array. Each node is a uint32 with an 8-bit
+  label, a 22-bit offset, and leaf/extension flags.
+- `guide`: a byte array. 2 bytes per node: child + sibling.
 
-Методы:
-- `followByte(lbl byte, index uint32) uint32` — переход по байту
-- `followRune(r rune, index uint32) uint32` — переход по руне (1–4 байта)
-- `follow(s string, index uint32) uint32` — переход по строке
-- `find(key string) uint32` — точный поиск → значение узла
-- `valuesForIndex(index uint32) [][]byte` — все значения (обход suffixed values)
+Methods:
+- `followByte(lbl byte, index uint32) uint32` — follow a byte transition
+- `followRune(r rune, index uint32) uint32` — follow a rune transition (1-4 bytes)
+- `follow(s string, index uint32) uint32` — follow a string
+- `find(key string) uint32` — exact lookup -> the node's value
+- `valuesForIndex(index uint32) [][]byte` — all values (walking suffixed values)
 
 ### CharPolicy (`char_policy.go`)
 
-Набор подменяемых символов для поиска. По умолчанию пусто (нейтрально
-к языку). Для русского: `[{from: 'е', to: 'ё'}]`.
+A set of interchangeable characters for search. Empty by default
+(language-neutral). For Russian: `[{from: 'е', to: 'ё'}]`.
 
 ```go
 type CharPolicy struct {
@@ -67,13 +67,14 @@ type Substitution struct {
 
 ### Similar items (`similar_items.go`)
 
-Обход DAWG с учётом подмен символов. При обходе для каждого символа
-из `CharPolicy.From` пробовать также `CharPolicy.To`. Реализация:
-рекурсивный обход с «вилкой» на подменяемом символе.
+Traversing the DAWG while accounting for character substitutions. For
+every character in `CharPolicy.From` encountered during traversal, also
+try `CharPolicy.To`. Implementation: a recursive traversal that "forks"
+at a substitutable character.
 
 ### Dictionary (`dictionary.go`)
 
-Иммутабельный снимок словаря:
+An immutable dictionary snapshot:
 
 ```go
 type Dictionary struct {
@@ -89,37 +90,39 @@ type Dictionary struct {
 }
 ```
 
-## Проверка (тесты)
+## Verification (tests)
 
-- unit-тест: DAWG reader — создание тестового DAWG в памяти, find/follow.
-- unit-тест: similarItems с CharPolicy `е→ё` — проверка подмены.
-- unit-тест: Paradigm — индексная арифметика по плоскому массиву.
-- unit-тест: TagSet — Add/ID/Name, дедупликация.
-- unit-тест: Dictionary — construction из компонентов.
-- `go test ./pkg/morphology/... -race` — зелёные.
+- Unit test: DAWG reader — building a test DAWG in memory, find/follow.
+- Unit test: similarItems with the `е→ё` CharPolicy — checking the substitution.
+- Unit test: Paradigm — index arithmetic over the flat array.
+- Unit test: TagSet — Add/ID/Name, deduplication.
+- Unit test: Dictionary — construction from components.
+- `go test ./pkg/morphology/... -race` — green.
 
-## Реализация (фактический API)
+## Implementation (the actual API)
 
-Пакет `pkg/morphology/internal` (package `internal`) — референс: формат
-dawgdic/`opennota/morph` (fetch: dict.go, guide.go, dawg.go, completer.go).
+Package `pkg/morphology/internal` (package `internal`) — reference: the
+dawgdic format/`opennota/morph` (fetch: dict.go, guide.go, dawg.go, completer.go).
 
-Оформление от плана:
+Deviations from the plan:
 
-- Методы DAWG **экспортированы** (нужны importers/pymorphy2 в следующем пакете):
-  `FollowByte`, `FollowRune`, `Follow`, `Find`, `HasValue`, `Value`,
-  `ValuesForIndex`, `SimilarItems`. Внутренняя рекурсия — `similarItemsRecursive`.
-- `TagSet`: поле `Name` и метод `TagName(id)` (метод `Name` в Go не может
-  совпадать с полем).
-- Конструкторы: `NewTagSet`, `NewParadigm(suffixes, tags, prefixes)`,
-  `NewDAWG(dict, guide)`, `ReadDAWG(r io.Reader)` (формат words.dawg:
-  `[uint32 n][n×uint32][uint32 g][g×2 байт]`), `NewCharPolicy(subs...)`,
+- The DAWG's methods are **exported** (needed by importers/pymorphy2 in
+  the next package): `FollowByte`, `FollowRune`, `Follow`, `Find`,
+  `HasValue`, `Value`, `ValuesForIndex`, `SimilarItems`. The internal
+  recursion is `similarItemsRecursive`.
+- `TagSet`: a `Name` field and a `TagName(id)` method (a method named
+  `Name` can't coexist with a field of the same name in Go).
+- Constructors: `NewTagSet`, `NewParadigm(suffixes, tags, prefixes)`,
+  `NewDAWG(dict, guide)`, `ReadDAWG(r io.Reader)` (the words.dawg format:
+  `[uint32 n][n×uint32][uint32 g][g×2 bytes]`), `NewCharPolicy(subs...)`,
   `RussianCharPolicy()`, `NewDictionary(language, tagSet, suffixes, prefixes,
   paradigms, words, charPolicy)`.
-- Формат единицы словаря: bits 0–7 label, bit 8 has_leaf, bit 9 extension,
-  bits 10–31 offset (у value-unit — значение, бит 31 isLeaf). Переход:
-  `next = index ^ offset ^ label`.
-- Payload-разделитель `payloadSeparator = 0x01`; значения в words.dawg —
-  base64-закодированные байты записи (для `>HH` — 4 байта big-endian).
-- Тесты: 19 unit-тестов включая независимый фикстурный билдер словаря+guide
-  (`dawg_test.go: buildTestDAWG`), проверяющий reader «с другой стороны».
-- Готово: `go test -race ./pkg/morphology/...` зелёный, `go vet` чист.
+- The dictionary unit's format: bits 0-7 label, bit 8 has_leaf, bit 9
+  extension, bits 10-31 offset (for a value unit, the value itself, with
+  bit 31 as isLeaf). Transition: `next = index ^ offset ^ label`.
+- The payload separator `payloadSeparator = 0x01`; values in words.dawg
+  are base64-encoded entry bytes (for `>HH`, 4 big-endian bytes).
+- Tests: 19 unit tests including an independent fixture builder for a
+  dictionary+guide (`dawg_test.go: buildTestDAWG`) that checks the
+  reader "from the other side".
+- Done: `go test -race ./pkg/morphology/...` green, `go vet` clean.

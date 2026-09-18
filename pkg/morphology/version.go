@@ -1,7 +1,7 @@
 package morphology
 
-// Version — версия библиотеки gomorphy, записываемая в секцию "info" при
-// каждом SaveTo (BuildInfo.LibraryVersion). Обновляется вручную при
-// релизах; после груминга CLI (Этап 18, docs/todo.md) может смениться на
-// значение, встраиваемое при сборке (ldflags/VCS info).
+// Version is the gomorphy library version, written into the "info" section
+// on every SaveTo (BuildInfo.LibraryVersion). Updated manually on
+// releases; after the CLI grooming (Stage 18, docs/en/todo.md) it may
+// switch to a value embedded at build time (ldflags/VCS info).
 const Version = "0.1.0"

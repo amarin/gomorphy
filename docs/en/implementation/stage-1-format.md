@@ -1,23 +1,25 @@
-# Этап 1. Примитивы формата (internal/format) — ВЫПОЛНЕН
+# Stage 1. Format primitives (internal/format) — DONE
 
-## Содержание этапа
+## Stage contents
 
-Инкремент: пакет кодирования и секционного контейнера.
+Increment: the encoding package and sectioned container.
 
-- varint/delta кодеки (`[]uint32`, `[]uint64`) — encode/decode roundtrip.
-- Заголовок: magic `"GMRF"`, version, xxh3-чексумма; каталог секций
-  (имя, offset, size); writer (секции дописываются, каталог в конце)
-  и reader (проверки magic/version/чексуммы, доступ к секции по имени).
+- varint/delta codecs (`[]uint32`, `[]uint64`) — encode/decode roundtrip.
+- Header: magic `"GMRF"`, version, xxh3 checksum; a section catalog
+  (name, offset, size); a writer (sections are appended, catalog at the
+  end) and a reader (magic/version/checksum checks, access to a section
+  by name).
 
-## Проверка (выполнена)
+## Verification (done)
 
-- unit-тесты roundtrip varint/delta на краевых случаях (0, 1, max u32/u64,
-  монотонные/немонотонные последовательности) — `TestAppendDelta*Roundtrip`.
-- unit-тесты writer→reader: несколько секций (в т.ч. пустых, streaming),
-  чтение по имени, ошибки при битой чексумме/магии/версии/обрезке.
-- `go build ./...`, `go vet ./...`, `go test ./internal/format -race` — зелёные.
+- Roundtrip unit tests for varint/delta on edge cases (0, 1, max
+  u32/u64, monotonic/non-monotonic sequences) — `TestAppendDelta*Roundtrip`.
+- Writer->reader unit tests: several sections (including empty ones,
+  streaming), reading by name, errors on a corrupted checksum/magic/
+  version/truncation.
+- `go build ./...`, `go vet ./...`, `go test ./internal/format -race` — green.
 
-## Ручная проверка
+## Manual verification
 
-Hexdump тестового файла — magic `"GMRF"`, version=1, indexOffset=0x1C,
-каталог из 2 секций, trailer xxh3 — читаемы и корректны.
+A hexdump of a test file — magic `"GMRF"`, version=1, indexOffset=0x1C,
+a catalog of 2 sections, an xxh3 trailer — all readable and correct.

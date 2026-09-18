@@ -5,39 +5,41 @@ import (
 	"time"
 )
 
-// BuildInfo — диагностические метаданные словаря: секция "info" в файле
-// GMOR. В отличие от meta (язык + CharPolicy — обязательны для Parse), ни
-// одно поле BuildInfo не требуется для работы словаря: все поля
-// опциональны (нулевое значение = «не указано»), секция целиком может
-// отсутствовать (файлы, собранные до появления этого поля, или словари,
-// собранные вручную через Builder API без вызова SaveTo).
+// BuildInfo — diagnostic metadata of the dictionary: the "info" section in
+// the GMOR file. Unlike meta (language + CharPolicy — required for Parse),
+// no BuildInfo field is required for the dictionary to work: all fields
+// are optional (zero value = "not specified"), and the section as a whole
+// may be absent entirely (files built before this field existed, or
+// dictionaries assembled manually via the Builder API without calling
+// SaveTo).
 type BuildInfo struct {
-	// BuiltAt и LibraryVersion проставляет сама SaveTo при каждом
-	// сохранении — значения, заданные импортёром заранее, перезаписываются.
+	// BuiltAt and LibraryVersion are set by SaveTo itself on every save —
+	// values set beforehand by the importer are overwritten.
 	BuiltAt        time.Time `json:"built_at,omitempty"`
 	LibraryVersion string    `json:"library_version,omitempty"`
 
-	// Source — источник данных: "opencorpora", "pymorphy2", "unimorph",
-	// "tsv", ... Заполняется импортёром при построении Dictionary.
+	// Source — the data source: "opencorpora", "pymorphy2", "unimorph",
+	// "tsv", ... Filled in by the importer when building the Dictionary.
 	Source string `json:"source,omitempty"`
 
-	// SourceVersion — версия/ревизия исходных данных (например, для
-	// OpenCorpora dict.xml — атрибуты version/revision корневого тега).
-	// Пока не заполняется ни одним импортёром: xmlscan не отдаёт атрибуты
-	// корневого тега наружу — см. docs/todo.md.
+	// SourceVersion — the version/revision of the source data (e.g., for
+	// OpenCorpora dict.xml — the version/revision attributes of the root
+	// tag). Not yet filled in by any importer: xmlscan does not expose the
+	// root tag's attributes — see docs/en/todo.md.
 	SourceVersion string `json:"source_version,omitempty"`
 
-	// Author, Description — свободные поля, актуальны в первую очередь
-	// для тематических словарей (см. docs/todo.md, Этап 19).
+	// Author, Description — free-form fields, primarily relevant for
+	// thematic dictionaries (see docs/en/todo.md, Stage 19).
 	Author      string `json:"author,omitempty"`
 	Description string `json:"description,omitempty"`
 
-	// SourceURL — где вручную (или агентом) скачать свежую версию словаря.
-	// Задел под будущий стандарт списка версий — см. docs/todo.md.
+	// SourceURL — where to manually (or via an agent) download a fresh
+	// version of the dictionary. A placeholder for a future version-list
+	// standard — see docs/en/todo.md.
 	SourceURL string `json:"source_url,omitempty"`
 }
 
-// EncodeBuildInfo сериализует BuildInfo в JSON для секции "info".
+// EncodeBuildInfo serializes BuildInfo to JSON for the "info" section.
 func EncodeBuildInfo(info *BuildInfo) []byte {
 	if info == nil {
 		info = &BuildInfo{}
@@ -46,7 +48,7 @@ func EncodeBuildInfo(info *BuildInfo) []byte {
 	return data
 }
 
-// DecodeBuildInfo читает BuildInfo, записанный EncodeBuildInfo.
+// DecodeBuildInfo reads a BuildInfo written by EncodeBuildInfo.
 func DecodeBuildInfo(data []byte) (*BuildInfo, error) {
 	var info BuildInfo
 	if err := json.Unmarshal(data, &info); err != nil {

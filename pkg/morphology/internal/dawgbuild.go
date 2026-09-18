@@ -8,38 +8,39 @@ import (
 	"sort"
 )
 
-// errDAWGBuild сообщает о невозможности разложить автомат в double-array:
-// исчерпан диапазон представимых смещений/слотов.
+// errDAWGBuild reports that the automaton cannot be laid out in a
+// double-array: the range of representable offsets/slots has been exhausted.
 var errDAWGBuild = errors.New("dawg: cannot place nodes in double-array")
 
-// BuildDAWG строит минимальный DAWG (формат dawgdic: dictionary uint32[] +
-// guide byte[]) по набору ключей.
+// BuildDAWG builds a minimal DAWG (dawgdic format: dictionary uint32[] +
+// guide byte[]) from a set of keys.
 //
-// Алгоритм повторяет dawgdic (s-yata/dawgdic):
-//  1. Ключи сортируются по возрастанию и инкрементально (Демьюк) собираются в
-//     list-form троичный автомат. Регистр ключуется подписью ЦЕПОЧКИ братьев —
-//     узел сливается только вместе со всем своим списком братьев. Это гарантия
-//     того, что разделяемый (слитый) узел имеет ровно один вход со всеми
-//     братьями в одинаковом составе, и double-array раскладку можно строить
-//     DFS-ом с повторным использованием базы первого ребёнка.
-//  2. Double-array раскладывается depth-first: дети узла (кроме первого,
-//     если первый — слитый) получают свободные слоты base^label; для слитого
-//     первого ребёнка переиспользуется ранее выбранная база (link-таблица),
-//     что даёт один и тот же слот из всех родителей.
+// The algorithm follows dawgdic (s-yata/dawgdic):
+//  1. Keys are sorted ascending and incrementally (Daciuk's method) assembled
+//     into a list-form ternary automaton. The register is keyed by the
+//     signature of the WHOLE sibling chain — a node is only merged together
+//     with its entire sibling list. This guarantees that a shared (merged)
+//     node has exactly one entry point with all siblings in the same
+//     composition, so the double-array layout can be built via DFS with
+//     reuse of the first child's base.
+//  2. The double-array is laid out depth-first: a node's children (other
+//     than the first, if the first is a merged node) get free slots at
+//     base^label; for a merged first child, the previously chosen base is
+//     reused (via the link table), which gives the same slot from all parents.
 //
-// Значение всех терминальных узлов равно 0: payload хранится как суффикс ключа
-// после PayloadSeparator (см. SimilarItems). Порядок аргумента keys не
-// сохраняется (срез сортируется на месте).
+// The value of every terminal node is 0: the payload is stored as a key
+// suffix after PayloadSeparator (see SimilarItems). The order of the keys
+// argument is not preserved (the slice is sorted in place).
 func BuildDAWG(keys []string) (*DAWG, error) {
 	return buildDAWGWithPayload(keys)
 }
 
-// BuildDAWGWithValues строит минимальный DAWG (dawgdic format) по парам
-// (key, value) и инкапсулирует value как payload: каждый ключ в DAWG
-// превращается в key + PayloadSeparator + base64(value).
+// BuildDAWGWithValues builds a minimal DAWG (dawgdic format) from
+// (key, value) pairs and encapsulates each value as payload: every key in
+// the DAWG turns into key + PayloadSeparator + base64(value).
 //
-// Алгоритм полностью повторяет BuildDAWG, но ключи модифицируются
-// перед сборкой. Возвращает (*DAWG, error).
+// The algorithm fully follows BuildDAWG, but the keys are modified before
+// assembly. Returns (*DAWG, error).
 func BuildDAWGWithValues(keys []string, values []uint32) (*DAWG, error) {
 	if len(keys) != len(values) {
 		return nil, fmt.Errorf("dawg: keys and values must have same length")
@@ -56,7 +57,7 @@ func BuildDAWGWithValues(keys []string, values []uint32) (*DAWG, error) {
 	return buildDAWGWithPayload(payloadKeys)
 }
 
-// buildDAWGWithPayload — shared code path для BuildDAWG и BuildDAWGWithValues.
+// buildDAWGWithPayload — shared code path for BuildDAWG and BuildDAWGWithValues.
 func buildDAWGWithPayload(keys []string) (*DAWG, error) {
 	sort.Strings(keys)
 
@@ -66,8 +67,8 @@ func buildDAWGWithPayload(keys []string) (*DAWG, error) {
 	return b.compile()
 }
 
-// newDawgBuilder создаёт dawgBuilder с заранее выделенными буферами (общая
-// точка входа для BuildDAWG* и BuildDAWGWithValuesProgress).
+// newDawgBuilder creates a dawgBuilder with pre-allocated buffers (a shared
+// entry point for BuildDAWG* and BuildDAWGWithValuesProgress).
 func newDawgBuilder() *dawgBuilder {
 	b := &dawgBuilder{
 		register:  make(map[string]int32, 1<<20),
@@ -82,10 +83,10 @@ func newDawgBuilder() *dawgBuilder {
 	return b
 }
 
-// insertKeys вставляет отсортированные keys в билдер (инкрементальное
-// сравнение общего префикса с предыдущим ключом, Демьюк-слияние братьев).
-// Если onInserted не nil, вызывается после каждой вставки с 0-based индексом
-// только что вставленного ключа — используется для прогресс-коллбэков.
+// insertKeys inserts sorted keys into the builder (incrementally comparing
+// the common prefix with the previous key, Daciuk-style sibling merging).
+// If onInserted is not nil, it is called after every insertion with the
+// 0-based index of the key just inserted — used for progress callbacks.
 func (b *dawgBuilder) insertKeys(keys []string, onInserted func(i int)) {
 	for i, k := range keys {
 		common := 0
@@ -106,28 +107,28 @@ func (b *dawgBuilder) insertKeys(keys []string, onInserted func(i int)) {
 	b.closeSuffix(0)
 }
 
-// dawgBuilder строит list-form DAWG (плоские узлы со списками братьев) и
-// затем раскладывает его в double-array.
+// dawgBuilder builds a list-form DAWG (flat nodes with sibling lists) and
+// then lays it out into a double-array.
 type dawgBuilder struct {
 	nodes []dbNode
 
 	root     int32
-	path     []int32          // узлы текущего lastKey: path[0]=root
-	lastKey  string           // последний вставленный ключ
-	register map[string]int32 // подпись закрытой цепочки братьев → первый узел
-	merged   []bool           // первый узел цепочки, слитой с другой цепочкой
+	path     []int32          // nodes of the current lastKey: path[0]=root
+	lastKey  string           // the last key inserted
+	register map[string]int32 // signature of a closed sibling chain → first node
+	merged   []bool           // first node of a chain merged with another chain
 
 	sigBuf    []byte
 	labelsBuf []byte
 }
 
-// dbNode — узел list-form DAWG. Дети узла образуют цепочку братьев через next;
-// первый ребёнок — nodes[first].
+// dbNode — a list-form DAWG node. A node's children form a sibling chain via next;
+// the first child is nodes[first].
 type dbNode struct {
 	label byte
-	first int32 // первый ребёнок (голова цепочки); 0 — нет детей
-	next  int32 // следующий брат в родительской цепочке; 0 — нет
-	leaf  bool  // узел терминальный (имеет значение)
+	first int32 // first child (head of the chain); 0 — no children
+	next  int32 // next sibling in the parent's chain; 0 — none
+	leaf  bool  // the node is terminal (has a value)
 }
 
 func (b *dawgBuilder) newNode(label byte) int32 {
@@ -137,7 +138,7 @@ func (b *dawgBuilder) newNode(label byte) int32 {
 	return id
 }
 
-// appendByte добавляет новый узел первым ребёнком пути-родителя.
+// appendByte adds a new node as the first child of the path's parent.
 func (b *dawgBuilder) appendByte(label byte) {
 	id := b.newNode(label)
 	parent := b.path[len(b.path)-1]
@@ -146,8 +147,8 @@ func (b *dawgBuilder) appendByte(label byte) {
 	b.path = append(b.path, id)
 }
 
-// closeSuffix закрывает (минимизирует) узлы lastKey после общей части длиной
-// common: узлы снимаются с пути снизу вверх и сливаются/регистрируются.
+// closeSuffix closes (minimizes) lastKey's nodes past the common part of
+// length common: nodes are popped off the path bottom-up and merged/registered.
 func (b *dawgBuilder) closeSuffix(common int) {
 	for len(b.path) > common+1 {
 		n := b.path[len(b.path)-1]
@@ -156,9 +157,9 @@ func (b *dawgBuilder) closeSuffix(common int) {
 	}
 }
 
-// replaceOrRegister закрывает узел n (первого ребёнка родителя): если цепочка
-// братьев n уже зарегистрирована — перенаправляет ребро родителя на неё,
-// иначе регистрирует n.
+// replaceOrRegister closes node n (the parent's first child): if n's sibling
+// chain is already registered, it redirects the parent's edge to it,
+// otherwise it registers n.
 func (b *dawgBuilder) replaceOrRegister(n int32) {
 	if n == b.root {
 		return
@@ -172,10 +173,10 @@ func (b *dawgBuilder) replaceOrRegister(n int32) {
 	b.register[sig] = n
 }
 
-// chainSig вычисляет подпись цепочки братьев, начиная с узла n: для каждого
-// брата — метка, флаги (терминал, наличие брата) и id ребёнка. Ребёнок
-// сравнивается по id, потому что дети закрываются раньше (снизу вверх) и
-// после слияний одинаковые структуры имеют одинаковые id.
+// chainSig computes the signature of the sibling chain starting at node n:
+// for each sibling — its label, flags (terminal, has-next-sibling), and its
+// child's id. The child is compared by id because children are closed
+// earlier (bottom-up), and after merges identical structures share the same id.
 func (b *dawgBuilder) chainSig(n int32) string {
 	b.sigBuf = b.sigBuf[:0]
 	for n != 0 {
@@ -195,15 +196,16 @@ func (b *dawgBuilder) chainSig(n int32) string {
 	return string(b.sigBuf)
 }
 
-// compileWithProgress раскладывает минимизированный list-form DAWG в double-array
-// (dictionary uint32[]) и строит guide. Вызывает progress callback.
+// compileWithProgress lays out the minimized list-form DAWG into a double-array
+// (dictionary uint32[]) and builds guide. Calls the progress callback.
 func (b *dawgBuilder) compileWithProgress(progress func(processed, total int)) (*DAWG, error) {
 	totalNodes := int32(len(b.nodes))
 	return b.compileImpl(totalNodes, progress)
 }
 
-// compileWithTotal раскладывает DAWG и масштабирует прогресс на totalKeys.
-// Это нужно когда progress callback ожидает тот же total, что и в фазе вставки ключей.
+// compileWithTotal lays out the DAWG and rescales progress to totalKeys.
+// This is needed when the progress callback expects the same total as during
+// the key-insertion phase.
 func (b *dawgBuilder) compileWithTotal(totalKeys int, progress func(processed, total int)) (*DAWG, error) {
 	totalNodes := int32(len(b.nodes))
 	// Wrap progress to convert nodes->keys scale
@@ -281,7 +283,7 @@ func newPlacer(b *dawgBuilder, totalNodes int32, progress func(processed, total 
 
 // place recursively lays out node n at double-array slot index, reusing a
 // previously chosen base when n's first child is a merged (shared) node
-// whose base is still valid at this index (Демьюк-style base reuse).
+// whose base is still valid at this index (Daciuk-style base reuse).
 func (p *placer) place(n int32, index uint32) bool {
 	node := &p.b.nodes[n]
 	first := node.first
@@ -329,14 +331,14 @@ func (p *placer) tick() {
 	}
 }
 
-// compile раскладывает минимизированный list-form DAWG в double-array
-// (dictionary uint32[]) и строит guide.
+// compile lays out the minimized list-form DAWG into a double-array
+// (dictionary uint32[]) and builds guide.
 func (b *dawgBuilder) compile() (*DAWG, error) {
 	return b.compileWithProgress(nil)
 }
 
-// unitAt собирает transition-единицу узла: поле offset (rel) + метку и флаг
-// терминала (наличие value-ребра).
+// unitAt assembles a node's transition unit: the offset field (rel) plus
+// the label and the terminal flag (presence of a value edge).
 func unitAt(rel uint32, label byte, hasLeaf bool) uint32 {
 	var unit uint32
 	if rel < 1<<21 {
@@ -350,9 +352,10 @@ func unitAt(rel uint32, label byte, hasLeaf bool) uint32 {
 	return unit
 }
 
-// encodable проверяет представимость поля offset в единице словаря (как в
-// dawgdic DictionaryUnit::set_offset): значений < 1<<21 напрямую, бóльшие —
-// только кратные 256 (расширенный формат).
+// encodable checks whether the offset field is representable in a
+// dictionary unit (as in dawgdic's DictionaryUnit::set_offset): values
+// < 1<<21 directly, larger ones only if a multiple of 256 (extended
+// format).
 func encodable(rel uint32) bool {
 	if rel < 1<<21 {
 		return true
@@ -360,10 +363,11 @@ func encodable(rel uint32) bool {
 	return rel < 1<<29 && rel&0xFF == 0
 }
 
-// buildGuide строит guide (2 байта на узел: первый ребёнок + следующий брат)
-// по уже разложенному double-array. Ребёнки перечисляются в порядке возрастания
-// меток (как в dawgdic после инверсии цепочки при регистрации), поэтому порядок
-// перечисления значений совпадает с опорным trie-сборщиком (testdawg).
+// buildGuide builds the guide (2 bytes per node: first child + next
+// sibling) from an already laid-out double-array. Children are
+// enumerated in ascending label order (as in dawgdic after the chain is
+// reversed during registration), so the enumeration order matches the
+// reference trie builder (testdawg).
 func (b *dawgBuilder) buildGuide(dic []uint32) []byte {
 	guide := make([]byte, len(dic)*2)
 	fixed := make([]byte, (len(dic)+7)/8)
@@ -407,7 +411,7 @@ func (b *dawgBuilder) buildGuide(dic []uint32) []byte {
 	return guide
 }
 
-// setAt присваивает unit в dic, доращивая срез при необходимости.
+// setAt assigns unit into dic, growing the slice if necessary.
 func setAt(dic *[]uint32, index, unit uint32) {
 	if uint32(len(*dic)) <= index {
 		*dic = append(*dic, make([]uint32, index-uint32(len(*dic))+1)...)

@@ -1,17 +1,18 @@
 package morphology
 
-// LemmaRef — ссылка на начальную форму (лемму): текст, тег формы 0 парадигмы.
+// LemmaRef — a reference to a lemma (base form): text, tag of paradigm
+// form 0.
 type LemmaRef struct {
-	Normal string // начальная форма
-	Tag    string // тег начальной формы (форма 0 парадигмы)
-	Para   uint16 // id парадигмы — уникален только вместе с Shard
-	Shard  int    // индекс шарда словаря; всегда 0 для нешардированных словарей
-	Dict   int    // индекс словаря в MultiDictionary; всегда 0 для Dictionary.Lemma напрямую
+	Normal string // lemma (base form)
+	Tag    string // tag of the lemma (paradigm form 0)
+	Para   uint16 // paradigm id — unique only together with Shard
+	Shard  int    // dictionary shard index; always 0 for unsharded dictionaries
+	Dict   int    // dictionary index in MultiDictionary; always 0 for Dictionary.Lemma directly
 }
 
-// Lemma возвращает начальные формы слова по его разборам. Дедупликация по
-// паре (Normal, Tag) — одна и та же форма с разными тегами (омонимы)
-// сохраняется. Возвращает nil, если слово не найдено.
+// Lemma returns the word's lemmas based on its readings. Deduplicated by
+// the (Normal, Tag) pair — the same form with different tags (homonyms) is
+// kept. Returns nil if the word is not found.
 func (x *Dictionary) Lemma(word string) []LemmaRef {
 	readings := x.Parse(word)
 	if len(readings) == 0 {

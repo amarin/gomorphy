@@ -10,22 +10,22 @@ import (
 	"github.com/amarin/gomorphy/pkg/morphology/internal"
 )
 
-// Reading — один разбор словоформы.
+// Reading — one parse of a wordform.
 type Reading struct {
-	Word   string  // словоформа как в словаре (с «ё»)
-	Normal string  // начальная форма (лемма)
-	Tag    string  // граммемный тег, например "NOUN,anim,masc,sing,nomn"
-	Para   uint16  // id парадигмы — уникален только вместе с Shard
-	Form   uint16  // индекс формы в парадигме
-	Shard  int     // индекс шарда словаря; всегда 0 для нешардированных словарей
-	Dict   int     // индекс словаря в MultiDictionary; всегда 0 для Dictionary.Parse напрямую
-	Prob   float64 // вероятность разбора (0, если probability недоступен)
+	Word   string  // wordform as stored in the dictionary (with "ё")
+	Normal string  // lemma (base form)
+	Tag    string  // grammeme tag, e.g. "NOUN,anim,masc,sing,nomn"
+	Para   uint16  // paradigm id — unique only together with Shard
+	Form   uint16  // form index within the paradigm
+	Shard  int     // dictionary shard index; always 0 for unsharded dictionaries
+	Dict   int     // dictionary index in MultiDictionary; always 0 for Dictionary.Parse directly
+	Prob   float64 // probability of this reading (0 if probability data is unavailable)
 }
 
-// Parse разбирает слово и возвращает все чтения словаря, отсортированные
-// по вероятности (убыванию). Для слов вне словаря пытается предсказать
-// чтения по prediction-DAWG (окончания). Возвращает nil, если разборы
-// не найдены. Вход приводится к нижнему регистру.
+// Parse parses word and returns all dictionary readings, sorted by
+// probability (descending). For out-of-dictionary words, it tries to
+// predict readings from the prediction-DAWG (suffixes). Returns nil if no
+// readings are found. The input is lowercased.
 func (x *Dictionary) Parse(word string) []Reading {
 	if x == nil || x.d == nil || len(x.d.Words) == 0 {
 		return nil
@@ -38,15 +38,16 @@ func (x *Dictionary) Parse(word string) []Reading {
 	return x.predict(word)
 }
 
-// shardExactResult — результат exactInShard для одного шарда.
+// shardExactResult — the result of exactInShard for a single shard.
 type shardExactResult struct {
 	readings []Reading
 	hasProb  bool
 }
 
-// exact собирает чтения слова, найденного в словаре, с учётом подмен
-// CharPolicy (е→ё) и сортирует по вероятности. Шарды опрашиваются
-// параллельно (по горутине на шард), результаты склеиваются.
+// exact collects readings for a word found in the dictionary, accounting
+// for CharPolicy substitutions (е→ё), and sorts them by probability.
+// Shards are queried in parallel (one goroutine per shard), and results
+// are concatenated.
 func (x *Dictionary) exact(word string) []Reading {
 	results := make([]shardExactResult, len(x.d.Words))
 
@@ -75,9 +76,9 @@ func (x *Dictionary) exact(word string) []Reading {
 	return readings
 }
 
-// exactInShard собирает чтения слова из одного шарда. Вызывается
-// параллельно с другими шардами из exact — только чтение, общего
-// изменяемого состояния между горутинами нет.
+// exactInShard collects a word's readings from a single shard. It is
+// called in parallel with other shards from exact — read-only, no mutable
+// state shared between goroutines.
 func (x *Dictionary) exactInShard(shard int, dawg *internal.DAWG, word string) shardExactResult {
 	items := dawg.SimilarItems(word, x.d.CharPolicy, x.d.Alphabet)
 	if len(items) == 0 {
@@ -104,8 +105,9 @@ func (x *Dictionary) exactInShard(shard int, dawg *internal.DAWG, word string) s
 	return res
 }
 
-// predict ищет чтения для несловарного слова по окончаниям в prediction-DAWG
-// (алгоритм KnownSuffixAnalyzer из pymorphy2, как в opennota/morph).
+// predict looks up readings for an out-of-dictionary word by its endings
+// in the prediction-DAWG (pymorphy2's KnownSuffixAnalyzer algorithm, as in
+// opennota/morph).
 func (x *Dictionary) predict(word string) []Reading {
 	if len(x.d.Prediction) == 0 {
 		return nil
@@ -140,7 +142,7 @@ func (x *Dictionary) predict(word string) []Reading {
 //
 // Predictions always resolve against shard 0: the prediction-DAWG feature
 // currently exists only for pymorphy2 imports, which are never sharded
-// (see docs/superpowers/specs/2026-09-14-suffix-sharding-design.md).
+// (see docs/en/superpowers/specs/2026-09-14-suffix-sharding-design.md).
 func (x *Dictionary) predictForPrefix(id int, splits [][2]string, seen map[string]bool) []Reading {
 	const predictionShard = 0
 
@@ -150,7 +152,7 @@ func (x *Dictionary) predictForPrefix(id int, splits [][2]string, seen map[strin
 	for i := len(splits) - 1; i >= 0; i-- {
 		wordStart, wordEnd := splits[i][0], splits[i][1]
 		// Prediction DAWGs are never recompiled under Dictionary.Alphabet
-		// (out of scope — see docs/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md's
+		// (out of scope — see docs/en/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md's
 		// non-goals): always nil here, even for a dictionary whose Words
 		// DAWG uses a dense alphabet.
 		for _, it := range x.d.Prediction[id].SimilarItems(wordEnd, x.d.CharPolicy, nil) {
@@ -187,8 +189,8 @@ func (x *Dictionary) predictForPrefix(id int, splits [][2]string, seen map[strin
 	return readings
 }
 
-// reading декодирует payload-запись words.dawg (4 байта BE: para, form) в
-// указанном шарде.
+// reading decodes a words.dawg payload entry (4 bytes BE: para, form) in
+// the given shard.
 func (x *Dictionary) reading(shard int, word string, value []byte) (Reading, bool) {
 	if len(value) < 4 {
 		return Reading{}, false
@@ -198,8 +200,9 @@ func (x *Dictionary) reading(shard int, word string, value []byte) (Reading, boo
 	return x.readingForm(shard, word, para, form), true
 }
 
-// readingForm строит Reading по парадигме и форме в указанном шарде
-// (норма = prefix₀ + stem + suffix₀ для form≠0, иначе — само слово).
+// readingForm builds a Reading from a paradigm and form in the given shard
+// (normal form = prefix₀ + stem + suffix₀ for form≠0, otherwise the word
+// itself).
 func (x *Dictionary) readingForm(shard int, word string, paraNum, form uint16) Reading {
 	para, ok := x.paradigm(shard, paraNum)
 	if !ok || int(form) >= para.Len() {
@@ -235,9 +238,9 @@ func (x *Dictionary) paradigm(shard int, id uint16) (internal.Paradigm, bool) {
 	return internal.Paradigm{}, false
 }
 
-// paradigmAffix возвращает префикс и суффикс формы парадигмы для
-// указанного шарда (пустые при выходе за границы). Prefixes общий для
-// всех шардов; Suffixes — свой на шард.
+// paradigmAffix returns the prefix and suffix of a paradigm form for the
+// given shard (empty when out of bounds). Prefixes is shared across all
+// shards; Suffixes is per-shard.
 func (x *Dictionary) paradigmAffix(shard int, para internal.Paradigm, form int) (prefix, suffix string) {
 	if form >= para.Len() {
 		return "", ""
@@ -249,8 +252,8 @@ func (x *Dictionary) paradigmAffix(shard int, para internal.Paradigm, form int) 
 	return strAt(x.d.Prefixes, para.Prefix(form)), strAt(suffixes, para.Suffix(form))
 }
 
-// paradigmTag возвращает имя тега формы парадигмы. TagSet общий для всех
-// шардов, поэтому шард не нужен.
+// paradigmTag returns the tag name of a paradigm form. TagSet is shared
+// across all shards, so no shard is needed.
 func (x *Dictionary) paradigmTag(para internal.Paradigm, form int) string {
 	if form >= para.Len() {
 		return ""
@@ -268,7 +271,7 @@ func strAt(ar []string, i uint16) string {
 	return ""
 }
 
-// productive — граммема не входит в nonproductiveGrammemes.
+// productive reports whether the grammeme is not in nonproductiveGrammemes.
 func productive(tag string) bool {
 	if tag == "" {
 		return false
@@ -281,8 +284,8 @@ func productive(tag string) bool {
 	return true
 }
 
-// nonproductiveGrammemes — граммемы, для которых предсказание не даёт
-// продуктивных разборов (pymorphy2).
+// nonproductiveGrammemes — grammemes for which prediction does not yield
+// productive readings (pymorphy2).
 var nonproductiveGrammemes = []string{"NUMR", "NPRO", "PRED", "PREP", "CONJ", "PRCL", "INTJ", "Apro"}
 
 func suffixSplits(word string, max int) ([][2]string, bool) {

@@ -1,205 +1,205 @@
-# Глоссарий gomorphy
+# gomorphy Glossary
 
-Терминология проекта для разработчиков, не знакомых со спецификой
-морфологического анализа и внутренней архитектурой gomorphy.
-
----
-
-## Сущности словаря
-
-### Лемма (Lemma)
-Группа словоформ, объединённых общим смыслом и принципом изменения.
-На практике — словарная статья: начальная форма + все её формы.
-Пример: лемма «кот» включает формы кот, кота, коту, котом, коты, котов, ...
-
-### Начальная форма (Lemma text / Citation form)
-Первая форма леммы — та, что стоит в словаре как заголовочная статья.
-Для существительных — именительный падеж единственного числа; для глаголов —
-инфинитив. В pymorphy2: `stem + suffix[form_idx=0]`.
-
-### Словоформа (Wordform / Form)
-Конкретная форма слова с приписанной грамматической информацией.
-В gomorphy представлена как пара `(textID, ancodeID)` — текст + набор граммем.
-В pymorphy2: `(para_id, form_idx)` → `(stem + suffix, tag)`.
-Пример: «кота» — словоформа леммы «кот», граммемы NOUN,anim,masc,sing,gent.
-
-### Стем (Stem)
-Часть слова, общая для всех форм леммы. Вычисляется как наибольший общий
-префикс всех текстов форм. В pymorphy2 стем хранится один раз, а к нему
-добавляются суффиксы из парадигмы. В текущей gomorphy не используется.
-
-### Парадигма (Paradigm)
-Шаблон склонения/спряжения — плоский массив `(suffix_id, tag_id, prefix_id)`
-для каждой формы минус стем. В pymorphy2 для русского: ~3 000 уникальных
-парадигм из ~400K лексем. Одна парадигма переиспользуется между разными
-леммами с одинаковым типом склонения.
-
-### Анкод (Ancode)
-Уникальный набор граммем (грамматических тегов), приписанных словоформе.
-В OpenCorpora 876 уникальных анкодов. В pymorphy2 это парадигмные теги
-(id тега в TagSet).
-
-### Граммема (Grammeme)
-Элементарная грамматическая характеристика (тег). В OpenCorpora ~120
-граммем: POS (NOUN, VERB, ADJF, ...), род (masc, femn, neut), падеж
-(nomn, gent, datv, ...), число (sing, plur), и т.д.
-
-### TagSet (Набор граммем)
-Определение доступных граммем для конкретного словаря/языка. Включает:
-- имя языка (например, "ru")
-- список имён граммем (например, ["NOUN", "anim", "masc", ...])
-- обратный индекс (имя → id)
-
-В pymorphy2: `gramtab-opencorpora-int.json`.
-
-### CharPolicy (Политика символов)
-Набор подменяемых символов для поиска. По умолчанию пусто (нейтрально
-к языку). Для русского: `[{from: 'е', to: 'ё'}]`. Позволяет находить
-слова с «ё» при вводе «е» и наоборот.
+Project terminology for developers unfamiliar with the specifics of
+morphological analysis and gomorphy's internal architecture.
 
 ---
 
-## Структуры данных
+## Dictionary entities
+
+### Lemma (лемма)
+A group of wordforms united by a common meaning and inflection pattern.
+In practice — a dictionary entry: the citation form plus all of its forms.
+Example: the lemma "кот" (cat) includes the forms кот, кота, коту, котом, коты, котов, ...
+
+### Citation form (начальная форма / Lemma text / Citation form)
+The first form of a lemma — the one that appears as the dictionary's headword.
+For nouns — nominative singular; for verbs — the infinitive.
+In pymorphy2: `stem + suffix[form_idx=0]`.
+
+### Wordform (словоформа / Form)
+A specific form of a word with grammatical information attached.
+In gomorphy it is represented as a `(textID, ancodeID)` pair — text + a set of grammemes.
+In pymorphy2: `(para_id, form_idx)` → `(stem + suffix, tag)`.
+Example: "кота" is a wordform of the lemma "кот", with grammemes NOUN,anim,masc,sing,gent.
+
+### Stem (стем)
+The part of a word shared by all forms of a lemma. Computed as the longest common
+prefix of all form texts. In pymorphy2 the stem is stored once, and suffixes from
+the paradigm are appended to it. Not used in the current gomorphy.
+
+### Paradigm (парадигма)
+An inflection/conjugation template — a flat array of `(suffix_id, tag_id, prefix_id)`
+tuples for each form minus the stem. In pymorphy2, for Russian: ~3,000 unique
+paradigms out of ~400K lexemes. A single paradigm is reused across different
+lemmas that share the same inflection type.
+
+### Ancode (анкод)
+A unique set of grammemes (grammatical tags) attached to a wordform.
+OpenCorpora has 876 unique ancodes. In pymorphy2 these are the paradigm tags
+(tag id in the TagSet).
+
+### Grammeme (граммема)
+An elementary grammatical characteristic (tag). OpenCorpora has ~120
+grammemes: part of speech (NOUN, VERB, ADJF, ...), gender (masc, femn, neut), case
+(nomn, gent, datv, ...), number (sing, plur), and so on.
+
+### TagSet (набор граммем)
+The definition of the available grammemes for a specific dictionary/language. Includes:
+- the language name (e.g. "ru")
+- the list of grammeme names (e.g. ["NOUN", "anim", "masc", ...])
+- a reverse index (name → id)
+
+In pymorphy2: `gramtab-opencorpora-int.json`.
+
+### CharPolicy (политика символов)
+A set of substitutable characters for search. Empty by default (language-neutral).
+For Russian: `[{from: 'е', to: 'ё'}]`. Allows finding
+words with "ё" when "е" is typed, and vice versa.
+
+---
+
+## Data structures
 
 ### DAWG (Directed Acyclic Word Graph)
-Минимизированный trie — автомат, в котором эквивалентные состояния
-(с одинаковыми поддеревьями) слиты. DAWG сжимает общие префиксы и
-суффиксы слов. В pymorphy2: 5 млн словоформ ≈ 7 МБ.
+A minimized trie — an automaton in which equivalent states
+(with identical subtrees) are merged. A DAWG compresses shared prefixes and
+suffixes of words. In pymorphy2: 5 million wordforms ≈ 7 MB.
 
-Формат dawgdic:
-- `dictionary`: uint32 array — узлы с label (8 бит), offset (22 бита), флагами.
-- `guide`: byte array — навигация (child + sibling по 2 байта на узел).
+dawgdic format:
+- `dictionary`: uint32 array — nodes with a label (8 bits), offset (22 bits), and flags.
+- `guide`: byte array — navigation (child + sibling, 2 bytes per node).
 
 ### Trie (префиксное дерево)
-Дерево, в котором путь от корня к узлу образует слово. Каждое ребро помечено
-одним байтом. В gomorphy реализован как CSR (Compressed Sparse Row) —
-три параллельных массива. В новом формате заменяется DAWG.
+A tree in which the path from the root to a node forms a word. Each edge is labeled
+with a single byte. In gomorphy it is implemented as CSR (Compressed Sparse Row) —
+three parallel arrays. Replaced by a DAWG in the new format.
 
 ### CSR (Compressed Sparse Row)
-Способ хранения разреженных списков в трёх плоских массивах вместо массива
-указателей. Для trie: `StateOff[i]` — начало окна переходов состояния i,
-`TransLabel[StateOff[i]:StateOff[i+1]]` — метки переходов,
-`TransTarget[...]` — целевые состояния.
+A way of storing sparse lists in three flat arrays instead of an array of
+pointers. For a trie: `StateOff[i]` is the start of state i's transition window,
+`TransLabel[StateOff[i]:StateOff[i+1]]` are the transition labels,
+`TransTarget[...]` are the target states.
 
 ### Exact-hash
-Open-addressing хеш-таблица для быстрого O(1) lookup: `hash(text) → trie
-state`. В новом формате отсутствует: DAWG обеспечивает O(len) lookup
-без дополнительной структуры.
+An open-addressing hash table for fast O(1) lookup: `hash(text) → trie
+state`. Absent in the new format: the DAWG provides O(len) lookup
+without an additional structure.
 
-### Арена (Arena)
-Сплошной байтовый буфер для хранения всех уникальных текстов подряд.
-Текст доступен по индексу через таблицу смещений. В новом формате тексты
-хранятся в суффиксах/префиксах, а не отдельной ареной.
+### Arena (арена)
+A contiguous byte buffer holding all unique texts back to back. A text is
+accessible by index via an offset table. In the new format texts are
+stored in suffixes/prefixes rather than a separate arena.
 
-### Интернирование (Interning)
-Процесс сопоставления байтового среза существующему тексту в арене или
-добавления нового. Хеш `[]byte` → open-addressing таблица → при попадании
-возвращается существующий id без аллокации.
+### Interning (интернирование)
+The process of matching a byte slice to an existing text in the arena or
+adding a new one. Hash of `[]byte` → open-addressing table → on a hit
+the existing id is returned with no allocation.
 
-### Snapshot / Dictionary (Снимок)
-Иммутабельная структура `Dictionary` — всё состояние словаря в памяти:
+### Snapshot / Dictionary (снимок)
+The immutable `Dictionary` structure — the entire in-memory dictionary state:
 tagset, suffixes, prefixes, paradigms, words DAWG, prediction DAWGs.
-Чтение потокобезопасно без блокировок. Один экземпляр = один язык/источник.
+Reads are thread-safe without locks. One instance = one language/source.
 
-### Пара (Pair)
-Единица хранения словоформы в текущем gomorphy: кортеж `(textID, ancodeID)`.
-В новом формате не используется: DAWG хранит `(para_id, form_idx)`.
+### Pair (пара)
+The storage unit for a wordform in the current gomorphy: a `(textID, ancodeID)`
+tuple. Not used in the new format: the DAWG stores `(para_id, form_idx)`.
 
-### Постинг-лист (Posting list)
-Список идентификаторов пар `(textID, ancodeID)`, привязанных к финальному
-состоянию trie. В новом формате отсутствует: DAWG содержит `(para_id, form_idx)`.
+### Posting list (постинг-лист)
+A list of `(textID, ancodeID)` pair identifiers attached to a final
+trie state. Absent in the new format: the DAWG contains `(para_id, form_idx)`.
 
 ---
 
-## Формат и кодирование
+## Format and encoding
 
-### Формат GMRF (текущий)
-Бинарный формат файла скомпилированного словаря: заголовок (magic "GMRF",
-version, indexOffset), секции данных, каталог секций (имя → offset + size),
-трейлер (xxh3-64 чексумма).
+### GMRF format (current)
+The binary file format of the compiled dictionary: a header (magic "GMRF",
+version, indexOffset), data sections, a section directory (name → offset + size),
+and a trailer (xxh3-64 checksum).
 
-### Формат GMOR (новый)
-Бинарный формат с расширенным каталогом секций и zstd-сжатием.
-Секции: meta, tagset, prefixes (общие для всех шардов), suffixes-N,
-paradigms-N, words.dawg-N (по одному набору на шард — см.
+### GMOR format (new)
+A binary format with an extended section directory and zstd compression.
+Sections: meta, tagset, prefixes (shared across all shards), suffixes-N,
+paradigms-N, words.dawg-N (one set per shard — see
 docs/superpowers/specs/2026-09-14-suffix-sharding-design.md),
 prediction-N, probability.
 
-### Формат pymorphy2
-Формат словаря pymorphy2:
+### pymorphy2 format
+The pymorphy2 dictionary format:
 - `words.dawg`: dictionary uint32[] + guide byte[]
 - `paradigms.array`: uint16 count + N × (uint16 len + []uint16 data)
-- `suffixes.json`, `paradigm-prefixes.json`: JSON-массивы строк
-- `gramtab-opencorpora-int.json`: JSON-массив тегов
-- `prediction-suffixes-N.dawg`: prediction DAWGs (опционально)
+- `suffixes.json`, `paradigm-prefixes.json`: JSON arrays of strings
+- `gramtab-opencorpora-int.json`: JSON array of tags
+- `prediction-suffixes-N.dawg`: prediction DAWGs (optional)
 
-### Delta-кодирование
-Способ кодирования монотонно возрастающих последовательностей: хранится
-разница между соседними элементами (delta) вместо абсолютных значений.
+### Delta encoding
+A way of encoding monotonically increasing sequences: the difference
+between adjacent elements (delta) is stored instead of absolute values.
 
-### Zigzag-кодирование
-Преобразование знакового int64 в беззнаковый uint64: отрицательные значения
-чередуются с положительными. Позволяет varint-кодировать отрицательные дельты.
+### Zigzag encoding
+Converting a signed int64 to an unsigned uint64: negative values
+are interleaved with positive ones. Allows negative deltas to be varint-encoded.
 
 ### Varint (uvarint)
-Кодирование целых чисел переменной длины: значения 0–127 занимают 1 байт,
-128–16383 — 2 байта, и т.д.
+Variable-length integer encoding: values 0–127 take 1 byte,
+128–16383 take 2 bytes, and so on.
 
 ### mmap (Memory-mapped file)
-Техника отображения файла в виртуальную память процесса. Позволяет читать
-секции файла напрямую как срезы `[]byte` без копирования.
+A technique for mapping a file into a process's virtual memory. Allows
+reading file sections directly as `[]byte` slices without copying.
 
 ### Zero-copy loading
-Загрузка словаря без поэлементного парсинга: fixed-width секции
-reinterpret'ятся через `unsafe.Slice` прямо из mmap-региона.
+Loading a dictionary without element-by-element parsing: fixed-width sections
+are reinterpreted via `unsafe.Slice` directly from the mmap region.
 
 ### zstd
-Формат сжатия данных. Используется для холодных секций в новом формате.
-Декомпрессия один раз при загрузке.
+A data compression format. Used for cold sections in the new format.
+Decompressed once at load time.
 
 ---
 
-## Процессы
+## Processes
 
-### Компиляция (Compile / Build)
-Преобразование исходных данных в скомпилированный бинарный словарь.
-- OpenCorpora: dict.xml → парадигмы → DAWG → .dat
-- PyMorphy2: директория с файлами → .dat
+### Compile / Build (компиляция)
+Converting source data into a compiled binary dictionary.
+- OpenCorpora: dict.xml → paradigms → DAWG → .dat
+- PyMorphy2: a directory of files → .dat
 
-### Builder (Сборщик)
-Изменяемая фаза компиляции: накапливает граммемы, леммы, словоформы через
-`AddGrammeme`/`AddLemma`/`AddForm`. Непотокобезопасен (один писатель).
-`Build()` компилирует данные в иммутабельный `Dictionary`.
+### Builder (сборщик)
+The mutable compilation phase: accumulates grammemes, lemmas, and wordforms via
+`AddGrammeme`/`AddLemma`/`AddForm`. Not thread-safe (single writer).
+`Build()` compiles the data into an immutable `Dictionary`.
 
-### Import (Импорт)
-Чтение словаря из внешнего формата и конвертация во внутренний формат.
-- `OpenPyMorphy(dir)`: чтение words.dawg + paradigms.array + строки
-- `CompileFromXML(r)`: dict.xml → парадигмы → DAWG
+### Import (импорт)
+Reading a dictionary from an external format and converting it to the internal format.
+- `OpenPyMorphy(dir)`: reads words.dawg + paradigms.array + strings
+- `CompileFromXML(r)`: dict.xml → paradigms → DAWG
 
-### Lookup / Parse (Точный поиск)
-Поиск словоформы в словаре. В новом формате:
+### Lookup / Parse (точный поиск)
+Looking up a wordform in the dictionary. In the new format:
 1. DAWG lookup → `(para_id, form_idx)`.
-2. Индексная арифметика по парадигме → suffix + tag.
-3. Восстановление текста: `stem + suffix`.
+2. Index arithmetic over the paradigm → suffix + tag.
+3. Text reconstruction: `stem + suffix`.
 
-### Fuzzy (Нечёткий поиск)
-Поиск слов с расстоянием Левенштейна ≤ k: совместный обход DAWG и DFA
-Левенштейна с отсечением по порогу. Метрика по рунам (не по байтам).
+### Fuzzy (нечёткий поиск)
+Searching for words within Levenshtein distance ≤ k: a joint traversal of the DAWG
+and a Levenshtein DFA with threshold pruning. Distance measured in runes (not bytes).
 
-### Lemma (Лемматизация)
-Начальная форма по словоформе. В новом формате:
+### Lemma (лемматизация)
+Deriving the citation form from a wordform. In the new format:
 1. DAWG lookup → `(para_id, form_idx)`.
-2. `stem + suffix[0]` — начальная форма.
+2. `stem + suffix[0]` — the citation form.
 
-### Prediction (Предсказание)
-Разбор несловарных слов по окончаниям. Используются prediction DAWGs
-(отдельные DAWGs для 1–5-буквенных окончаний).
+### Prediction (предсказание)
+Parsing out-of-dictionary words by their endings. Uses prediction DAWGs
+(separate DAWGs for 1–5-letter endings).
 
 ### OpenCorpora
-Проект открытого русскоязычного морфологического словаря
-(http://opencorpora.org). Исходный формат — XML (`dict.xml`).
+An open Russian-language morphological dictionary project
+(http://opencorpora.org). Source format — XML (`dict.xml`).
 
 ### PyMorphy2
-Морфологический анализатор для русского языка. Формат хранения:
-DAWG + парадигмы + строки. Библиотека `opennota/morph` (Go) читает
-этот формат напрямую.
+A morphological analyzer for the Russian language. Storage format:
+DAWG + paradigms + strings. The `opennota/morph` (Go) library reads
+this format directly.

@@ -1,36 +1,37 @@
-# Ускорение сборки DAWG: free-list вместо O(n²) сканирования — ВЫПОЛНЕНО
+# Speeding up DAWG build: free-list instead of O(n²) scanning — DONE
 
-> Перенесено из `docs/todo.md` при уборке документации (2026-09-14).
+> Moved from `docs/todo.md` during the documentation cleanup (2026-09-14).
 
-## Проблема
+## Problem
 
-После этапа 15 сборка реального словаря OpenCorpora (dict.xml,
-3 065 312 лемм) занимала около 24 часов. Причина — `compileImpl`
-(`pkg/morphology/internal/dawgbuild.go`) искал свободный `base`-слот
-double-array раскладки линейным сканированием бита за битом от `base=1`
-для каждого узла; по мере заполнения массива стоимость поиска на узел
-росла вместе с числом уже размещённых узлов, что даёт квадратичную
-асимптотику.
+After Stage 15, building the real OpenCorpora dictionary (dict.xml,
+3,065,312 lemmas) took about 24 hours. The cause: `compileImpl`
+(`pkg/morphology/internal/dawgbuild.go`) looked for a free `base` slot
+in the double-array layout by linear bit-by-bit scanning from `base=1`
+for every node; as the array filled up, the per-node search cost grew
+together with the number of already-placed nodes, giving quadratic
+asymptotic behavior.
 
-## Решение
+## Solution
 
-Placement-алгоритм заменён на intrusive doubly-linked free list (техника
-dawgdic/cedar/Darts, Aoe 1989): свободные слоты связаны в список, поиск
-посещает только свободные слоты, плюс кэш подсказок по первому байту
-метки. Формат файла и публичный API не изменились. Подробности — в
-[design-спеке](../superpowers/specs/2026-09-14-dawg-build-freelist-design.md)
-и [плане реализации](../superpowers/plans/2026-09-14-dawg-build-freelist.md).
+The placement algorithm was replaced with an intrusive doubly-linked
+free list (the dawgdic/cedar/Darts technique, Aoe 1989): free slots are
+linked into a list, the search only visits free slots, plus a hint
+cache keyed by the label's first byte. The file format and the public
+API did not change. Details are in the
+[design spec](../superpowers/specs/2026-09-14-dawg-build-freelist-design.md)
+and the [implementation plan](../superpowers/plans/2026-09-14-dawg-build-freelist.md).
 
-## Результат (полный `dict.xml`, `gomorphy_build compile`)
+## Result (full `dict.xml`, `gomorphy_build compile`)
 
-| Метрика | До фикса | После фикса |
+| Metric | Before the fix | After the fix |
 |---|---|---|
-| Время сборки (OpenCorpora, 3.06М лемм) | ~24 ч | ~24 с |
-| Peak RSS | — | ~8.2 ГБ |
+| Build time (OpenCorpora, 3.06M lemmas) | ~24 h | ~24 s |
+| Peak RSS | — | ~8.2 GB |
 
-Синтетический бенчмарк (`dawgbuild_scaling_test.go`, `-tags scaling`)
-подтверждает сублинейно-квадратичный (не O(n²)) рост при 100К–5М ключей.
+A synthetic benchmark (`dawgbuild_scaling_test.go`, `-tags scaling`)
+confirms sub-quadratic (not O(n²)) growth for 100K–5M keys.
 
-Позже выяснилось, что основная часть итогового размера `.dat` была
-вызвана отдельным багом минимизации DAWG, не связанным с этой правкой —
-см. [dawg-minimization-fix.md](dawg-minimization-fix.md).
+It later turned out that most of the final `.dat` size was caused by a
+separate DAWG minimization bug unrelated to this fix — see
+[dawg-minimization-fix.md](dawg-minimization-fix.md).

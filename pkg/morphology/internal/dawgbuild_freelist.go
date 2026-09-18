@@ -1,32 +1,32 @@
 package internal
 
-// slotAllocator подбирает свободные base-слоты double-array раскладки
-// методом intrusive doubly-linked free list (техника dawgdic/cedar/Darts,
-// Aoe 1989): свободные слоты связаны в список через next/prev, поиск идёт
-// только по нему — уже занятые слоты никогда не пересматриваются заново,
-// в отличие от линейного сканирования битсета с нуля на каждый узел.
+// slotAllocator picks free base slots for the double-array layout using
+// an intrusive doubly-linked free list (a technique from dawgdic/cedar/
+// Darts, Aoe 1989): free slots are linked via next/prev, and the search
+// only walks that list — already-used slots are never rescanned, unlike
+// a linear bitset scan starting from zero for every node.
 //
-// Слот 0 зарезервирован под корень DAWG (compileImpl всегда размещает
-// корень по индексу 0) и служит sentinel-значением "нет соседа" для
-// списка свободных: он никогда не свободен, поэтому 0 однозначно значит
-// "конец/начало списка".
+// Slot 0 is reserved for the DAWG root (compileImpl always places the
+// root at index 0) and doubles as the sentinel value "no neighbor" for
+// the free list: it is never free, so 0 unambiguously means "end/start
+// of the list".
 type slotAllocator struct {
 	used []bool
-	next []uint32 // next[i]: следующий свободный слот после i; 0 — конца списка нет
-	prev []uint32 // prev[i]: предыдущий свободный слот перед i; 0 — начала списка нет
-	head uint32   // первый свободный слот; 0, если список пуст
-	tail uint32   // последний свободный слот; 0, если список пуст
+	next []uint32 // next[i]: the next free slot after i; 0 = no end
+	prev []uint32 // prev[i]: the previous free slot before i; 0 = no start
+	head uint32   // the first free slot; 0 if the list is empty
+	tail uint32   // the last free slot; 0 if the list is empty
 	hint [256]uint32
 }
 
-// maxSlotAllocatorCap — защитный потолок: реальные словари никогда его не
-// достигают (сотни миллионов узлов), это лишь замена прежнему
-// errDAWGBuild-пути на случай патологического набора ключей.
+// maxSlotAllocatorCap is a safety ceiling: real dictionaries never reach
+// it (hundreds of millions of nodes) — it's only a replacement for the
+// old errDAWGBuild path in case of a pathological key set.
 const maxSlotAllocatorCap = 1 << 30
 
 func newSlotAllocator() *slotAllocator {
 	return &slotAllocator{
-		used: []bool{true}, // слот 0 занят с самого начала (корень)
+		used: []bool{true}, // slot 0 is used from the start (the root)
 		next: []uint32{0},
 		prev: []uint32{0},
 	}
@@ -34,8 +34,8 @@ func newSlotAllocator() *slotAllocator {
 
 func (a *slotAllocator) cap() uint32 { return uint32(len(a.used)) }
 
-// grow расширяет ёмкость минимум до n слотов, добавляя новые слоты в
-// хвост списка свободных по возрастанию индекса.
+// grow expands capacity to at least n slots, appending the new slots to
+// the tail of the free list in ascending index order.
 func (a *slotAllocator) grow(n uint32) {
 	old := a.cap()
 	if n <= old {
@@ -75,8 +75,8 @@ func (a *slotAllocator) unlink(i uint32) {
 	a.prev[i], a.next[i] = 0, 0
 }
 
-// markUsed резервирует слот i, при необходимости расширяя ёмкость.
-// No-op, если слот уже занят.
+// markUsed reserves slot i, growing capacity if needed. No-op if the
+// slot is already used.
 func (a *slotAllocator) markUsed(i uint32) {
 	if i >= a.cap() {
 		a.grow(i + 1)
@@ -88,14 +88,15 @@ func (a *slotAllocator) markUsed(i uint32) {
 	a.unlink(i)
 }
 
-// isUsed сообщает, занят ли слот i (слоты за пределами текущей ёмкости
-// считаются свободными — они ещё не были никому нужны).
+// isUsed reports whether slot i is used (slots beyond the current
+// capacity count as free — nothing has needed them yet).
 func (a *slotAllocator) isUsed(i uint32) bool {
 	return i < a.cap() && a.used[i]
 }
 
-// fits проверяет, что base сам свободен и все base^label для labels тоже
-// свободны — т.е. узел можно разместить с этим base без коллизий.
+// fits checks that base itself is free and that every base^label for
+// labels is also free — i.e. the node can be placed at this base
+// without collisions.
 func (a *slotAllocator) fits(base uint32, labels []byte) bool {
 	if base == 0 || a.isUsed(base) {
 		return false
@@ -108,7 +109,7 @@ func (a *slotAllocator) fits(base uint32, labels []byte) bool {
 	return true
 }
 
-// commit резервирует base и все дочерние слоты base^label.
+// commit reserves base and every child slot base^label.
 func (a *slotAllocator) commit(base uint32, labels []byte) {
 	a.markUsed(base)
 	for _, l := range labels {
@@ -116,14 +117,15 @@ func (a *slotAllocator) commit(base uint32, labels []byte) {
 	}
 }
 
-// alloc находит и резервирует base для узла на позиции index: сам base и
-// все base^label для labels должны быть свободны, а index^base —
-// представимо в offset-поле единицы словаря (encodable). Поиск идёт по
-// списку свободных слотов начиная с подсказки для первого лейбла (если
-// есть и всё ещё свободна), иначе с начала списка. При исчерпании списка
-// без успеха — расширяет ёмкость вдвое и делает полный проход заново;
-// такое случается только на границах роста, поэтому суммарная стоимость
-// повторных полных проходов ограничена O(n log n), а не O(n) на узел.
+// alloc finds and reserves a base for the node at position index: base
+// itself and every base^label for labels must be free, and index^base
+// must be representable in the dictionary unit's offset field
+// (encodable). The search walks the free-slot list starting from the
+// hint for the first label (if any and still free), otherwise from the
+// head of the list. If the list is exhausted without success, capacity
+// is doubled and a full pass is retried; this only happens at growth
+// boundaries, so the total cost of repeated full passes is bounded by
+// O(n log n), not O(n) per node.
 func (a *slotAllocator) alloc(index uint32, labels []byte) (uint32, bool) {
 	var startLabel byte
 	if len(labels) > 0 {

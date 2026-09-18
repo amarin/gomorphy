@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// readingsSnapshot сравнивает результат Parse до и после roundtrip.
+// readingsSnapshot compares the Parse result before and after a roundtrip.
 func readingsSnapshot(d *morphology.Dictionary, words ...string) map[string][]morphology.Reading {
 	out := make(map[string][]morphology.Reading, len(words))
 	for _, w := range words {
@@ -61,17 +61,17 @@ func TestSaveOpenRoundtrip(t *testing.T) {
 	after := got.Lemma("кота")
 	assert.Equal(t, before, after)
 
-	// Вероятности из p_t_given_w.intdawg переживают roundtrip.
+	// Probabilities from p_t_given_w.intdawg survive the roundtrip.
 	wantProb := maxReadingProb(d.Parse("кот"))
 	assert.Equal(t, wantProb, maxReadingProb(got.Parse("кот")))
 	assert.NotZero(t, wantProb, "фикстура должна содержать вероятность")
 }
 
-// TestSaveToStampsBuildInfo проверяет, что SaveTo проставляет BuiltAt и
-// LibraryVersion в секцию info при каждом сохранении, сохраняя то, что уже
-// заполнил импортёр (Source), и не изменяя исходный Dictionary (он
-// иммутабелен — buildFixture идёт через OpenPyMorphy, который выставляет
-// Info.Source="pymorphy2", но не BuiltAt/LibraryVersion).
+// TestSaveToStampsBuildInfo verifies that SaveTo stamps BuiltAt and
+// LibraryVersion into the info section on every save, preserving what the
+// importer already filled in (Source), and without mutating the source
+// Dictionary (it is immutable — buildFixture goes through OpenPyMorphy,
+// which sets Info.Source="pymorphy2" but not BuiltAt/LibraryVersion).
 func TestSaveToStampsBuildInfo(t *testing.T) {
 	words := map[string]uint32{}
 	stdWords(words)
@@ -140,7 +140,7 @@ func TestOpenCorruptedFile(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "d.dat")
 	require.NoError(t, d.SaveTo(out))
 
-	// Повреждаем байт в конце (ломает checksum).
+	// Corrupt a byte at the end (breaks the checksum).
 	f, err := os.OpenFile(out, os.O_RDWR, 0)
 	require.NoError(t, err)
 	info, err := f.Stat()
@@ -160,7 +160,7 @@ func TestOpenTruncatedFile(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "d.dat")
 	require.NoError(t, d.SaveTo(out))
 
-	// Обрезаем до заголовка: секции не читаются.
+	// Truncate down to the header: sections cannot be read.
 	require.NoError(t, os.Truncate(out, 18))
 
 	_, err := morphology.Open(out)
@@ -198,11 +198,12 @@ func TestSaveToCreatesMissingDir(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestSaveToRejectsDenseAlphabet проверяет находку финального ревью: словарь
-// с ненулевым Alphabet (OpenPyMorphyDense) нельзя сохранять через SaveTo —
-// у Alphabet нет дискового представления, и сохранённый-и-переоткрытый
-// словарь тихо мис-декодировался бы (см. docs/superpowers/specs/
-// 2026-09-16-pymorphy2-dense-recompile-design.md, non-goals).
+// TestSaveToRejectsDenseAlphabet verifies a finding from the final review: a
+// dictionary with a non-nil Alphabet (OpenPyMorphyDense) must not be
+// saveable via SaveTo — Alphabet has no on-disk representation, and a
+// saved-and-reopened dictionary would silently mis-decode (see
+// docs/en/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md,
+// non-goals).
 func TestSaveToRejectsDenseAlphabet(t *testing.T) {
 	words := map[string]uint32{}
 	stdWords(words)
@@ -219,8 +220,8 @@ func TestSaveToRejectsDenseAlphabet(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "SaveTo не должна создавать файл при отказе")
 }
 
-// TestSaveToNilAlphabetStillWorks — регрессия: обычный (не dense) словарь
-// по-прежнему сохраняется без ошибок.
+// TestSaveToNilAlphabetStillWorks is a regression test: a regular (non-dense)
+// dictionary still saves without errors.
 func TestSaveToNilAlphabetStillWorks(t *testing.T) {
 	words := map[string]uint32{}
 	stdWords(words)

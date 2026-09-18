@@ -1,101 +1,104 @@
-# Обоснование редизайна хранилища (этапы 11–18)
+# Storage redesign rationale (stages 11-18)
 
-> Перенесено из `docs/todo.md` при уборке документации (2026-09-14) —
-> историческое обоснование решения заменить внутренний формат хранения
-> (CSR-trie + exact-hash + пары) на paradigm + DAWG. Само решение уже
-> реализовано; см. `docs/todo.md` для текущего статуса и `implementation/
-> stage-11-*` … `stage-18-*` для деталей каждого этапа.
+> Moved from `docs/todo.md` during the documentation cleanup
+> (2026-09-14) — the historical rationale for replacing the internal
+> storage format (CSR-trie + exact-hash + pairs) with paradigm + DAWG.
+> The decision itself is already implemented; see `docs/en/todo.md` for
+> the current status and `implementation/stage-11-*` ... `stage-18-*`
+> for each stage's details.
 
-Исходный материал: [pymorphy2 — внутреннее устройство](https://pymorphy2.readthedocs.io/en/stable/internals/index.html),
-[opennota/morph](https://gitlab.com/opennota/morph) (Go-реализация чтения pymorphy2).
+Source material: [pymorphy2 internals](https://pymorphy2.readthedocs.io/en/stable/internals/index.html),
+[opennota/morph](https://gitlab.com/opennota/morph) (a Go implementation reading pymorphy2's format).
 
-## Архитектура хранения PyMorphy2
+## PyMorphy2's storage architecture
 
-Ключевая идея: **парадигмы + DAWG**.
+The key idea: **paradigms + DAWG**.
 
-1. **Парадигмы.** Каждая лемма разбирается на префикс + стем + суффикс.
-   Стем отбрасывается; (префикс, суффикс, тег) кодируются числовыми индексами.
-   Результат — шаблон склонения (парадигма). Для русского: ~3 000 парадигм
-   из ~400K лексем. Парадигма хранится как `array.array("<H")`: N суффиксов
-   + N тегов + N префиксов.
+1. **Paradigms.** Every lemma is split into prefix + stem + suffix. The
+   stem is discarded; (prefix, suffix, tag) are encoded as numeric
+   indices. The result is an inflection template (a paradigm). For
+   Russian: ~3,000 paradigms out of ~400K lexemes. A paradigm is stored
+   as `array.array("<H")`: N suffixes + N tags + N prefixes.
 
-2. **DAWG слов.** Все слова — в минимизированном конечном автомате.
-   Ключ: `<слово>\x00<para_id><form_idx>`. DAWG сливает общие префиксы и
-   суффиксы. 5 млн словоформ ≈ 7 МБ.
+2. **The word DAWG.** All words go into a minimized finite automaton.
+   Key: `<word>\x00<para_id><form_idx>`. The DAWG merges shared prefixes
+   and suffixes. 5 million wordforms take ~7 MB.
 
-3. **Теги и суффиксы.** Пулы строк: `suffixes.json` (~5K суффиксов),
-   `paradigm-prefixes.json` (~3 префикса), `gramtab-opencorpora-int.json`
-   (~1K тегов). Хранятся как JSON-массивы строк.
+3. **Tags and suffixes.** String pools: `suffixes.json` (~5K suffixes),
+   `paradigm-prefixes.json` (~3 prefixes), `gramtab-opencorpora-int.json`
+   (~1K tags). Stored as JSON string arrays.
 
-4. **Предсказание.** Отдельные DAWG для 1–5-буквенных окончаний → наборы
-   разборов. Обеспечивает разбор несловарных слов.
+4. **Prediction.** Separate DAWGs for 1-5 letter endings -> sets of
+   readings. Enables parsing out-of-dictionary words.
 
-5. **Чтение в Go.** Библиотека `opennota/morph` (~500 строк) читает формат
-   pymorphy2 напрямую: dictionary+guide массивы для DAWG, binary Read для
-   paradigms.array, JSON для суффиксов/тегов. Ё-обработка на лету.
+5. **Reading it in Go.** The `opennota/morph` library (~500 lines) reads
+   pymorphy2's format directly: dictionary+guide arrays for the DAWG,
+   binary reads for paradigms.array, JSON for suffixes/tags. е/ё
+   handling on the fly.
 
-| Сущность | Кол-во | Объём |
+| Entity | Count | Size |
 |---|---|---|
-| Парадигмы | ~3 000 | ~3–4 МБ |
-| Суффиксы/префиксы/теги | ~6K | ~0.5 МБ |
-| Слова в DAWG | ~5 млн | ~7 МБ |
-| Предсказание (3 DAWG) | — | ~3–4 МБ |
-| **Итого** | | **~15 МБ** |
+| Paradigms | ~3,000 | ~3-4 MB |
+| Suffixes/prefixes/tags | ~6K | ~0.5 MB |
+| Words in the DAWG | ~5M | ~7 MB |
+| Prediction (3 DAWGs) | — | ~3-4 MB |
+| **Total** | | **~15 MB** |
 
-## Архитектура хранения gomorphy (на момент анализа, до этапов 11–18)
+## gomorphy's storage architecture (at the time of analysis, before stages 11-18)
 
-Ключевая идея: **интернирование + CSR-trie + exact-hash**.
+The key idea: **interning + CSR-trie + exact-hash**.
 
-| Сущность | Кол-во | Объём на диске |
+| Entity | Count | On-disk size |
 |---|---|---|
-| Уникальные тексты (TextData) | 3 065 312 | ~67 МБ |
-| Exact-hash таблица | ~4,4 млн слотов × 16 байт | ~47 МБ |
-| Pairs (text_id + ancode_id) | 5 393 737 | ~62 МБ (raw u32) |
-| Trie (CSR) | сотни тыс. состояний | ~30–40 МБ |
-| Постинг-листы | 5,4 млн записей | ~20 МБ |
-| Леммы + анкоды | 391К + 876 | ~5 МБ |
-| **Итого на диске** | | **~305 МБ** |
+| Unique texts (TextData) | 3,065,312 | ~67 MB |
+| Exact-hash table | ~4.4M slots x 16 bytes | ~47 MB |
+| Pairs (text_id + ancode_id) | 5,393,737 | ~62 MB (raw u32) |
+| Trie (CSR) | hundreds of thousands of states | ~30-40 MB |
+| Posting lists | 5.4M entries | ~20 MB |
+| Lemmas + ancodes | 391K + 876 | ~5 MB |
+| **Total on disk** | | **~305 MB** |
 
-## Причины расхождения в 20×
+## Why there's a 20x gap
 
-| Причина | Доля экономии pymorphy2 | Комментарий |
+| Reason | pymorphy2's savings share | Comment |
 |---|---|---|
-| Парадигмы вместо плоских текстов | ~40 МБ (67→27 МБ) | 3K шаблонов вместо 3M текстов |
-| DAWG вместо CSR-trie | ~15–20 МБ | Слияние эквивалентных состояний |
-| Встроенные метаданные в DAWG | ~42 МБ | PairTexts+PairAncodes не нужны |
-| Отсутствие exact-hash | ~47 МБ | DAWG обеспечивает O(len) lookup |
-| Отсутствие постинг-листов | ~20 МБ | Метаданные в DAWG-значениях |
+| Paradigms instead of flat texts | ~40 MB (67->27 MB) | 3K templates instead of 3M texts |
+| DAWG instead of CSR-trie | ~15-20 MB | Merging equivalent states |
+| Metadata embedded in the DAWG | ~42 MB | PairTexts+PairAncodes not needed |
+| No exact-hash | ~47 MB | The DAWG gives O(len) lookup |
+| No posting lists | ~20 MB | Metadata lives in DAWG values |
 
-## Почему рефакторинг текущего (на тот момент) кода не работает
+## Why refactoring the current (at the time) code doesn't work
 
-Текущая модель gomorphy **принципиально отличалась** от pymorphy2:
+gomorphy's then-current model was **fundamentally different** from pymorphy2's:
 
-1. **Пары (textID, ancodeID)** — центральная единица хранения. Один текст
-   может иметь несколько анкодов (омонимия). В pymorphy2 это не нужно:
-   DAWG хранит `(слово → para_id, form_idx)`, и тег берётся из парадигмы.
+1. **Pairs (textID, ancodeID)** are the central storage unit. One text
+   can have several ancodes (homonymy). pymorphy2 doesn't need this:
+   the DAWG stores `(word -> para_id, form_idx)`, and the tag comes
+   from the paradigm.
 
-2. **Постинг-листы** привязаны к узлам trie. В pymorphy2 их нет:
-   DAWG сам содержит `(para_id, form_idx)` как значение.
+2. **Posting lists** are attached to trie nodes. pymorphy2 has none:
+   the DAWG itself holds `(para_id, form_idx)` as its value.
 
-3. **Exact-hash** — отдельная 47 МБ таблица. В pymorphy2 DAWG обеспечивает
-   быстрый поиск без дополнительной структуры.
+3. **Exact-hash** is a separate 47 MB table. In pymorphy2, the DAWG
+   provides fast lookup with no extra structure.
 
-Пошаговое «внедрение парадигм» в текущую модель не давало основного
-выигрыша (встраивание метаданных в граф), а создавало бы гибрид без
-преимуществ ни одной модели.
+Incrementally "bolting paradigms onto" the current model wouldn't
+deliver the main win (embedding metadata into the graph), and would
+instead create a hybrid with none of either model's advantages.
 
-## Почему rewrite оправдан
+## Why a rewrite is justified
 
-1. **opennota/morph доказывает** DAWG-модель в Go: ~500 строк, чтение формата
-   pymorphy2, Ё-обработка, prediction. Формат прост: dictionary uint32[] +
-   guide byte[].
+1. **opennota/morph proves out** the DAWG model in Go: ~500 lines,
+   reads pymorphy2's format, е/ё handling, prediction. The format is
+   simple: dictionary uint32[] + guide byte[].
 
-2. **XML-пайплайн переиспользуется.** `internal/xmlscan` читает dict.xml —
-   эту часть не нужно переписывать. Новый импортёр берёт события xmlscan
-   и строит парадигмы + DAWG.
+2. **The XML pipeline is reused.** `internal/xmlscan` already reads
+   dict.xml — that part doesn't need rewriting. The new importer takes
+   xmlscan's events and builds paradigms + a DAWG.
 
-3. **CLI адаптируется.** Интерактивный режим и команды — 90% кода остаётся.
-   Добавляются `import` и multi-source.
+3. **The CLI adapts.** The interactive mode and commands — 90% of the
+   code stays. `import` and multi-source support are added.
 
-4. **FT8 (Builder) сохраняется.** API `AddGrammeme/AddLemma/AddForm` остаётся —
-   это вход для программного наполнения.
+4. **FT8 (Builder) is kept.** The `AddGrammeme/AddLemma/AddForm` API
+   stays — it's the entry point for programmatic population.

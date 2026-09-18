@@ -1,44 +1,45 @@
-# Этап 18. Финализация: документация, тесты
+# Stage 18. Finalization: documentation, tests
 
-> **Обновление**: раздел «CLI» ниже описывает исходный план (флаги
-> `-dict`, `import pymorphy2/opencorpora/unimorph`, tab-completion) —
-> он **не реализован буквально**, но CLI полностью переработан отдельно
-> (Этап 21, `gomorphy` на cobra) и закрывает суть задачи иначе: команды
+> **Update**: the "CLI" section below describes the original plan
+> (`-dict` flags, `import pymorphy2/opencorpora/unimorph`,
+> tab-completion) — it was **not implemented literally**, but the CLI
+> was fully reworked separately (Stage 21, `gomorphy` on cobra) and
+> closes the same underlying need differently: commands
 > `lookup`/`lemmas`/`fuzzy`/`top`/`cli`/`download`/`unpack`/`build`/`update`,
-> флаг `-d/--dictionary` (можно указывать несколько раз — объединяются в
-> `MultiDictionary`). Актуальное описание CLI — [docs/cli.md](../cli.md),
-> история редизайна —
-> [pymorphy-source-and-cli.md](pymorphy-source-and-cli.md). Раздел «CLI»
-> ниже сохранён как есть для истории планирования, не как актуальная
-> спецификация. Оставшийся объём этого этапа — документация, тесты,
-> метрики; см. «Итоговые метрики» ниже, обновлено по факту.
+> a `-d/--dictionary` flag (can be given several times — merged into a
+> `MultiDictionary`). The current CLI description is
+> [docs/cli.md](../cli.md), the redesign history is
+> [pymorphy-source-and-cli.md](pymorphy-source-and-cli.md). The "CLI"
+> section below is kept as-is for planning history, not as the current
+> spec. What's left of this stage is documentation, tests, metrics; see
+> "Final metrics" below, updated with facts.
 
-## Содержание этапа (исходный план, частично устарел — см. врезку выше)
+## Stage contents (original plan, partially stale — see the note above)
 
-Обновление CLI (все команды через аргументы + интерактивный режим),
-финализация документации, полный прогон тестов, обновление README.
+Updating the CLI (every command via arguments + an interactive mode),
+finalizing documentation, a full test run, updating the README.
 
-### CLI (`cmd/gomorphy/main.go`) — исходный план, см. врезку выше
+### CLI (`cmd/gomorphy/main.go`) — original plan, see the note above
 
-Все команды доступны через CLI-аргументы:
+Every command is available via CLI arguments:
 
 ```bash
-# Точный поиск
+# Exact lookup
 gomorphy -dict <path> lookup <word>
 
-# Начальная форма (лемма)
+# Base form (lemma)
 gomorphy -dict <path> lemma <word>
 
-# Нечёткий поиск
+# Fuzzy search
 gomorphy -dict <path> fuzzy <word> <maxDist>
 gomorphy -dict <path> top <word> <maxWords>
 
-# Импорт
+# Import
 gomorphy import pymorphy2 <dir> -o <path>
 gomorphy import opencorpora <dict.xml> -o <path>
 gomorphy import unimorph <rus.tsv> -o <path>
 
-# Интерактивный режим
+# Interactive mode
 gomorphy -dict <path>
 # > parse кота
 # > lemma котам
@@ -48,67 +49,67 @@ gomorphy -dict <path>
 # > help
 ```
 
-### Мульти-словарь на уровне CLI — исходный план, см. врезку выше
+### Multi-dict at the CLI level — original plan, see the note above
 
-Реализовано шире, чем планировалось: `-d/--dictionary` можно указывать
-несколько раз в одной команде — CLI сам объединяет их в один
-`MultiDictionary`, не требуя от пользователя отдельных вызовов. См.
-[docs/cli.md](../cli.md) и [multi-dict.md](multi-dict.md).
+Implemented more broadly than planned: `-d/--dictionary` can be given
+several times in one command — the CLI merges them into a single
+`MultiDictionary` itself, with no need for separate calls from the
+user. See [docs/cli.md](../cli.md) and [multi-dict.md](multi-dict.md).
 
-### Документация — ВЫПОЛНЕНО 2026-09-17
+### Documentation — DONE 2026-09-17
 
-- `README.md`: описание, Quick start, Project structure — приведены в
-  соответствие текущему коду (было: старая архитектура `pkg/dictionary`,
-  размер `.dat` ~300 МБ; стало: `pkg/morphology`, ~13 МБ).
-- `docs/library.md`: переписан полностью под текущий `pkg/morphology`
+- `README.md`: the description, Quick start, Project structure —
+  brought in line with the current code (was: the old `pkg/dictionary`
+  architecture, a `.dat` size of ~300 MB; now: `pkg/morphology`, ~13 MB).
+- `docs/library.md`: fully rewritten for the current `pkg/morphology`
   API (`Parse`/`Lemma`/`Fuzzy`/`FuzzyTop`/`MultiDictionary`/`SaveTo`) —
-  старая версия описывала API, которого больше не существует
+  the old version described an API that no longer exists
   (`dictionary.Open`, `Wordform`, `Builder.AddGrammeme`).
-- `docs/cli.md` — уже был актуален, без изменений.
-- `docs/index.md` — добавлены ссылки на новые `implementation/*.md`
-  (multi-dict, плотный алфавит, источник pymorphy2, tag-mapping),
-  добавлен раздел «Использование», расширен список исследований.
-- godoc: аудит экспортированных символов `pkg/morphology` и его
-  подпакетов (`tagmap`, `importers/*`), `pkg/pymorphy`, `pkg/opencorpora`,
-  `pkg/common` — все документированы; попутно найден и удалён мёртвый
-  код без единого использования (`pkg/common/interfaces.go`).
-- Примеры (`examples/`), навык для агента (`skills/use-dictionary/`) —
-  **вынесены из этого этапа отдельной будущей задачей**, см.
-  `docs/todo.md` — это новый контент со своим дизайном, не исправление
-  документации.
+- `docs/cli.md` — already up to date, unchanged.
+- `docs/index.md` — links added for the new `implementation/*.md` files
+  (multi-dict, the dense alphabet, the pymorphy2 source, tag-mapping),
+  a "Usage" section added, the research list expanded.
+- godoc: an audit of exported symbols in `pkg/morphology` and its
+  subpackages (`tagmap`, `importers/*`), `pkg/pymorphy`,
+  `pkg/opencorpora`, `pkg/common` — all documented; dead code with zero
+  usages was found and removed along the way (`pkg/common/interfaces.go`).
+- Examples (`examples/`), an agent skill (`skills/use-dictionary/`) —
+  **split out of this stage as a separate future task**, see
+  `docs/en/todo.md` — this is new content with its own design, not a
+  documentation fix.
 
-### cmd/opencorpora_update — исходный план, см. врезку выше
+### cmd/opencorpora_update — original plan, see the note above
 
-Реализовано иначе: `gomorphy update <type>` (`opencorpora`/`pymorphy`,
-без флага `--skip-download` — для «только компиляция из локального
-файла» есть отдельная команда `gomorphy build <type> -i <path>`). См.
-[docs/cli.md](../cli.md).
+Implemented differently: `gomorphy update <type>`
+(`opencorpora`/`pymorphy`, with no `--skip-download` flag — for "only
+compile from a local file" there's a separate command
+`gomorphy build <type> -i <path>`). See [docs/cli.md](../cli.md).
 
-## Проверка (тесты)
+## Verification (tests)
 
-Прогнано и подтверждено (дата последней проверки — см. `git log` по
-этому файлу):
+Run and confirmed (see `git log` on this file for the date of the last check):
 
-- `go build ./...` — без ошибок.
-- `go vet ./...` — без замечаний.
-- `go test -race -count=1 ./...` — 274/274 зелёных, 12 пакетов.
-- `golangci-lint run ./...` — без замечаний (по факту финализации нашлись
-  и исправлены 2 давних известных находки — errcheck на `defer
-  opened.Close()` в тесте, staticcheck S1016 на ручной struct-литерал
-  вместо конверсии типа в `pkg/morphology/importers/opencorpora/import.go`
-  — обе упоминались как «pre-existing, unrelated» в спеке multi-dict,
-  закрыты в рамках этого этапа).
-- Попутно найден и удалён мёртвый код: `pkg/common/interfaces.go`
-  (`Dictionary`/`DomainDataLoader` — экспортированные интерфейсы без
-  единого использования в кодовой базе, наследие до-редизайна).
-- Integration-тесты (`-tags=integration`, нужны реальные словарные
-  данные) — не гоняются в CI/по умолчанию; см. `docs/todo.md` про
-  переменные окружения (`GOMORPHY_DICT_XML`, `GOMORPHY_PYMORPHY2_DIR`).
+- `go build ./...` — no errors.
+- `go vet ./...` — no findings.
+- `go test -race -count=1 ./...` — 274/274 green, 12 packages.
+- `golangci-lint run ./...` — no findings (in the course of this
+  finalization, 2 long-standing known findings were found and fixed —
+  an errcheck on `defer opened.Close()` in a test, a staticcheck S1016
+  on a manual struct literal instead of a type conversion in
+  `pkg/morphology/importers/opencorpora/import.go` — both had been
+  called "pre-existing, unrelated" in the multi-dict spec; closed as
+  part of this stage).
+- Dead code found and removed along the way:
+  `pkg/common/interfaces.go` (`Dictionary`/`DomainDataLoader` —
+  exported interfaces with zero usages anywhere in the codebase,
+  a pre-redesign leftover).
+- Integration tests (`-tags=integration`, need real dictionary data) —
+  not run in CI/by default; see `docs/en/todo.md` for the environment
+  variables (`GOMORPHY_DICT_XML`, `GOMORPHY_PYMORPHY2_DIR`).
 
-## Ручные проверки
+## Manual verification
 
-Актуальные команды — см. [docs/cli.md](../cli.md). Полный цикл на
-реальных данных:
+Current commands — see [docs/cli.md](../cli.md). A full cycle on real data:
 
 ```bash
 gomorphy update pymorphy
@@ -120,41 +121,42 @@ gomorphy -d .data/pymorphy/pymorphy.dat top кот 3
 gomorphy update opencorpora
 gomorphy -d .data/opencorpora/opencorpora.dat lookup кота
 
-# Несколько словарей одним индексом
+# Several dictionaries as one index
 gomorphy -d .data/opencorpora/opencorpora.dat -d .data/pymorphy/pymorphy.dat lookup кота
 
-gomorphy cli -d .data/opencorpora/opencorpora.dat   # интерактивная консоль
+gomorphy cli -d .data/opencorpora/opencorpora.dat   # interactive console
 ```
 
-UniMorph-цикл (`gomorphy import unimorph .../update unimorph`) —
-недоступен, Этап 16 не начат.
+The UniMorph cycle (`gomorphy import unimorph .../update unimorph`) is
+unavailable — Stage 16 hasn't started.
 
-Полный shell-автокомплит (bash/zsh для самой команды `gomorphy`) —
-**не реализован**; есть только автодополнение имён команд внутри
-интерактивной консоли `gomorphy cli` (TAB — `lookup`/`lemmas`/`fuzzy`/
-`top`/`exit`/`quit`, см. [docs/cli.md](../cli.md)).
+Full shell autocompletion (bash/zsh for the `gomorphy` command itself)
+is **not implemented**; there's only command-name completion inside the
+`gomorphy cli` interactive console (TAB — `lookup`/`lemmas`/`fuzzy`/
+`top`/`exit`/`quit`, see [docs/cli.md](../cli.md)).
 
-## Итоговые метрики
+## Final metrics
 
-> Обновление 2026-09-17: таблица ниже заменена на реально измеренные
-> факты, где измерение возможно; расходные ожидания-без-измерения
-> (`ожидаемые на момент планирования`) убраны как недостоверные, а не
-> оставлены рядом с фактом. Латентность операций (Parse/Lemma/Fuzzy) в
-> кодовой базе **не бенчмаркается** — ни одной функции `Benchmark*`
-> нет; строки ниже честно помечены как неизмеренные, а не заполнены
-> оценкой на глаз.
+> Update 2026-09-17: the table below was replaced with actually
+> measured facts wherever measurement is possible; unmeasured,
+> speculative expectations ("expected at planning time") were removed
+> as unreliable rather than left next to the fact. Operation latency
+> (Parse/Lemma/Fuzzy) is **not benchmarked** anywhere in the codebase —
+> there isn't a single `Benchmark*` function; the rows below are
+> honestly marked as unmeasured rather than filled in with an eyeballed
+> guess.
 
-| Показатель | Значение | Как измерено |
+| Metric | Value | How it was measured |
 |---|---|---|
-| Размер `.dat` (OpenCorpora, полный словарь) | ~13.3 МБ | `ls -la .data/opencorpora/opencorpora.dat`, 2026-09-17 |
-| Размер `.dat` (pymorphy2, полный словарь) | ~14.0 МБ | `ls -la .data/pymorphy/pymorphy.dat`, 2026-09-17 |
-| Исходный `dict.xml` (OpenCorpora) | ~401 МБ | для сравнения — во сколько раз компактнее `.dat` |
-| Размер `.dat` с zstd | — | не реализовано, см. `docs/todo.md`, Этап 17 остаток |
-| Загрузка (`Open`) | mmap, без полного чтения в память | архитектурно (mmap-backed секции), не бенчмаркалось в мкс/мс |
-| Parse/Lemma/Fuzzy latency | — | **не бенчмаркается** — нет `Benchmark*` в кодовой базе |
-| Поддержка pymorphy2 | да | `OpenPyMorphy`/`OpenPyMorphyDense` |
-| Поддержка OpenCorpora | да | `CompileFromXML(File)` |
-| Поддержка UniMorph (TSV) | нет | Этап 16 не начат, см. `docs/todo.md` |
-| Множественные словари | да, из библиотеки (`MultiDictionary`) | не «на уровне приложения» — теперь часть API |
-| Тесты | 274/274, `-race`, 12 пакетов | `go test -race -count=1 ./...`, 2026-09-17 |
-| Линтер | без замечаний | `golangci-lint run ./...`, 2026-09-17 |
+| `.dat` size (OpenCorpora, full dictionary) | ~13.3 MB | `ls -la .data/opencorpora/opencorpora.dat`, 2026-09-17 |
+| `.dat` size (pymorphy2, full dictionary) | ~14.0 MB | `ls -la .data/pymorphy/pymorphy.dat`, 2026-09-17 |
+| Source `dict.xml` (OpenCorpora) | ~401 MB | for comparison — how much more compact the `.dat` is |
+| `.dat` size with zstd | — | not implemented, see `docs/en/todo.md`, Stage 17 remainder |
+| Loading (`Open`) | mmap, no full in-memory read | architectural (mmap-backed sections), not benchmarked in us/ms |
+| Parse/Lemma/Fuzzy latency | — | **not benchmarked** — no `Benchmark*` in the codebase |
+| pymorphy2 support | yes | `OpenPyMorphy`/`OpenPyMorphyDense` |
+| OpenCorpora support | yes | `CompileFromXML(File)` |
+| UniMorph support (TSV) | no | Stage 16 hasn't started, see `docs/en/todo.md` |
+| Multiple dictionaries | yes, from the library (`MultiDictionary`) | not "at the application level" — now part of the API |
+| Tests | 274/274, `-race`, 12 packages | `go test -race -count=1 ./...`, 2026-09-17 |
+| Linter | no findings | `golangci-lint run ./...`, 2026-09-17 |

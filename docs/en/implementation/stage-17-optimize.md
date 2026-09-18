@@ -1,192 +1,201 @@
-# Этап 17. Сужение типов ID и zstd — ЧАСТИЧНО ВЫПОЛНЕНО
+# Stage 17. Narrowing ID types and zstd — PARTIALLY DONE
 
-> Статус на 2026-09-14: сужение типов и формат-задел под сжатие сделаны;
-> сама реализация zstd отложена в бэклог после 1.0.0 — см. `docs/todo.md`.
+> Status as of 2026-09-14: narrowing the types and the format
+> groundwork for compression are done; the actual zstd implementation
+> is deferred to the post-1.0.0 backlog — see `docs/en/todo.md`.
 
-## Содержание этапа
+## Stage contents
 
-Оптимизация размера файла за счёт:
-1. Сужения типов: uint16 для paradigm/suffix/tag/prefix IDs.
-2. zstd-сжатия холодных секций (suffixes, prefixes, tagset, paradigms).
+Reducing file size via:
+1. Narrowing types: uint16 for paradigm/suffix/tag/prefix IDs.
+2. zstd-compressing the cold sections (suffixes, prefixes, tagset, paradigms).
 
-### Сужение типов
+### Narrowing types
 
-Текущие ограничения (измерены на OpenCorpora):
-- Парадигмы: ~3K → uint16 (65K макс)
-- Суффиксы: ~5K → uint16 (65K макс)
-- Префиксы: ~3 → uint16
-- Теги: ~1K → uint16 (65K макс)
+Current limits (measured on OpenCorpora):
+- Paradigms: ~3K -> uint16 (65K max)
+- Suffixes: ~5K -> uint16 (65K max)
+- Prefixes: ~3 -> uint16
+- Tags: ~1K -> uint16 (65K max)
 
-Paradigm плоский массив: `[]uint16` вместо `[]uint32`.
-Экономия: ~40% на paradigms секции.
+A paradigm's flat array: `[]uint16` instead of `[]uint32`.
+Savings: ~40% on the paradigms section.
 
-### zstd-сжатие
+### zstd compression
 
-Холодные секции (содержатся при загрузке, декомпрессируются один раз):
-- `suffixes` — строки, хорошо сжимаются
-- `prefixes` — строки
+Cold sections (held in memory once loaded, decompressed once):
+- `suffixes` — strings, compress well
+- `prefixes` — strings
 - `tagset` — JSON
-- `paradigms` — uint16 array (частичная дедупликация)
+- `paradigms` — a uint16 array (partially deduplicated already)
 
-Горячие секции (используются при каждом lookup):
-- `words.dawg` — **не сжимается** (mmap zero-copy)
+Hot sections (used on every lookup):
+- `words.dawg` — **not compressed** (zero-copy mmap)
 
-Флаг сжатия в каталоге секций: `flags & flag_compressed != 0`.
-Декомпрессия при загрузке: `zstd.NewReader` → bytes.Buffer.
+A compression flag in the section catalog: `flags & flag_compressed != 0`.
+Decompression on load: `zstd.NewReader` -> bytes.Buffer.
 
-### Ожидаемый эффект
+### Expected effect
 
-| Секция | До сжатия | После сжатия |
+| Section | Before compression | After compression |
 |---|---|---|
-| suffixes | ~0.5 МБ | ~0.3 МБ |
-| prefixes | ~0.1 МБ | ~0.05 МБ |
-| tagset | ~0.1 МБ | ~0.05 МБ |
-| paradigms | ~3–4 МБ | ~1–2 МБ |
-| **Итого** | ~4–5 МБ | ~2–3 МБ |
+| suffixes | ~0.5 MB | ~0.3 MB |
+| prefixes | ~0.1 MB | ~0.05 MB |
+| tagset | ~0.1 MB | ~0.05 MB |
+| paradigms | ~3-4 MB | ~1-2 MB |
+| **Total** | ~4-5 MB | ~2-3 MB |
 
-Экономия: ~2 МБ. Не критично для pymorphy2 (~15 МБ), но значимо
-для OpenCorpora (~305 МБ → ~20–25 МБ).
+Savings: ~2 MB. Not critical for pymorphy2 (~15 MB), but significant
+for OpenCorpora (~305 MB -> ~20-25 MB).
 
-## Проверка (тесты)
+## Verification (tests)
 
-- unit-тест: roundtrip сжатый → несжатый → данные идентичны.
-- unit-тест: сжатая секция меньше несжатой (assert size < threshold).
-- unit-тест: roundtrip несжатый → данные идентичны (backward compat).
-- benchmark: Parse до и после (ожидается 0% regression на words.dawg).
-- `go test ./pkg/morphology/... -race` — зелёные.
+- Unit test: roundtrip compressed -> uncompressed -> identical data.
+- Unit test: a compressed section is smaller than the uncompressed one
+  (assert size < threshold).
+- Unit test: roundtrip uncompressed -> identical data (backward compat).
+- Benchmark: Parse before and after (expecting 0% regression on words.dawg).
+- `go test ./pkg/morphology/... -race` — green.
 
-## Ручные проверки
+## Manual verification
 
-- `make compile`: сравнить размер `.dat` до и после.
-- `gomorphy -dict pymorphy2.dat lookup кота` → идентично.
-- Загрузка: `time gomorphy -dict pymorphy2.dat lookup кота` → без регрессии.
+- `make compile`: compare the `.dat` size before and after.
+- `gomorphy -dict pymorphy2.dat lookup кота` -> identical.
+- Loading: `time gomorphy -dict pymorphy2.dat lookup кота` -> no regression.
 
-## Реализация (частично, по состоянию на 2026-09-14)
+## Implementation (partial, as of 2026-09-14)
 
-### Сужение типов ID — ВЫПОЛНЕНО
+### Narrowing ID types — DONE
 
-Реализовано попутно на этапах 11–18, отдельной работы не потребовалось:
-`Paradigm` хранит данные как `[]uint16` (`paradigm.go`), `TagSet.Index` —
-`map[string]uint16` (`tagset.go`).
+Implemented along the way in stages 11-18, no separate work was needed:
+`Paradigm` stores its data as `[]uint16` (`paradigm.go`), `TagSet.Index`
+is `map[string]uint16` (`tagset.go`).
 
-### zstd-сжатие — реализация отложена, но переосмыслена
+### zstd compression — implementation deferred, but reassessed
 
-После фикса минимизации DAWG (см.
-[dawg-minimization-fix.md](dawg-minimization-fix.md)) `.dat` для полного
-OpenCorpora — 14.6 МБ вместо ожидавшихся ~305 МБ, из них «холодные»
-секции (suffixes, tagset, paradigms) — ~2.86 МБ (~19%, а не единицы
-процентов, как казалось до фикса). Экономия от сжатия по-прежнему
-значима, но сама реализация (подбор библиотеки/уровня, тесты roundtrip,
-замер regression на `Parse`) вынесена в отдельную будущую задачу, не
-блокирующую 1.0.0 — см. `docs/todo.md`.
+After the DAWG minimization fix (see
+[dawg-minimization-fix.md](dawg-minimization-fix.md)), the `.dat` for
+the full OpenCorpora dictionary is 14.6 MB instead of the expected ~305
+MB, and of that, the "cold" sections (suffixes, tagset, paradigms) are
+~2.86 MB (~19%, not the low single-digit percent it looked like before
+the fix). The savings from compression are still significant, but the
+implementation itself (picking a library/level, roundtrip tests,
+measuring the `Parse` regression) has been split off into a separate
+future task that doesn't block 1.0.0 — see `docs/en/todo.md`.
 
-### Формат-задел под расширяемое сжатие — ВЫПОЛНЕНО
+### Format groundwork for extensible compression — DONE
 
-До этой правки флаг секции был единственным битом «сжато/не сжато» без
-указания алгоритма — доразвить его после релиза означало бы либо гадать
-алгоритм по сигнатуре данных секции (ненадёжно: секция — произвольный
-blob без самоописывающегося заголовка), либо вводить второй флаг задним
-числом поверх уже выпущенных файлов. Сжатие ни разу не было записано ни
-в одном файле, поэтому это был единственный момент, когда байтовый
-layout каталога можно перепроектировать без версионирования и без риска
-несовместимости для пользователей.
+Before this change, a section's flag was a single "compressed/not
+compressed" bit with no algorithm identifier — extending it after
+release would have meant either guessing the algorithm from the
+section's data signature (unreliable: a section is an arbitrary blob
+with no self-describing header), or bolting on a second flag after the
+fact on top of already-released files. Compression had never been
+written to a single file yet, so this was the one moment when the
+catalog's byte layout could be redesigned with no versioning and no
+compatibility risk for users.
 
-Сделано (`pkg/morphology/internal/format.go`):
-- Флаги записи каталога (`Entry.Flags`/`Section.Flags`, тот же байт, тот
-  же `entrySize`) переопределены: младшие 4 бита — явный id алгоритма
-  сжатия секции (`CompressionNone=0`, `CompressionZstd=1`, далее по мере
-  реализации новых алгоритмов), старшие 4 бита зарезервированы под
-  независимые от сжатия флаги будущих версий.
-- `Container.Section` при чтении неизвестного/нереализованного алгоритма
-  возвращает `ErrUnsupportedCompression` с id алгоритма в сообщении —
-  явная ошибка апгрейда вместо порчи данных или молчаливого ignore.
-- `validateSections` при записи отклоняет зарезервированные биты и
-  незнакомые id алгоритма — расширяется одной строкой на новый алгоритм.
-- Сжатие выбирается **на уровне секции**, не файла целиком: `words.dawg`
-  всегда `CompressionNone` (алиасится из mmap без копирования), выбор
-  алгоритма для остальных секций — за будущей реализацией.
+Done (`pkg/morphology/internal/format.go`):
+- The catalog entry flags (`Entry.Flags`/`Section.Flags`, the same
+  byte, the same `entrySize`) were redefined: the low 4 bits are the
+  section's explicit compression algorithm id (`CompressionNone=0`,
+  `CompressionZstd=1`, more as new algorithms are implemented), the
+  high 4 bits are reserved for future-version flags independent of compression.
+- `Container.Section`, on reading an unknown/unimplemented algorithm,
+  returns `ErrUnsupportedCompression` with the algorithm id in the
+  message — an explicit upgrade error instead of data corruption or a
+  silent ignore.
+- `validateSections`, on writing, rejects reserved bits and unknown
+  algorithm ids — extending it for a new algorithm is a one-line change.
+- Compression is chosen **per section**, not for the whole file:
+  `words.dawg` is always `CompressionNone` (aliased from mmap with no
+  copying), the choice of algorithm for the other sections is left to
+  the future implementation.
 
-### Оставшаяся реализация (отдельная будущая задача, после 1.0.0)
+### Remaining implementation (a separate future task, after 1.0.0)
 
-- Библиотека: `klauspost/compress` (чистый Go, без cgo).
-- zstd-компрессия/декомпрессия для секций suffixes, prefixes, tagset,
-  paradigms; уровень — максимальное сжатие (файл собирается редко,
-  читается часто, декомпрессия холодных секций — один раз при загрузке).
-- ~~Заодно — анализ плотности упаковки double-array DAWG~~ — ВЫПОЛНЕНО,
-  см. следующий раздел.
+- Library: `klauspost/compress` (pure Go, no cgo).
+- zstd compression/decompression for the suffixes, prefixes, tagset,
+  and paradigms sections; level — maximum compression (the file is
+  built rarely and read often, and cold-section decompression happens
+  once on load).
+- ~~Also — an analysis of the double-array DAWG's packing density~~ — DONE,
+  see the next section.
 
-### Анализ плотности упаковки DAWG — ВЫПОЛНЕНО, есть кандидат в backlog
+### DAWG packing density analysis — DONE, a backlog candidate exists
 
-Полный разбор с экспериментами и цифрами:
+The full breakdown with experiments and numbers:
 [docs/research/0001-dawg-alphabet-density.md](../research/0001-dawg-alphabet-density.md).
-Коротко:
+Short version:
 
-- Перестановка/переупорядочивание байтового алфавита меток (по частоте
-  или иначе) — **не даёт эффекта**: free-list allocator нечувствителен к
-  числовым значениям меток, только к топологии графа. Эту ветку
-  закрывать не нужно.
-- Сужение домена алфавита — переход с побайтового UTF-8 (2 байта на
-  кириллическую букву) на «1 байт = 1 символ» — даёт реальный эффект: на
-  тестовом наборе (3 065 312 словоформ OpenCorpora, **без** payload)
-  ~36.5% сокращения размера сериализуемого массива и ~29.2% сокращения
-  числа узлов минимизированного автомата.
+- Permuting/reordering the byte label alphabet (by frequency or
+  otherwise) — **has no effect**: the free-list allocator is
+  insensitive to a label's numeric value, only to the graph's topology.
+  This branch doesn't need to be pursued further.
+- Narrowing the alphabet's domain — switching from per-byte UTF-8 (2
+  bytes per Cyrillic letter) to "1 byte = 1 character" — has a real
+  effect: on a test set (3,065,312 OpenCorpora wordforms, **without** a
+  payload), ~36.5% reduction in the serialized array's size and ~29.2%
+  reduction in the number of nodes in the minimized automaton.
 
-**Дальнейшие шаги (backlog, не блокирует 1.0.0), по приоритету:**
+**Next steps (backlog, doesn't block 1.0.0), in priority order:**
 
-1. **Перепроверить на реалистичных данных** — эксперимент мерил только
-   слова без payload; реальный `words.dawg` — это `слово +
-   PayloadSeparator + base64(value)`, где payload менее регулярен и
-   может снижать долю выигрыша. Дешёвая проверка (переиспользовать
-   методику из research-документа), нужна ДО решения — вкладываться
-   в реализацию или нет.
-2. **Оценить, стоит ли вообще** — текущий полный `.dat` для OpenCorpora
-   уже 14.6 МБ (после фикса минимизации), а `words.dawg` — не
-   сжимаемая (zero-copy mmap) горячая секция, которую данная оптимизация
-   как раз и затрагивает (в отличие от zstd-плана выше, который бьёт
-   только холодные секции). Если шаг 1 подтвердит эффект в районе
-   30%+ на реальных данных — это самый крупный оставшийся рычаг
-   сжатия `.dat`; если эффект окажется малым на payload-данных —
-   не делать вовсе, сложность не окупится.
-3. **Если решение — делать**: кодек алфавита (символ → плотный байт-код,
-   код `0` жёстко зарезервирован как sentinel — см. находку в
-   research-документе про порчу guide-обхода), с явным маркером
-   версии/алгоритма кодирования на диске (по аналогии с
-   `CompressionNone`/`CompressionZstd` в `format.go`, см. выше) —
-   **обязательно**, потому что `ReadDAWG`/`ParseDAWG`
-   (`pkg/morphology/internal/dawg.go`) должны продолжать читать
-   оригinal `words.dawg` от pymorphy2 (сырой UTF-8) нетронутым; новый
-   алфавит применим только к словарям, которые gomorphy строит сам
-   (`BuildDAWG`/`BuildDAWGWithValues` для OpenCorpora/будущего
-   UniMorph-импорта).
-4. Тесты: roundtrip (build с кодеком → save → open → lookup идентичен
-   прямому построению), regression на код `0`, benchmark `Parse`
-   до/после на полном словаре.
+1. **Re-verify on realistic data** — the experiment only measured words
+   with no payload; the real `words.dawg` is `word +
+   PayloadSeparator + base64(value)`, where the payload is less regular
+   and could reduce the win. A cheap check (reusing the methodology
+   from the research document) is needed BEFORE deciding whether to
+   invest in the implementation.
+2. **Assess whether it's worth it at all** — the current full OpenCorpora
+   `.dat` is already 14.6 MB (after the minimization fix), and
+   `words.dawg` is the uncompressible (zero-copy mmap) hot section that
+   this optimization specifically targets (unlike the zstd plan above,
+   which only touches cold sections). If step 1 confirms an effect
+   around 30%+ on real data, this is the largest remaining lever for
+   shrinking the `.dat`; if the effect turns out small on payload data,
+   don't do it at all — the complexity wouldn't pay off.
+3. **If the decision is to proceed**: an alphabet codec (character ->
+   dense byte code, code `0` strictly reserved as a sentinel — see the
+   finding in the research document about corrupting the guide
+   traversal), with an explicit version/algorithm marker on disk
+   (similar to `CompressionNone`/`CompressionZstd` in `format.go`, see
+   above) — **mandatory**, because `ReadDAWG`/`ParseDAWG`
+   (`pkg/morphology/internal/dawg.go`) must keep reading pymorphy2's
+   original `words.dawg` (raw UTF-8) untouched; the new alphabet only
+   applies to dictionaries gomorphy builds itself
+   (`BuildDAWG`/`BuildDAWGWithValues` for OpenCorpora/a future UniMorph import).
+4. Tests: roundtrip (build with the codec -> save -> open -> lookup
+   identical to a direct build), a regression test for code `0`, a
+   `Parse` benchmark before/after on the full dictionary.
 
-Отдельно от списка выше: сама техника («какой алфавит выбрать») больше
-не открытый вопрос — открыт только вопрос применимости на реальных
-payload-данных (шаг 1) и оправданности сложности (шаг 2).
+Separately from the list above: the technique itself ("which alphabet
+to pick") is no longer an open question — only whether it applies to
+real payload data (step 1) and whether the complexity is justified
+(step 2) remain open.
 
-### Анализ кодирования `tagset` — ВЫПОЛНЕНО, есть кандидат в backlog
+### `tagset` encoding analysis — DONE, a backlog candidate exists
 
-Полный разбор: [docs/research/0002-paradigm-tagset-binary-encoding.md](../research/0002-paradigm-tagset-binary-encoding.md).
-Коротко: секция `tagset` (уникальные сочетания граммем, сейчас — JSON)
-сжимается на **78.2%** (223 692 → 48 849 байт, ≈1.09% от размера всего
-файла) при переходе на кодирование «словарь из ~100 отдельных граммем +
-на каждое сочетание индексный список», без изменения горячего пути
-чтения (`TagSet.Tags` и так материализуется в `[]string` один раз при
-`Open()`, `TagName` — O(1)). Парадигмы уже бинарные (`uint16`-коды),
-там делать нечего — эту часть исходной гипотезы про парадигмы
-рассматривать не нужно.
+Full breakdown: [docs/research/0002-paradigm-tagset-binary-encoding.md](../research/0002-paradigm-tagset-binary-encoding.md).
+Short version: the `tagset` section (unique grammeme combinations,
+currently JSON) shrinks by **78.2%** (223,692 -> 48,849 bytes, ~1.09%
+of the whole file's size) when switching to encoding it as "a
+dictionary of ~100 individual grammemes + an index list per
+combination", with no change to the hot read path (`TagSet.Tags` is
+already materialized into a `[]string` once on `Open()`, `TagName` is
+O(1)). Paradigms are already binary (`uint16` codes), there's nothing
+to do there — that part of the original hypothesis about paradigms
+doesn't need to be pursued.
 
-Кандидат в backlog, приоритет ниже плотного алфавита DAWG (эффект на
-порядок меньше, но реализация проще и без открытых вопросов о
-применимости на payload-данных): новый формат секции `tagset` +
-маркер версии кодировки (по аналогии с `CompressionNone`/
-`CompressionZstd`), если внедрять после 1.0.0 — до релиза версионирование
-не нужно вообще (`.dat`-файлов в проде ещё нет).
+A backlog candidate, lower priority than the DAWG's dense alphabet (an
+order of magnitude smaller effect, but a simpler implementation with no
+open questions about applicability to payload data): a new `tagset`
+section format + an encoding version marker (similar to
+`CompressionNone`/`CompressionZstd`), if rolled out after 1.0.0 — before
+release, no versioning is needed at all (there are no `.dat` files in
+production yet).
 
-### Попутно: секция info
+### Along the way: the info section
 
-Отдельная (не входившая в исходный план этапа 17) опциональная секция
-`info` с диагностическими метаданными сборки — см.
+A separate (not part of Stage 17's original plan) optional `info`
+section with build diagnostics metadata — see
 [info-section.md](info-section.md).

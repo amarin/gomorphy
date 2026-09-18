@@ -1,16 +1,16 @@
-# Этап 0. Анализ и подготовка репозитория — ВЫПОЛНЕН
+# Stage 0. Repository analysis and preparation — DONE
 
-## Содержание этапа
+## Stage contents
 
-- Анализ схемы `dict.xml`, сбор метрик (см. [requirements.md](../requirements.md)).
-- Проектирование структуры хранения ([implementation.md](../implementation.md)).
-- Фиксация требований FT1–FT9 ([requirements.md](../requirements.md)).
-- Удаление устаревшего кода из `internal/` и `pkg/` (объектная модель индекса,
-  binutils-сериализация, generic XML-парсер). Сохранены: `pkg/common`,
-  `pkg/opencorpora` (только загрузка/распаковка), `cmd/opencorpora_update`
-  (загрузка+распаковка).
+- Analysis of the `dict.xml` schema, gathering metrics (see [requirements.md](../requirements.md)).
+- Storage structure design ([implementation.md](../implementation.md)).
+- Fixing requirements FT1-FT9 ([requirements.md](../requirements.md)).
+- Removing stale code from `internal/` and `pkg/` (the index object model,
+  binutils serialization, the generic XML parser). Kept: `pkg/common`,
+  `pkg/opencorpora` (download/unpack only), `cmd/opencorpora_update`
+  (download+unpack).
 
-## Проверка
+## Verification
 
-- `go build ./...`, `go vet ./...`, `go test ./...` — зелёные.
-- `go mod tidy && go mod vendor` без лишних зависимостей.
+- `go build ./...`, `go vet ./...`, `go test ./...` — green.
+- `go mod tidy && go mod vendor` with no extra dependencies.

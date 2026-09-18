@@ -15,15 +15,15 @@ import (
 	"github.com/zeebo/xxh3"
 )
 
-// Единый дисковый формат словаря GMOR.
+// The GMOR dictionary's unified on-disk format.
 //
 //	┌──────────────────────────────────┐
-//	│  Заголовок                       │
-//	│  magic  "GMOR"  4 байта          │
+//	│  Header                          │
+//	│  magic  "GMOR"  4 bytes          │
 //	│  version    u32                  │
-//	│  checksum   xxh3-64  8 байт      │
+//	│  checksum   xxh3-64  8 bytes     │
 //	├──────────────────────────────────┤
-//	│  Каталог секций                  │
+//	│  Section catalog                 │
 //	│  count      u16                  │
 //	│  entries:                        │
 //	│    name     [16]byte             │
@@ -31,58 +31,61 @@ import (
 //	│    size     u64                  │
 //	│    flags    u8                   │
 //	├──────────────────────────────────┤
-//	│  Секции данных                   │
+//	│  Data sections                   │
 //	└──────────────────────────────────┘
 //
-// Checksum покрывает всё, что после поля checksum (каталог + секции).
-// Смещения секций выровнены по 8 байтам, чтобы словарь words.dawg можно
-// было алиасить из mmap без копирования (offset+4 кратен 4).
+// The checksum covers everything after the checksum field itself (the
+// catalog + sections). Section offsets are 8-byte aligned so the
+// words.dawg section can be aliased from mmap without copying (offset+4
+// is a multiple of 4).
 //
-// flags: младшие 4 бита — id алгоритма сжатия секции (см. Compression*,
-// 0 — без сжатия), старшие 4 бита зарезервированы под независимые от
-// сжатия флаги будущих версий. Алгоритм записывается явно (а не
-// угадывается по сигнатуре данных секции): секция — это произвольный
-// blob без самоописывающегося заголовка, и явный id даёт точную,
-// однозначную диагностику для файла из будущей версии с неизвестным
-// читателю алгоритмом («unsupported compression algorithm 3, upgrade
-// required») вместо попытки угадать формат по первым байтам. Сжатие
-// выбирается на уровне секции (не файла целиком): words.dawg остаётся
-// несжатой, чтобы её можно было алиасить из mmap без копирования; выбор
-// алгоритма для остальных секций — за реализацией самого сжатия (см.
-// docs/todo.md, "Этап 17").
+// flags: the low 4 bits are the section's compression algorithm id (see
+// Compression*, 0 = uncompressed), the high 4 bits are reserved for
+// future flags independent of compression. The algorithm is recorded
+// explicitly (not guessed from the section's data signature): a section
+// is an arbitrary blob with no self-describing header, and an explicit
+// id gives a precise, unambiguous diagnostic for a file from a future
+// version with an algorithm this reader doesn't know ("unsupported
+// compression algorithm 3, upgrade required") instead of trying to guess
+// the format from the first bytes. Compression is chosen per section
+// (not for the whole file): words.dawg stays uncompressed so it can be
+// aliased from mmap without copying; the choice of algorithm for the
+// other sections is up to the compression implementation itself (see
+// docs/en/todo.md, "Stage 17").
 const (
 	magicHeader = "GMOR"
 	headerSize  = 16 // magic(4) + version(4) + checksum(8)
 	nameSize    = 16
-	entrySize   = nameSize + 8 + 8 + 1 // 33 байта на запись каталога
+	entrySize   = nameSize + 8 + 8 + 1 // 33 bytes per catalog entry
 )
 
 const (
-	// Version — версия формата GMOR.
+	// Version is the GMOR format version.
 	Version uint32 = 1
 )
 
-// Алгоритмы сжатия секции (младшие 4 бита Entry.Flags/Section.Flags).
-// Добавление нового алгоритма — это добавление константы и ветки в
-// Container.Section/validateSections, без изменения байтового layout
-// каталога и без версионирования: сжатие ни разу не было записано ни в
-// одном выпущенном файле, поэтому этот нибл свободен для полного контроля
-// именно сейчас, до релиза 1.0.
+// Section compression algorithms (the low 4 bits of Entry.Flags/
+// Section.Flags). Adding a new algorithm means adding a constant and a
+// branch in Container.Section/validateSections, with no change to the
+// catalog's byte layout and no versioning needed: compression has never
+// been written to any released file yet, so this nibble is free for
+// full control right now, before the 1.0 release.
 const (
 	CompressionNone uint8 = 0
 	CompressionZstd uint8 = 1
 
-	// compressionMask выделяет id алгоритма из флагов записи каталога.
+	// compressionMask extracts the algorithm id from a catalog entry's flags.
 	compressionMask uint8 = 0x0F
-	// maxKnownCompression — верхняя граница известных id алгоритмов;
-	// расширять по мере добавления новых констант Compression*.
+	// maxKnownCompression is the upper bound of known algorithm ids;
+	// extend it as new Compression* constants are added.
 	maxKnownCompression = CompressionZstd
 )
 
-// compression возвращает id алгоритма сжатия секции по флагам записи каталога.
+// compression returns a section's compression algorithm id from its
+// catalog entry flags.
 func compression(flags uint8) uint8 { return flags & compressionMask }
 
-// Ошибки формата.
+// Format errors.
 var (
 	ErrBadMagic               = errors.New("format: bad magic")
 	ErrUnsupportedVersion     = errors.New("format: unsupported version")
@@ -92,14 +95,14 @@ var (
 	ErrUnsupportedCompression = errors.New("format: unsupported compression algorithm")
 )
 
-// Section — секция для записи: данные и флаги.
+// Section is a section to be written: its data and flags.
 type Section struct {
 	Name  string
 	Data  []byte
 	Flags uint8
 }
 
-// Entry — запись каталога секций.
+// Entry is a section catalog entry.
 type Entry struct {
 	Name   string
 	Offset int64
@@ -107,21 +110,22 @@ type Entry struct {
 	Flags  uint8
 }
 
-// Container — открытый формат ф-файла. Данные секций алиасят исходный
-// срез data (для mmap-региона это zero-copy).
+// Container is an opened GMOR file. Section data aliases the original
+// data slice (zero-copy for an mmap region).
 type Container struct {
 	data    []byte
 	entries []Entry
 }
 
-// Entries возвращает копию каталога секций.
+// Entries returns a copy of the section catalog.
 func (c *Container) Entries() []Entry {
 	out := make([]Entry, len(c.entries))
 	copy(out, c.entries)
 	return out
 }
 
-// Section возвращает данные секции по имени (срез алиасит файл) и её флаги.
+// Section returns a section's data by name (the slice aliases the file)
+// and its flags.
 func (c *Container) Section(name string) ([]byte, uint8, error) {
 	for _, e := range c.entries {
 		if e.Name == name {
@@ -137,8 +141,8 @@ func (c *Container) Section(name string) ([]byte, uint8, error) {
 	return nil, 0, wrap(ErrUnknownSection, name)
 }
 
-// SaveContainer записывает файл GMOR: заголовок + каталог + секции.
-// Смещения секций выравниваются по 8 байтам.
+// SaveContainer writes a GMOR file: header + catalog + sections. Section
+// offsets are aligned to 8 bytes.
 func SaveContainer(path string, sections []Section) error {
 	if err := validateSections(sections); err != nil {
 		return err
@@ -241,8 +245,9 @@ func finalizeChecksum(f *os.File) error {
 	return nil
 }
 
-// OpenContainer валидирует файл GMOR по байтам (magic, version, checksum,
-// каталог) и возвращает контейнер с доступом к секциям.
+// OpenContainer validates a GMOR file from its bytes (magic, version,
+// checksum, catalog) and returns a container giving access to its
+// sections.
 func OpenContainer(data []byte) (*Container, error) {
 	if len(data) < headerSize {
 		return nil, ErrMalformedFile
@@ -355,7 +360,7 @@ func wrap(err error, msg string) error {
 	return fmt.Errorf("%w: %s", err, msg)
 }
 
-// EncodeMeta сериализует язык и политику подстановок (CharPolicy).
+// EncodeMeta serializes the language and substitution policy (CharPolicy).
 func EncodeMeta(language string, policy *CharPolicy) []byte {
 	var buf bytes.Buffer
 	writeU16String(&buf, language)
@@ -376,7 +381,7 @@ func EncodeMeta(language string, policy *CharPolicy) []byte {
 	return buf.Bytes()
 }
 
-// DecodeMeta читает {language, CharPolicy} из EncodeMeta.
+// DecodeMeta reads {language, CharPolicy} written by EncodeMeta.
 func DecodeMeta(data []byte) (string, *CharPolicy, error) {
 	lang, p, err := readU16String(data)
 	if err != nil {
@@ -401,7 +406,7 @@ func DecodeMeta(data []byte) (string, *CharPolicy, error) {
 	return lang, NewCharPolicy(subs...), nil
 }
 
-// EncodeStrings сериализует []string как uvarint-length-prefixed строки.
+// EncodeStrings serializes a []string as uvarint-length-prefixed strings.
 func EncodeStrings(ar []string) []byte {
 	var buf bytes.Buffer
 	var tmp [binary.MaxVarintLen64]byte
@@ -413,7 +418,7 @@ func EncodeStrings(ar []string) []byte {
 	return buf.Bytes()
 }
 
-// DecodeStrings читает строки, записанные EncodeStrings.
+// DecodeStrings reads strings written by EncodeStrings.
 func DecodeStrings(data []byte) ([]string, error) {
 	var out []string
 	p := 0
@@ -435,7 +440,7 @@ func DecodeStrings(data []byte) ([]string, error) {
 	return out, nil
 }
 
-// EncodeTagSet сериализует TagSet в JSON {name, tags}.
+// EncodeTagSet serializes a TagSet as JSON {name, tags}.
 func EncodeTagSet(ts *TagSet) []byte {
 	v := struct {
 		Name string   `json:"name"`
@@ -445,7 +450,7 @@ func EncodeTagSet(ts *TagSet) []byte {
 	return data
 }
 
-// DecodeTagSet восстанавливает TagSet из JSON EncodeTagSet.
+// DecodeTagSet reconstructs a TagSet from EncodeTagSet's JSON.
 func DecodeTagSet(data []byte) (*TagSet, error) {
 	var v struct {
 		Name string   `json:"name"`
@@ -463,8 +468,8 @@ func DecodeTagSet(data []byte) (*TagSet, error) {
 	return ts, nil
 }
 
-// EncodeParadigms сериализует парадигмы: u32 count; на парадигму
-// u32 len + len×u16 данных.
+// EncodeParadigms serializes paradigms: u32 count; per paradigm, u32 len
+// + len×u16 of data.
 func EncodeParadigms(ps []Paradigm) []byte {
 	var buf bytes.Buffer
 	var b [4]byte
@@ -482,7 +487,7 @@ func EncodeParadigms(ps []Paradigm) []byte {
 	return buf.Bytes()
 }
 
-// DecodeParadigms читает парадигмы, записанные EncodeParadigms.
+// DecodeParadigms reads paradigms written by EncodeParadigms.
 func DecodeParadigms(data []byte) ([]Paradigm, error) {
 	if len(data) < 4 {
 		return nil, ErrMalformedFile

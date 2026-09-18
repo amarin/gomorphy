@@ -1,18 +1,19 @@
-# Этап 5. Компилятор и загрузчик файла — ВЫПОЛНЕН
+# Stage 5. Compiler and file loader — DONE
 
-## Содержание этапа
+## Stage contents
 
-Инкремент: `SaveTo`/`Open` через формат этапа 1 (FT3, FT4).
+Increment: `SaveTo`/`Open` using Stage 1's format (FT3, FT4).
 
-- Сериализация снимка в секции: delta/varint для оффсетов и постингов.
-- mmap-ридер (`internal/mmapx`): `Open(path)` → Dictionary-снимок.
+- Serializing a snapshot into sections: delta/varint for offsets and postings.
+- An mmap reader (`internal/mmapx`): `Open(path)` -> a Dictionary snapshot.
 
-## Проверка (выполнена)
+## Verification (done)
 
-- roundtrip-тест: `Build` → `SaveTo` → `Open` → `DeepEqual` снимков + равенство
-  выборок по контрольному набору слов (golden-набор с ожидаемыми грамматиками).
-- тест битого файла: усечение, порча чексуммы → осмысленные ошибки.
-- замер размера на полном `dict.xml`: 303 MB (лог в тесте; жёстких ассертов
-  нет до стабилизации). Доминанты: `texts.data` ~67 MB, `exact` ~47 MB,
-  `pairs raw` ~62 MB — кандидаты на сжатие в FT4-оптимизации (этап 10+).
-  Save ~1.0s, Open ~0.3s.
+- Roundtrip test: `Build` -> `SaveTo` -> `Open` -> `DeepEqual` of the
+  snapshots + equal lookups over a control word set (a golden set with
+  expected grammars).
+- A corrupted-file test: truncation, checksum corruption -> meaningful errors.
+- A size measurement on the full `dict.xml`: 303 MB (logged in the test;
+  no hard assertions until it stabilizes). Dominant sections:
+  `texts.data` ~67 MB, `exact` ~47 MB, `pairs raw` ~62 MB — candidates
+  for compression in an FT4 optimization (Stage 10+). Save ~1.0s, Open ~0.3s.

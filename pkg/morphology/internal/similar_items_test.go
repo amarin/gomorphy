@@ -105,8 +105,8 @@ func TestSimilarItemsWithDenseAlphabetAndCharPolicy(t *testing.T) {
 	})
 	d := NewDAWG(dict, guide)
 
-	// "ежик" не в DAWG буквально; подмена е→ё в CharPolicy, применённая
-	// через alphabet.Encode, должна найти "ёжик".
+	// "ежик" is not literally in the DAWG; the е→ё substitution in
+	// CharPolicy, applied through alphabet.Encode, should find "ёжик".
 	items := d.SimilarItems("ежик", RussianCharPolicy(), alphabet)
 	require.Len(t, items, 1)
 	assert.Equal(t, "ёжик", items[0].Key)

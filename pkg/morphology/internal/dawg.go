@@ -8,34 +8,34 @@ import (
 	"unsafe"
 )
 
-// Раскладка единицы словаря dawgdic (uint32):
-//   - bits 0–7:   label (байт перехода)
-//   - bit  8:     has_leaf (у узла есть значение)
-//   - bit  9:     extension (старшие биты поля offset)
-//   - bits 10–31: offset (или значение, если единица — value unit)
+// Layout of a dawgdic dictionary unit (uint32):
+//   - bits 0–7:   label (transition byte)
+//   - bit  8:     has_leaf (the node has a value)
+//   - bit  9:     extension (high bits of the offset field)
+//   - bits 10–31: offset (or the value itself, if the unit is a value unit)
 const (
 	isLeafBit    = 1 << 31
 	hasLeafBit   = 1 << 8
 	extensionBit = 1 << 9
 )
 
-// PayloadSeparator отделяет слово от payload в ключе words.dawg (pymorphy2).
+// PayloadSeparator separates the word from the payload in a words.dawg (pymorphy2) key.
 const PayloadSeparator byte = 0x01
 
-// DAWG — read-only минимизированный конечный автомат (формат dawgdic):
-// массив единиц dictionary + guide (по 2 байта на узел: child + sibling).
+// DAWG — a read-only minimized finite-state automaton (dawgdic format):
+// a dictionary array of units + a guide (2 bytes per node: child + sibling).
 type DAWG struct {
 	dict  []uint32
 	guide []byte
 }
 
-// NewDAWG создаёт DAWG из готовых массивов. Массивы не копируются.
+// NewDAWG creates a DAWG from ready-made arrays. The arrays are not copied.
 func NewDAWG(dict []uint32, guide []byte) *DAWG {
 	return &DAWG{dict: dict, guide: guide}
 }
 
-// ReadDAWG читает словарь в формате pymorphy2 words.dawg:
-// uint32 count + count×uint32 единиц + uint32 count_guide + guide (count×2 байт).
+// ReadDAWG reads a dictionary in the pymorphy2 words.dawg format:
+// uint32 count + count×uint32 units + uint32 count_guide + guide (count×2 bytes).
 func ReadDAWG(r io.Reader) (*DAWG, error) {
 	var size uint32
 	if err := binary.Read(r, binary.LittleEndian, &size); err != nil {
@@ -56,8 +56,8 @@ func ReadDAWG(r io.Reader) (*DAWG, error) {
 	return &DAWG{dict: dict, guide: guide}, nil
 }
 
-// Bytes сериализует DAWG в потоковый формат words.dawg (обратный ReadDAWG):
-// uint32 count + count×uint32 единиц + uint32 guide_size + guide.
+// Bytes serializes the DAWG into the words.dawg stream format (the inverse of ReadDAWG):
+// uint32 count + count×uint32 units + uint32 guide_size + guide.
 func (d *DAWG) Bytes() []byte {
 	if d == nil {
 		return nil
@@ -76,9 +76,9 @@ func (d *DAWG) Bytes() []byte {
 	return buf
 }
 
-// ParseDAWG разбирает DAWG из сериализованных байт (формат Bytes).
-// При 4-байтовом выравнивании массива единиц словарь и guide алиасят
-// входной срез (zero-copy для mmap); иначе — копируются.
+// ParseDAWG parses a DAWG from serialized bytes (the Bytes format).
+// When the unit array is 4-byte aligned, the dictionary and guide alias
+// the input slice (zero-copy for mmap); otherwise, they are copied.
 func ParseDAWG(data []byte) (*DAWG, error) {
 	dict, guide, err := splitDAWG(data)
 	if err != nil {
@@ -145,8 +145,8 @@ func valueOf(base uint32) uint32 {
 	return base &^ isLeafBit
 }
 
-// FollowByte выполняет переход по одному байту из узла index.
-// Возвращает 0 при отсутствии перехода.
+// FollowByte performs a transition on a single byte from node index.
+// Returns 0 if there is no such transition.
 func (d *DAWG) FollowByte(lbl byte, index uint32) uint32 {
 	if index >= uint32(len(d.dict)) {
 		return 0
@@ -162,14 +162,14 @@ func (d *DAWG) FollowByte(lbl byte, index uint32) uint32 {
 	return next
 }
 
-// FollowRune выполняет переход по руне (1–4 байта UTF-8) из узла index.
+// FollowRune performs a transition on a rune (1-4 UTF-8 bytes) from node index.
 func (d *DAWG) FollowRune(r rune, index uint32) uint32 {
 	var buf [4]byte
 	n := utf8.EncodeRune(buf[:], r)
 	return d.followBytes(buf[:n], index)
 }
 
-// Follow выполняет переход по строке из узла index.
+// Follow performs a transition on a string from node index.
 func (d *DAWG) Follow(s string, index uint32) uint32 {
 	for i := 0; i < len(s); i++ {
 		index = d.FollowByte(s[i], index)
@@ -190,12 +190,12 @@ func (d *DAWG) followBytes(bs []byte, index uint32) uint32 {
 	return index
 }
 
-// HasValue сообщает, есть ли значение у узла index.
+// HasValue reports whether node index has a value.
 func (d *DAWG) HasValue(index uint32) bool {
 	return hasLeafFlag(d.dict[index])
 }
 
-// Value возвращает целочисленное значение узла index (0, если его нет).
+// Value returns the integer value of node index (0 if it has none).
 func (d *DAWG) Value(index uint32) uint32 {
 	if index >= uint32(len(d.dict)) {
 		return 0
@@ -208,7 +208,7 @@ func (d *DAWG) Value(index uint32) uint32 {
 	return valueOf(d.dict[valueIndex])
 }
 
-// Find ищет ключ точно, возвращает его значение (0 — ключ не найден).
+// Find looks up a key exactly and returns its value (0 — key not found).
 func (d *DAWG) Find(key string) uint32 {
 	index := d.Follow(key, 0)
 	if index == 0 {
@@ -217,7 +217,7 @@ func (d *DAWG) Find(key string) uint32 {
 	return d.Value(index)
 }
 
-// Contains сообщает, есть ли ключ в словаре (точное совпадение).
+// Contains reports whether the key is present in the dictionary (exact match).
 func (d *DAWG) Contains(key string) bool {
 	if len(d.dict) == 0 {
 		return false
@@ -226,8 +226,8 @@ func (d *DAWG) Contains(key string) bool {
 	return index != 0 && d.HasValue(index)
 }
 
-// ValuesForIndex возвращает все payload-значения под-автомата из узла index
-// (в words.dawg — base64-закодированные байты записи после PayloadSeparator).
+// ValuesForIndex returns all payload values of the sub-automaton rooted at
+// node index (in words.dawg — base64-encoded record bytes after PayloadSeparator).
 func (d *DAWG) ValuesForIndex(index uint32) [][]byte {
 	var values [][]byte
 	c := &completer{dawg: d}
@@ -238,10 +238,11 @@ func (d *DAWG) ValuesForIndex(index uint32) [][]byte {
 	return values
 }
 
-// ForEachChild вызывает fn для каждого исходящего ребра узла index.
-// Внутри guide: во входе index хранится метка первого ребёнка, в слоте
-// ребёнка — метка следующего брата; переходы считаются double-array хешем.
-// Ребро к PayloadSeparator включается в перечень обычным образом.
+// ForEachChild calls fn for every outgoing edge of node index.
+// Inside guide: the entry for index stores the label of the first child,
+// and the child's slot stores the label of the next sibling; transitions
+// are computed as a double-array hash. An edge to PayloadSeparator is
+// included in the enumeration like any other.
 func (d *DAWG) ForEachChild(index uint32, fn func(label byte, next uint32)) {
 	if len(d.guide) == 0 {
 		return
@@ -257,9 +258,9 @@ func (d *DAWG) ForEachChild(index uint32, fn func(label byte, next uint32)) {
 	}
 }
 
-// HasPayloadChild сообщает, есть ли у узла исходящее ребро PayloadSeparator.
-// В отличие от FollowByte-пробы, проверка идёт по guide (реальные рёбра
-// узла), поэтому не подвержена коллизиям double-array раскладки.
+// HasPayloadChild reports whether the node has an outgoing PayloadSeparator edge.
+// Unlike a FollowByte probe, the check goes through guide (the node's real
+// edges), so it is not subject to double-array layout collisions.
 func (d *DAWG) HasPayloadChild(index uint32) bool {
 	found := false
 	d.ForEachChild(index, func(label byte, _ uint32) {
@@ -308,7 +309,7 @@ func guideSibling(g []byte, n uint32) byte {
 	return g[n*2+1]
 }
 
-// completer — обход значений под-автомата DAWG с использованием guide.
+// completer — traversal of a DAWG sub-automaton's values using guide.
 type completer struct {
 	dawg       *DAWG
 	lastIndex  uint32

@@ -34,7 +34,7 @@ func TestCompileFromXML(t *testing.T) {
 
 	assert.Equal(t, "ru", d.Language())
 
-	// Parse должен вернуть чтения для слова.
+	// Parse should return readings for the word.
 	readings := d.Parse("дом")
 	assert.Greater(t, len(readings), 0, "дом должен быть найден")
 }

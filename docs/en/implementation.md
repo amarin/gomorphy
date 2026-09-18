@@ -1,81 +1,84 @@
-# Реализация gomorphy (as-is + план)
+# gomorphy implementation (as-is + plan)
 
-Документ описывает текущую реализацию (этапы 0–10) и план новой реализации
-(этапы 11–18) с заменой внутреннего формата хранения.
+This document describes the current implementation (stages 0-10) and
+the plan for the new implementation (stages 11-18) that replaces the
+internal storage format.
 
-Соответствует требованиям [requirements.md](requirements.md) и плану из [todo.md](todo.md).
+Matches the requirements in [requirements.md](requirements.md) and the
+plan in [todo.md](todo.md).
 
-## Описание этапов
+## Stage descriptions
 
-### Исходная реализация (выполнена)
+### The original implementation (done)
 
-- [Этап 0. Анализ и подготовка репозитория](implementation/stage-0-analysis.md)
-- [Этап 1. Примитивы формата](implementation/stage-1-format.md)
-- [Этап 2. Интернирование строк](implementation/stage-2-intern.md)
-- [Этап 3. Сканер dict.xml](implementation/stage-3-xmlscan.md)
-- [Этап 4. Builder и CSR-структуры](implementation/stage-4-builder-csr.md)
-- [Этап 5. Компилятор и загрузчик файла](implementation/stage-5-compiler-loader.md)
-- [Этап 6. Публичный фасад pkg/dictionary](implementation/stage-6-facade.md)
-- [Этап 7. Интеграция с OpenCorpora end-to-end](implementation/stage-7-opencorpora.md)
-- [Этап 8. Поиск лемм FT5](implementation/stage-8-lemmas.md)
-- [Этап 9. Нечёткий поиск FT6](implementation/stage-9-fuzzy.md)
-- [Этап 10. Финализация](implementation/stage-10-finalize.md)
+- [Stage 0. Repository analysis and preparation](implementation/stage-0-analysis.md)
+- [Stage 1. Format primitives](implementation/stage-1-format.md)
+- [Stage 2. String interning](implementation/stage-2-intern.md)
+- [Stage 3. dict.xml scanner](implementation/stage-3-xmlscan.md)
+- [Stage 4. Builder and CSR structures](implementation/stage-4-builder-csr.md)
+- [Stage 5. Compiler and file loader](implementation/stage-5-compiler-loader.md)
+- [Stage 6. Public facade pkg/dictionary](implementation/stage-6-facade.md)
+- [Stage 7. End-to-end OpenCorpora integration](implementation/stage-7-opencorpora.md)
+- [Stage 8. FT5 lemma lookup](implementation/stage-8-lemmas.md)
+- [Stage 9. FT6 fuzzy search](implementation/stage-9-fuzzy.md)
+- [Stage 10. Finalization](implementation/stage-10-finalize.md)
 
-### Новая реализация (выполнена)
+### The new implementation (done)
 
-- [x] [Этап 11. Внутренний формат: TagSet + Paradigm + DAWG reader](implementation/stage-11-internal-format.md) — ВЫПОЛНЕН
-- [x] [Этап 12. Импорт PyMorphy2](implementation/stage-12-import-pymorphy2.md) — ВЫПОЛНЕН
-- [x] [Этап 13. Публичный API: Parse, Lemma, Fuzzy](implementation/stage-13-public-api.md) — ВЫПОЛНЕН
-- [x] [Этап 14. Сериализация: единый формат на диске](implementation/stage-14-serialization.md) — ВЫПОЛНЕН
-- [x] [Этап 15. Импорт OpenCorpora](implementation/stage-15-import-opencorpora.md) — ВЫПОЛНЕН
-- [ ] [Этап 16. Импорт UniMorph](implementation/stage-16-import-unimorph.md)
-- [ ] [Этап 17. Сужение типов ID и zstd](implementation/stage-17-optimize.md)
-- [ ] [Этап 18. Финализация: CLI, документация, тесты](implementation/stage-18-finalize.md)
-- [ ] [Этап 19. Тематические словари: TSV-импорт, CLI-батчи, навыки, решение по MCP](todo.md)
-- [ ] [Этап 20. База синонимов: группы, теги, sidecar-файл](todo.md)
+- [x] [Stage 11. Internal format: TagSet + Paradigm + DAWG reader](implementation/stage-11-internal-format.md) — DONE
+- [x] [Stage 12. PyMorphy2 import](implementation/stage-12-import-pymorphy2.md) — DONE
+- [x] [Stage 13. Public API: Parse, Lemma, Fuzzy](implementation/stage-13-public-api.md) — DONE
+- [x] [Stage 14. Serialization: a unified on-disk format](implementation/stage-14-serialization.md) — DONE
+- [x] [Stage 15. OpenCorpora import](implementation/stage-15-import-opencorpora.md) — DONE
+- [ ] [Stage 16. UniMorph import](implementation/stage-16-import-unimorph.md)
+- [ ] [Stage 17. Narrowing ID types and zstd](implementation/stage-17-optimize.md)
+- [ ] [Stage 18. Finalization: CLI, documentation, tests](implementation/stage-18-finalize.md)
+- [ ] [Stage 19. Thematic dictionaries: TSV import, CLI batches, skills, MCP decision](todo.md)
+- [ ] [Stage 20. Synonym database: groups, tags, sidecar file](todo.md)
 
-Терминология проекта — в [glossary.md](glossary.md).
+Project terminology is in [glossary.md](glossary.md).
 
-## Текущая реализация (этапы 0–10)
+## The current implementation (stages 0-10)
 
-### Состав репозитория
-
-```
-pkg/dictionary    публичный фасад библиотеки (FT7–FT9)
-internal/build    Builder: сборка словаря из XML или программно, CSR-структуры
-internal/format   формат файла: header, каталог секций, varint/delta-кодирование
-internal/xmlscan  байтовый сканер dict.xml без аллокаций на токен
-internal/intern   таблица интернирования строк (open addressing)
-internal/stringsx строковая арена + таблица смещений
-internal/mmapx    mmap-ридер секций
-pkg/opencorpora   загрузчик/распаковщик OpenCorpora (без изменений по поведению)
-cmd/opencorpora_update CLI: обновить, распаковать, скомпилировать
-cmd/gomorphy      CLI: точный поиск, леммы, нечёткий поиск по .dat
-```
-
-### Модель данных в памяти (текущая)
-
-Все сущности нормализованы в справочники; словоформа — пара идентификаторов.
-
-- `grammemes []string` — имена граммем, id = индекс.
-- Анкоды: CSR `ancodeOff []uint32` + `ancodeGrams []uint32` — 876 уникальных
-  наборов граммем, id = uint16.
-- `textsArena []byte` + `textOff []uint32` — арена текстов.
-- CSR-trie: `stateOff`, `TransLabel`, `TransTarget`, `Finals`.
-- Exact-hash: open-addressing `hash(text) → trie state`.
-- Постинг-листы: `PostingsOff` + `Postings` (пары `lemmaId, ancodeId`).
-
-### Формат файла (текущий)
+### Repository layout
 
 ```
-magic "GMRF" | version u32 | xxh3 чексумма
-каталог: [имя секции, offset u64, size u64] × N
-секции: meta, grammemes, ancodes, textsArena, textOff,
+pkg/dictionary    the library's public facade (FT7-FT9)
+internal/build    Builder: building a dictionary from XML or programmatically, CSR structures
+internal/format   the file format: header, section catalog, varint/delta encoding
+internal/xmlscan  a byte scanner for dict.xml with no per-token allocations
+internal/intern   a string interning table (open addressing)
+internal/stringsx a string arena + an offset table
+internal/mmapx    an mmap reader for sections
+pkg/opencorpora   the OpenCorpora downloader/unpacker (unchanged behavior)
+cmd/opencorpora_update CLI: update, unpack, compile
+cmd/gomorphy      CLI: exact lookup, lemmas, fuzzy search over a .dat
+```
+
+### The in-memory data model (current)
+
+Every entity is normalized into lookup tables; a wordform is a pair of
+identifiers.
+
+- `grammemes []string` — grammeme names, id = index.
+- Ancodes: CSR `ancodeOff []uint32` + `ancodeGrams []uint32` — 876
+  unique grammeme sets, id = uint16.
+- `textsArena []byte` + `textOff []uint32` — the text arena.
+- The CSR trie: `stateOff`, `TransLabel`, `TransTarget`, `Finals`.
+- Exact-hash: open-addressing `hash(text) -> trie state`.
+- Posting lists: `PostingsOff` + `Postings` (`lemmaId, ancodeId` pairs).
+
+### File format (current)
+
+```
+magic "GMRF" | version u32 | xxh3 checksum
+catalog: [section name, offset u64, size u64] x N
+sections: meta, grammemes, ancodes, textsArena, textOff,
         states, transitions, finals, exactHash, postings,
         lemmaIndex, rowAncodes, links
 ```
 
-### Рантайм (текущий)
+### Runtime (current)
 
 ```go
 func Open(path string) (*Dictionary, error)
@@ -86,118 +89,118 @@ func (d *Dictionary) FuzzyTop(word string, maxWords int) ([]FuzzyMatch, error)
 func (d *Dictionary) SaveTo(path string) error
 ```
 
-## Новая реализация (этапы 11–18)
+## The new implementation (stages 11-18)
 
-### Состав репозитория (после этапа 18)
+### Repository layout (after stage 18)
 
 ```
-pkg/morphology/               публичный фасад: Open, Parse, Lemma, Fuzzy
-pkg/morphology/internal/      внутренний формат: TagSet, Paradigm, DAWG, Dictionary
-pkg/morphology/importers/     импортёры из разных форматов
-pkg/morphology/importers/pymorphy2/   чтение words.dawg + paradigms.array
-pkg/morphology/importers/opencorpora/ dict.xml → парадигмы → DAWG
-pkg/morphology/importers/unimorph/    TSV → парадигмы → DAWG
+pkg/morphology/               the public facade: Open, Parse, Lemma, Fuzzy
+pkg/morphology/internal/      the internal format: TagSet, Paradigm, DAWG, Dictionary
+pkg/morphology/importers/     importers from different formats
+pkg/morphology/importers/pymorphy2/   reads words.dawg + paradigms.array
+pkg/morphology/importers/opencorpora/ dict.xml -> paradigms -> DAWG
+pkg/morphology/importers/unimorph/    TSV -> paradigms -> DAWG
 
-internal/xmlscan              (переиспользуется) сканер dict.xml
-internal/mmapx                (переиспользуется) mmap-ридер
-pkg/opencorpora               (переиспользуется) загрузчик OpenCorpora
+internal/xmlscan              (reused) the dict.xml scanner
+internal/mmapx                (reused) the mmap reader
+pkg/opencorpora               (reused) the OpenCorpora loader
 
 cmd/gomorphy                  CLI: lookup/fuzzy/top/lemmas, cli, download/unpack/build/update
                                (folded cmd/gomorphy_build's update/compile into this single
-                               binary during the CLI redesign, see docs/superpowers/specs/
+                               binary during the CLI redesign, see docs/en/superpowers/specs/
                                2026-09-16-cli-redesign-design.md)
 ```
 
-### Модель данных в памяти (новая)
+### The in-memory data model (new)
 
 ```
 Dictionary
-  TagSet         *TagSet        // набор граммем (имя → id)
-  Suffixes       []string       // набор суффиксов (id → текст)
-  Prefixes       []string       // набор префиксов (id → текст)
-  Paradigms      []Paradigm     // шаблоны склонения
-  Words          *DAWG          // слова → (para_id, form_idx)
-  Prediction     []*DAWG        // предсказание по окончаниям (опционально)
-  Probability    *DAWG          // вероятности (опционально)
-  CharPolicy     *CharPolicy    // подмены символов (е↔ё и т.д.)
+  TagSet         *TagSet        // the grammeme set (name -> id)
+  Suffixes       []string       // the suffix set (id -> text)
+  Prefixes       []string       // the prefix set (id -> text)
+  Paradigms      []Paradigm     // inflection templates
+  Words          *DAWG          // words -> (para_id, form_idx)
+  Prediction     []*DAWG        // prediction by ending (optional)
+  Probability    *DAWG          // probabilities (optional)
+  CharPolicy     *CharPolicy    // character substitutions (е<->ё, etc.)
 ```
 
-DAWG reader (формат dawgdic):
-- `Dictionary []uint32` — массив узлов (label + offset + leaf bits)
-- `Guide []byte` — навигация: child + sibling по 2 байта на узел
-- Поиск: `followByte(r, idx)` → O(1), `find(key)` → O(len)
-- Ё-обработка: `similarItems(key)` с подменой `е→ё` на лету
+DAWG reader (the dawgdic format):
+- `Dictionary []uint32` — the node array (label + offset + leaf bits)
+- `Guide []byte` — navigation: child + sibling, 2 bytes per node
+- Lookup: `followByte(r, idx)` -> O(1), `find(key)` -> O(len)
+- е/ё handling: `similarItems(key)` substitutes `е→ё` on the fly
 
-### Формат файла (новый)
+### File format (new)
 
 ```
-magic "GMOR" | version u32 | xxh3 чексумма
-каталог: [имя секции, offset u64, size u64, flags u8] × N
-секции:
+magic "GMOR" | version u32 | xxh3 checksum
+catalog: [section name, offset u64, size u64, flags u8] x N
+sections:
   meta            — language, counts, version
-  tagset          — JSON-массив имён граммем (общий для всех шардов)
-  prefixes        — varint-length-prefixed строки (общий для всех шардов)
-  suffixes-N      — varint-length-prefixed строки (по одному набору на шард, N от 0)
-  paradigms-N     — uint16 array (N суффиксов + N тегов + N префиксов; по одному набору на шард)
-  words.dawg-N    — dictionary uint32[] + guide byte[] (по одному на шард)
-  prediction-N    — prediction DAWGs (опционально)
-  probability     — probability DAWG (опционально)
+  tagset          — a JSON array of grammeme names (shared across all shards)
+  prefixes        — varint-length-prefixed strings (shared across all shards)
+  suffixes-N      — varint-length-prefixed strings (one set per shard, N from 0)
+  paradigms-N     — a uint16 array (N suffixes + N tags + N prefixes; one set per shard)
+  words.dawg-N    — dictionary uint32[] + guide byte[] (one per shard)
+  prediction-N    — prediction DAWGs (optional)
+  probability     — a probability DAWG (optional)
 ```
 
-### Рантайм (новый)
+### Runtime (new)
 
 ```go
-// Открытие из разных источников
-func Open(path string) (*Dictionary, error)                      // из .dat файла
-func OpenPyMorphy(dir string) (*Dictionary, error)               // из директории pymorphy2
-func CompileFromXML(r io.Reader) (*Dictionary, error)            // из dict.xml
-func CompileFromUniMorph(r io.Reader) (*Dictionary, error)       // из TSV UniMorph
+// Opening from different sources
+func Open(path string) (*Dictionary, error)                      // from a .dat file
+func OpenPyMorphy(dir string) (*Dictionary, error)               // from a pymorphy2 directory
+func CompileFromXML(r io.Reader) (*Dictionary, error)            // from dict.xml
+func CompileFromUniMorph(r io.Reader) (*Dictionary, error)       // from a UniMorph TSV
 
-// Публичный API (FT2, FT5, FT6)
-func (d *Dictionary) Parse(word string) []Reading                // точный + предсказание
-func (d *Dictionary) Lemma(word string) []LemmaRef               // начальная форма
-func (d *Dictionary) Fuzzy(word string, maxDist int) []FuzzyMatch // нечёткий поиск
+// Public API (FT2, FT5, FT6)
+func (d *Dictionary) Parse(word string) []Reading                // exact + prediction
+func (d *Dictionary) Lemma(word string) []LemmaRef               // the base form
+func (d *Dictionary) Fuzzy(word string, maxDist int) []FuzzyMatch // fuzzy search
 func (d *Dictionary) FuzzyTop(word string, maxWords int) []FuzzyMatch
 
-// Сериализация (FT3, FT7)
+// Serialization (FT3, FT7)
 func (d *Dictionary) SaveTo(path string) error
 
-// Информация
+// Info
 func (d *Dictionary) Language() string
 func (d *Dictionary) TagSet() *TagSet
 
-// Закрытие
+// Closing
 func (d *Dictionary) Close() error
 ```
 
-- `Reading` — значение (текст, нормальная форма, теги, вероятность, источник).
-- Чтение конкурентно безопасно (иммутабельный снимок).
-- Один экземпляр = один язык/источник. Несколько словарей = несколько экземпляров.
+- `Reading` — a value (text, base form, tags, probability, source).
+- Reads are concurrency-safe (an immutable snapshot).
+- One instance = one language/source. Several dictionaries = several instances.
 
-### Поиск (новый)
+### Lookup (new)
 
-- **Точный (Parse)**: DAWG lookup → `(para_id, form_idx)` → индексная
-  арифметика по парадигме → `stem + suffix` + тег. O(len) обход DAWG.
-- **Предсказание**: если слово не найдено — поиск по prediction DAWGs
-  (1–5-буквенные окончания → наборы разборов).
-- **Леммы (Lemma)**: DAWG → `(para_id, 0)` → `stem + suffix[0]`.
-- **Нечёткий (Fuzzy)**: совместный обход DAWG и DFA Левенштейна
-  с отсечением по порогу k. Метрика по рунам.
+- **Exact (Parse)**: a DAWG lookup -> `(para_id, form_idx)` -> index
+  arithmetic over the paradigm -> `stem + suffix` + tag. O(len) DAWG traversal.
+- **Prediction**: if the word isn't found — a lookup over the
+  prediction DAWGs (1-5 letter endings -> sets of readings).
+- **Lemmas (Lemma)**: DAWG -> `(para_id, 0)` -> `stem + suffix[0]`.
+- **Fuzzy**: a joint traversal of the DAWG and a Levenshtein DFA,
+  pruned by a threshold k. A rune-level metric.
 
-## Метрики (контрольные точки)
+## Metrics (checkpoints)
 
-| Показатель | Текущее (этап 10) | Цель (этап 18) |
+| Metric | Current (stage 10) | Target (stage 18) |
 |---|---|---|
-| Размер .dat (OpenCorpora) | ~305 МБ | ~20–30 МБ |
-| Размер .dat (PyMorphy2) | — | ~15–20 МБ |
-| Размер .dat с zstd | — | ~10–15 МБ |
-| Сборка .dat (OpenCorpora, 3.06М лемм) | ~24 ч (до free-list фикса) | ~24 с |
-| Загрузка | mmap, мс | mmap, мс |
-| Parse (точный) | < 10 мкс | < 10 мкс |
-| Parse (предсказание) | нет | < 50 мкс |
-| Lemmas | < 10 мкс | < 10 мкс |
-| Fuzzy k≤2 | доли сек | доли сек |
-| Поддержка pymorphy2 | нет | да |
-| Поддержка UniMorph | нет | да (169 языков, opaque) |
-| Множественные словари | на уровне приложения | на уровне приложения |
-| Языковая нейтральность | нет (русский) | да |
+| .dat size (OpenCorpora) | ~305 MB | ~20-30 MB |
+| .dat size (PyMorphy2) | — | ~15-20 MB |
+| .dat size with zstd | — | ~10-15 MB |
+| Building the .dat (OpenCorpora, 3.06M lemmas) | ~24 h (before the free-list fix) | ~24 s |
+| Loading | mmap, ms | mmap, ms |
+| Parse (exact) | < 10 us | < 10 us |
+| Parse (prediction) | none | < 50 us |
+| Lemmas | < 10 us | < 10 us |
+| Fuzzy k<=2 | fractions of a second | fractions of a second |
+| pymorphy2 support | no | yes |
+| UniMorph support | no | yes (169 languages, opaque) |
+| Multiple dictionaries | at the application level | at the application level |
+| Language neutrality | no (Russian) | yes |

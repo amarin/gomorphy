@@ -6,20 +6,20 @@ import "errors"
 // uint16 id space) are already registered.
 var ErrTagSetFull = errors.New("tagset: too many unique tags (max 65536)")
 
-// TagSet — набор грамматических тегов словаря: id ↔ имя.
+// TagSet is a dictionary's set of grammatical tags: id <-> name.
 type TagSet struct {
 	Name  string
-	Tags  []string          // id → имя тега
-	Index map[string]uint16 // имя тега → id
+	Tags  []string          // id -> tag name
+	Index map[string]uint16 // tag name -> id
 }
 
-// NewTagSet создаёт пустой TagSet с готовой таблицей индексов.
+// NewTagSet creates an empty TagSet with its index table ready.
 func NewTagSet(name string) *TagSet {
 	return &TagSet{Name: name, Index: make(map[string]uint16)}
 }
 
-// Add добавляет тег по имени, возвращает его id. Дедупликация по имени.
-// Возвращает ErrTagSetFull, если все 65536 значений uint16 уже заняты.
+// Add registers a tag by name, returning its id. Deduplicated by name.
+// Returns ErrTagSetFull once all 65536 uint16 values are already taken.
 func (t *TagSet) Add(name string) (uint16, error) {
 	if t.Index == nil {
 		t.Index = make(map[string]uint16)
@@ -36,13 +36,13 @@ func (t *TagSet) Add(name string) (uint16, error) {
 	return id, nil
 }
 
-// ID возвращает id тега по имени.
+// ID returns a tag's id by name.
 func (t *TagSet) ID(name string) (uint16, bool) {
 	id, ok := t.Index[name]
 	return id, ok
 }
 
-// TagName возвращает имя тега по id ("" для несуществующего id).
+// TagName returns a tag's name by id ("" for a nonexistent id).
 func (t *TagSet) TagName(id uint16) string {
 	if int(id) < len(t.Tags) {
 		return t.Tags[id]

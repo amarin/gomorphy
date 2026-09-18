@@ -1,6 +1,6 @@
 // MultiDictionary aggregates Parse/Lemma/Close across an arbitrary set of
 // already-open dictionaries. See
-// docs/superpowers/specs/2026-09-16-multi-dict-design.md.
+// docs/en/superpowers/specs/2026-09-16-multi-dict-design.md.
 package morphology
 
 import (
@@ -9,29 +9,29 @@ import (
 	"sync"
 )
 
-// MultiDictionary — набор независимо открытых словарей, опрашиваемых как
-// единое целое. Каждый *Dictionary в наборе сохраняет свой собственный
-// жизненный цикл (mmap и т.п.) — MultiDictionary не открывает и не
-// импортирует ничего сама, только агрегирует Parse/Lemma и владеет
-// закрытием всего набора разом.
+// MultiDictionary — a set of independently opened dictionaries, queried as
+// a single whole. Each *Dictionary in the set retains its own lifecycle
+// (mmap etc.) — MultiDictionary itself opens or imports nothing, it only
+// aggregates Parse/Lemma and owns closing the whole set at once.
 type MultiDictionary struct {
 	dicts []*Dictionary
 }
 
-// NewMultiDictionary оборачивает уже открытые словари в единый набор.
-// Порядок dicts фиксирует индексацию Reading.Dict/LemmaRef.Dict и порядок
-// склейки результатов Parse/Lemma — оба всегда в порядке регистрации, не
-// пересортировываются.
+// NewMultiDictionary wraps already-open dictionaries into a single set.
+// The order of dicts fixes the indexing of Reading.Dict/LemmaRef.Dict and
+// the order in which Parse/Lemma results are concatenated — both always
+// follow registration order and are never re-sorted.
 func NewMultiDictionary(dicts ...*Dictionary) *MultiDictionary {
 	return &MultiDictionary{dicts: dicts}
 }
 
-// Len возвращает число словарей в наборе.
+// Len returns the number of dictionaries in the set.
 func (m *MultiDictionary) Len() int { return len(m.dicts) }
 
-// DictInfo возвращает диагностические метаданные словаря с индексом i (тот
-// же индекс, что несёт Reading.Dict/LemmaRef.Dict), или nil — если индекс
-// вне диапазона, или у этого словаря нет секции info (см. Dictionary.Info).
+// DictInfo returns the diagnostic metadata of the dictionary at index i
+// (the same index carried by Reading.Dict/LemmaRef.Dict), or nil if the
+// index is out of range, or that dictionary has no info section (see
+// Dictionary.Info).
 func (m *MultiDictionary) DictInfo(i int) *BuildInfo {
 	if i < 0 || i >= len(m.dicts) {
 		return nil
@@ -39,13 +39,13 @@ func (m *MultiDictionary) DictInfo(i int) *BuildInfo {
 	return m.dicts[i].Info()
 }
 
-// Parse разбирает word во всех словарях набора параллельно (по горутине на
-// словарь — тот же паттерн, что Dictionary.exact уже использует для
-// шардов внутри одного словаря). Результат — конкатенация Parse каждого
-// словаря в порядке регистрации набора, с проставленным Reading.Dict; без
-// какой-либо сортировки или дедупликации между словарями сверх того, что
-// каждый Dictionary.Parse уже делает сам внутри себя. nil, если ни один
-// словарь не дал чтений.
+// Parse parses word across all dictionaries in the set in parallel (one
+// goroutine per dictionary — the same pattern Dictionary.exact already
+// uses for shards within a single dictionary). The result is the
+// concatenation of each dictionary's Parse in the set's registration
+// order, with Reading.Dict set; there is no sorting or deduplication
+// across dictionaries beyond what each Dictionary.Parse already does
+// internally. Returns nil if no dictionary produced any readings.
 func (m *MultiDictionary) Parse(word string) []Reading {
 	results := make([][]Reading, len(m.dicts))
 
@@ -70,8 +70,8 @@ func (m *MultiDictionary) Parse(word string) []Reading {
 	return out
 }
 
-// Lemma разбирает word во всех словарях набора и возвращает начальные
-// формы. Та же конкатенация-в-порядке-регистрации семантика, что и Parse.
+// Lemma parses word across all dictionaries in the set and returns their
+// lemmas. Same concatenate-in-registration-order semantics as Parse.
 func (m *MultiDictionary) Lemma(word string) []LemmaRef {
 	results := make([][]LemmaRef, len(m.dicts))
 
@@ -96,13 +96,13 @@ func (m *MultiDictionary) Lemma(word string) []LemmaRef {
 	return out
 }
 
-// Fuzzy ищет слова в пределах расстояния Левенштейна maxDist от word во
-// всех словарях набора параллельно. Результат — конкатенация Fuzzy
-// каждого словаря в порядке регистрации набора, с проставленным
-// FuzzyMatch.Dict; без сортировки/дедупликации между словарями сверх
-// того, что каждый Dictionary.Fuzzy уже делает сам внутри себя (та же
-// политика, что у Parse/Lemma) — Fuzzy не ограничивает число результатов,
-// поэтому объединение "как есть" корректно.
+// Fuzzy searches for words within Levenshtein distance maxDist of word
+// across all dictionaries in the set in parallel. The result is the
+// concatenation of each dictionary's Fuzzy in the set's registration
+// order, with FuzzyMatch.Dict set; no sorting/deduplication across
+// dictionaries beyond what each Dictionary.Fuzzy already does internally
+// (the same policy as Parse/Lemma) — Fuzzy does not cap the number of
+// results, so concatenating as-is is correct.
 func (m *MultiDictionary) Fuzzy(word string, maxDist int) []FuzzyMatch {
 	results := make([][]FuzzyMatch, len(m.dicts))
 
@@ -127,15 +127,15 @@ func (m *MultiDictionary) Fuzzy(word string, maxDist int) []FuzzyMatch {
 	return out
 }
 
-// FuzzyTop возвращает до maxWords ближайших слов по всему набору,
-// упорядоченных по (расстояние, слово). В отличие от Parse/Lemma/Fuzzy,
-// maxWords — потолок на общий результат, не на словарь, поэтому здесь
-// нужно настоящее слияние: у каждого словаря запрашивается его
-// собственный top-maxWords (этого достаточно — любой кандидат глобального
-// top-maxWords обязан входить и в top-maxWords своего словаря, иначе в
-// этом же словаре нашлось бы maxWords кандидатов не хуже него), после
-// чего все кандидаты сортируются заново и обрезаются до maxWords.
-// maxWords <= 0 — точный поиск, как и у Dictionary.FuzzyTop.
+// FuzzyTop returns up to maxWords nearest words across the whole set,
+// ordered by (distance, word). Unlike Parse/Lemma/Fuzzy, maxWords is a cap
+// on the overall result, not per dictionary, so a real merge is needed
+// here: each dictionary is asked for its own top-maxWords (which is
+// enough — any candidate of the global top-maxWords must also be in its
+// own dictionary's top-maxWords, otherwise that same dictionary would
+// have maxWords candidates at least as good), after which all candidates
+// are re-sorted and truncated to maxWords. maxWords <= 0 means exact
+// lookup, same as Dictionary.FuzzyTop.
 func (m *MultiDictionary) FuzzyTop(word string, maxWords int) []FuzzyMatch {
 	if maxWords <= 0 {
 		return m.Fuzzy(word, 0)
@@ -174,9 +174,9 @@ func (m *MultiDictionary) FuzzyTop(word string, maxWords int) []FuzzyMatch {
 	return out
 }
 
-// Close закрывает каждый словарь набора (Dictionary.Close — no-op для
-// словарей, открытых не через Open), агрегируя все ошибки через
-// errors.Join. После Close набор использовать нельзя, как и его словари.
+// Close closes every dictionary in the set (Dictionary.Close is a no-op
+// for dictionaries not opened via Open), aggregating all errors via
+// errors.Join. The set must not be used after Close, nor its dictionaries.
 func (m *MultiDictionary) Close() error {
 	var errs []error
 	for _, d := range m.dicts {

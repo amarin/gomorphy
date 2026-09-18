@@ -1,6 +1,6 @@
-// Package opencorpora загружает словарь OpenCorpora из dict.xml:
-// извлекает парадигмы из лемм и словоформ, дедуплицирует,
-// строит DAWG и возвращает *internal.Dictionary.
+// Package opencorpora loads the OpenCorpora dictionary from dict.xml:
+// extracts paradigms from lemmas and wordforms, deduplicates them,
+// builds a DAWG, and returns a *internal.Dictionary.
 package opencorpora
 
 import (
@@ -15,9 +15,9 @@ import (
 	"github.com/amarin/gomorphy/pkg/morphology/internal"
 )
 
-// Progress callback — вызывается periodically (каждые 10s) во время импорта.
-// a: processed items, b: total items (0 если unknown).
-// Для вывода в stderr: func(a, b int) { fmt.Fprintf(os.Stderr, "...") }
+// Progress callback — called periodically (every 10s) during import.
+// a: processed items, b: total items (0 if unknown).
+// For printing to stderr: func(a, b int) { fmt.Fprintf(os.Stderr, "...") }
 type Progress func(a, b int)
 
 // lemmaEntry accumulates all forms for a single lemma.
@@ -150,12 +150,12 @@ func mergeLinkedLemmas(lemmas []lemmaEntry, links []xmlLink) {
 	}
 }
 
-// suffixShardLimit — вместимость uint16 id-пространства суффиксов одного
-// шарда.
+// suffixShardLimit — the capacity of the uint16 id space for one shard's
+// suffixes.
 const suffixShardLimit = 1 << 16
 
-// shardBuild накапливает состояние (суффиксы, парадигмы, ключи DAWG)
-// одного шарда во время ImportFromXML.
+// shardBuild accumulates the state (suffixes, paradigms, DAWG keys)
+// of one shard during ImportFromXML.
 type shardBuild struct {
 	suffixList     []string
 	suffixTexts    map[string]uint16
@@ -171,27 +171,28 @@ func newShardBuild() *shardBuild {
 	}
 }
 
-// ImportFromXML читает dict.xml из r и возвращает *internal.Dictionary с
-// заполненными TagSet, Suffixes, Prefixes, Paradigms и Words (DAWG).
+// ImportFromXML reads dict.xml from r and returns a *internal.Dictionary
+// with TagSet, Suffixes, Prefixes, Paradigms, and Words (DAWG) filled in.
 //
 // Pipeline:
 //
-//  1. xmlscan собирает все леммы с словоформами.
-//  2. Для каждой леммы вычисляется LCP-stem всех словоформ.
-//  3. Каждая словоформа → (suffix_id, tag_id) в парадигму текущего шарда.
-//     Suffix id адресуется uint16, поэтому леммы делятся на несколько
-//     шардов с независимыми id-пространствами, если суффиксов больше,
-//     чем помещается в один uint16-диапазон (см. FillOnDemand в shard.go
-//     и docs/superpowers/specs/2026-09-14-suffix-sharding-design.md).
-//  4. Парадигмы дедуплицируются через map[paradigmKey] → paradigmID,
-//     отдельно на каждый шард.
-//  5. Строится DAWG из ключей (stem + suffix, value=paraID<<16|formIdx),
-//     отдельно на каждый шард.
+//  1. xmlscan collects all lemmas with their wordforms.
+//  2. For each lemma, the LCP-stem of all its wordforms is computed.
+//  3. Each wordform → (suffix_id, tag_id) goes into the current shard's
+//     paradigm. The suffix id is addressed as a uint16, so lemmas are
+//     split across several shards with independent id spaces once there
+//     are more suffixes than fit in one uint16 range (see FillOnDemand in
+//     shard.go and docs/en/superpowers/specs/2026-09-14-suffix-sharding-design.md).
+//  4. Paradigms are deduplicated via map[paradigmKey] → paradigmID,
+//     separately per shard.
+//  5. A DAWG is built from the keys (stem + suffix, value=paraID<<16|formIdx),
+//     separately per shard.
 //
-// progress — необязательный callback для вывода прогресса. Вызывается
-// периодически с (processed, total), где total — суммарное число ключей
-// DAWG по всем шардам и processed растёт непрерывно через границы шардов
-// (CLI видит один общий прогресс-бар, а не рестарт на каждом шарде).
+// progress — an optional callback for reporting progress. Called
+// periodically with (processed, total), where total is the combined
+// number of DAWG keys across all shards and processed increases
+// continuously across shard boundaries (so the CLI sees one overall
+// progress bar instead of a restart on every shard).
 func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*internal.Dictionary, error) {
 	if tagSet == nil {
 		tagSet = internal.NewTagSet("opencorpora")

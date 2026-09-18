@@ -15,7 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// payloadSeparator — протокольный разделитель слов и payload в words.dawg (0x01).
+// payloadSeparator is the protocol separator between a word and its
+// payload in words.dawg (0x01).
 const payloadSeparator = "\x01"
 
 func b64(p []byte) string {
@@ -42,13 +43,13 @@ func writeParadigms(t *testing.T, dir string, paradigms [][]uint16) {
 	writeFile(t, dir, "paradigms.array", buf.Bytes())
 }
 
-// makeFixtureDir собирает минимальную директорию pymorphy2 в t.TempDir().
+// makeFixtureDir assembles a minimal pymorphy2 directory in t.TempDir().
 func makeFixtureDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 
 	writeParadigms(t, dir, [][]uint16{
-		{10, 20, 0, 1, 0, 0}, // 2 формы: суффиксы[10,20], теги[0,1], префиксы[0,0]
+		{10, 20, 0, 1, 0, 0}, // 2 forms: suffixes[10,20], tags[0,1], prefixes[0,0]
 	})
 
 	writeFile(t, dir, "suffixes.json", []byte(`["","кот","кота","x"]`))
@@ -164,5 +165,5 @@ func TestImportFromDirBadParadigm(t *testing.T) {
 	writeParadigms(t, dir, [][]uint16{{1, 2, 3, 4}})
 
 	_, err := pymorphy2.ImportFromDir(dir)
-	require.Error(t, err, "длина парадигмы обязана делиться на 3")
+	require.Error(t, err, "paradigm length must be divisible by 3")
 }

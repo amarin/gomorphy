@@ -1,74 +1,76 @@
-# Источник pymorphy2 (`pkg/pymorphy`) и его интеграция в единый CLI `gomorphy`
+# The pymorphy2 source (`pkg/pymorphy`) and its integration into the unified `gomorphy` CLI
 
-## Исходный план (Этап 21, сформулирован 2026-09-15)
+## Original plan (Stage 21, drafted 2026-09-15)
 
-Первоначально сформулированная задача — переформатировать
-`cmd/gomorphy_build` с «команда одного словаря» на универсальный
-конвейер `gomorphy_build <команда> <тип_словаря> [опции]`
-(`download`/`unpack`/`compile`/`update` × `opencorpora`/`pymorphy`/
-`unimorph`) и добавить второй источник словарных данных — готовые
-словари pymorphy2 из PyPI (пакет `pymorphy2-dicts-ru`).
+The originally drafted task was to reformat `cmd/gomorphy_build` from a
+"one dictionary per command" tool into a universal pipeline
+`gomorphy_build <command> <dict_type> [options]`
+(`download`/`unpack`/`compile`/`update` x `opencorpora`/`pymorphy`/
+`unimorph`) and add a second dictionary data source — pre-built
+pymorphy2 dictionaries from PyPI (the `pymorphy2-dicts-ru` package).
 
-**Обновление 2026-09-16**: этот план поглощён более широким
-CLI-редизайном — вместо переформатирования `cmd/gomorphy_build` в
-отдельный конвейер оба бинаря (`cmd/gomorphy`, `cmd/gomorphy_build`)
-заменены одним cobra-based `gomorphy`. Конкретный интерфейс
-`gomorphy_build <command> <dict_type>` как отдельный бинарь не
-реализован буквально — но его *суть* (команда, затем тип словаря,
-затем опции; единый конвейер download→unpack→compile для нескольких
-типов) реализована через подкоманды `gomorphy`. Дизайн:
+**Update 2026-09-16**: this plan was absorbed into a broader CLI
+redesign — instead of reformatting `cmd/gomorphy_build` into a
+separate pipeline, both binaries (`cmd/gomorphy`, `cmd/gomorphy_build`)
+were replaced by one cobra-based `gomorphy`. The literal interface
+`gomorphy_build <command> <dict_type>` as a separate binary was not
+implemented — but its *substance* (command, then dictionary type, then
+options; a single download->unpack->compile pipeline for several
+types) is implemented via `gomorphy`'s subcommands. Design:
 [2026-09-16-cli-redesign-design.md](../superpowers/specs/2026-09-16-cli-redesign-design.md).
-План: [2026-09-16-cli-redesign.md](../superpowers/plans/2026-09-16-cli-redesign.md).
+Plan: [2026-09-16-cli-redesign.md](../superpowers/plans/2026-09-16-cli-redesign.md).
 
-## Что реализовано
+## What's implemented
 
-### `pkg/pymorphy` — загрузчик готового словаря (по образцу `pkg/opencorpora`)
+### `pkg/pymorphy` — a loader for the pre-built dictionary (modeled on `pkg/opencorpora`)
 
 - `const.go`: `DomainName = "pymorphy"`, `PyPIPackageName =
   "pymorphy2-dicts-ru"`, `PyPIJSONURL` (JSON: `releases`/`urls`, wheel =
-  ZIP, поддерево `pymorphy2_dicts_ru/data/`).
-- `loader.go`: `Loader` — методы по образцу `opencorpora.Loader`:
+  ZIP, subtree `pymorphy2_dicts_ru/data/`).
+- `loader.go`: `Loader` — methods modeled on `opencorpora.Loader`:
   `Sync(skipDownload)` = download+unpack, `DownloadUpdate()` (PyPI JSON
-  API → wheel-URL → `.data/pymorphy/pymorphy2-dicts-ru.whl` +
-  `version.txt`), `UnpackUpdate()` (zip → `.data/pymorphy/data/`).
-- `pypi.go` — разбор PyPI JSON API.
+  API -> wheel URL -> `.data/pymorphy/pymorphy2-dicts-ru.whl` +
+  `version.txt`), `UnpackUpdate()` (zip -> `.data/pymorphy/data/`).
+- `pypi.go` — parsing the PyPI JSON API.
 
-Один сознательный отход от буквального текста исходного плана Этапа 21:
-имя скачанного файла фиксировано (`pymorphy2-dicts-ru.whl`, без версии
-в имени), версия PyPI хранится отдельно в `version.txt` — проще, чем
-парсить версию из имени файла на каждой проверке обновления.
+One deliberate departure from the original Stage 21 plan's literal
+text: the downloaded file's name is fixed (`pymorphy2-dicts-ru.whl`,
+with no version in the name), and the PyPI version is stored
+separately in `version.txt` — simpler than parsing the version out of
+a filename on every update check.
 
-### `cmd/gomorphy` — интеграция в единый CLI
+### `cmd/gomorphy` — integration into the unified CLI
 
-Проверено чтением кода (актуально на момент написания):
-- `gomorphy download pymorphy` (`cmd/gomorphy/download.go`) — скачивает
-  wheel через `pymorphy.NewLoader("")`.
-- `gomorphy unpack pymorphy` (`cmd/gomorphy/unpack.go`) — распаковывает
-  в `.data/pymorphy/data/`.
+Verified by reading the code (accurate as of writing):
+- `gomorphy download pymorphy` (`cmd/gomorphy/download.go`) — downloads
+  the wheel via `pymorphy.NewLoader("")`.
+- `gomorphy unpack pymorphy` (`cmd/gomorphy/unpack.go`) — unpacks it
+  into `.data/pymorphy/data/`.
 - `gomorphy build pymorphy [-i <dir>] [-o <path>]`
-  (`cmd/gomorphy/build.go`) — компилирует через `morphology.OpenPyMorphy`
-  + `SaveTo` в единый `.dat` (по умолчанию
-  `.data/pymorphy/pymorphy.dat`). Компиляция для pymorphy2
-  **опциональна по своей природе** (unpack-результат уже загружается
-  напрямую через `morphology.OpenPyMorphy` без компиляции — DAWG/
-  prediction уже собраны в исходном пакете), но команда `build`
-  унифицирует его с OpenCorpora в единый `.dat`-файл (mmap, один файл).
+  (`cmd/gomorphy/build.go`) — compiles via `morphology.OpenPyMorphy`
+  + `SaveTo` into a single `.dat` (by default
+  `.data/pymorphy/pymorphy.dat`). Compilation is **inherently optional**
+  for pymorphy2 (the unpack result already loads directly via
+  `morphology.OpenPyMorphy` with no compilation — the DAWG/prediction
+  data is already built in the source package), but the `build` command
+  unifies it with OpenCorpora into a single `.dat` file (mmap, one file).
 - `gomorphy update pymorphy` (`cmd/gomorphy/update.go`) — download +
-  unpack + build за один вызов.
+  unpack + build in one call.
 
-Итог: и «`compile pymorphy`», и «редизайн CLI» — оба пункта, которые
-исходный план Этапа 21 оставлял открытыми, реализованы, просто под
-другим синтаксисом команд (`gomorphy <command> <type>` вместо
+Bottom line: both "`compile pymorphy`" and "CLI redesign" — the two
+items the original Stage 21 plan left open — are implemented, just
+under different command syntax (`gomorphy <command> <type>` instead of
 `gomorphy_build <command> <dict_type>`).
 
-## Автоматические проверки
+## Automated checks
 
-Покрыто существующими тестами: `pkg/pymorphy/loader_test.go`,
-`pkg/pymorphy/pypi_test.go` (разбор PyPI JSON, версии, unpack тестового
-zip), `cmd/gomorphy/{download,unpack,build,update}_test.go`.
+Covered by existing tests: `pkg/pymorphy/loader_test.go`,
+`pkg/pymorphy/pypi_test.go` (PyPI JSON parsing, versions, unpacking a
+test zip), `cmd/gomorphy/{download,unpack,build,update}_test.go`.
 
-## Не входит в этот инкремент
+## Not part of this increment
 
-- `unimorph` как тип словаря в `download`/`unpack`/`build` — заявлено в
-  исходном плане Этапа 21 как «задел на будущее», не реализовано; сам
-  импорт UniMorph — отдельный, не начатый Этап 16 (см. [todo.md](../todo.md)).
+- `unimorph` as a dictionary type in `download`/`unpack`/`build` — named
+  in the original Stage 21 plan as "groundwork for the future," not
+  implemented; the UniMorph import itself is Stage 16, separate and not
+  started (see [todo.md](../todo.md)).

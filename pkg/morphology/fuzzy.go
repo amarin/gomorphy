@@ -8,24 +8,25 @@ import (
 	"github.com/amarin/gomorphy/pkg/morphology/internal"
 )
 
-// FuzzyMatch — найденное по нечёткому поиску слово и расстояние до запроса.
+// FuzzyMatch — a word found by fuzzy search, with its distance to the query.
 type FuzzyMatch struct {
 	Word     string
 	Distance int
-	Dict     int // индекс словаря в MultiDictionary; всегда 0 для Dictionary.Fuzzy/FuzzyTop напрямую
+	Dict     int // dictionary index in MultiDictionary; always 0 for Dictionary.Fuzzy/FuzzyTop directly
 }
 
-// Fuzzy возвращает слова словаря в пределах расстояния Левенштейна maxDist
-// от word (метрика по рунам: вставка/удаление/замена одной руны = 1,
-// «ё/е» — одна замена). Результат отсортирован по (расстояние, слово),
-// дубликаты слова (несколько чтений, в том числе из разных шардов)
-// схлопнуты. Отрицательное maxDist трактуется как 0 (точный поиск).
-// Пустой результат — слов нет.
+// Fuzzy returns dictionary words within Levenshtein distance maxDist of
+// word (a rune-wise metric: inserting/deleting/replacing one rune costs 1;
+// "ё/е" counts as one substitution). The result is sorted by
+// (distance, word), with duplicate words (multiple readings, including
+// from different shards) collapsed. A negative maxDist is treated as 0
+// (exact lookup). An empty result means no words match.
 //
-// Словари с плотным алфавитом (Dictionary.Alphabet != nil, например
-// открытые через OpenPyMorphyDense) пока не поддерживаются: внутренний
-// обход декодирует байты DAWG как raw UTF-8, что для плотного кода даёт
-// не ошибку, а тихий мусор. Для такого словаря Fuzzy возвращает nil.
+// Dictionaries with a dense alphabet (Dictionary.Alphabet != nil, e.g.
+// opened via OpenPyMorphyDense) are not yet supported: the internal walk
+// decodes DAWG bytes as raw UTF-8, which for dense-coded bytes produces
+// silent garbage rather than an error. For such a dictionary, Fuzzy
+// returns nil.
 func (x *Dictionary) Fuzzy(word string, maxDist int) []FuzzyMatch {
 	if x.d.Alphabet != nil {
 		return nil
@@ -36,14 +37,15 @@ func (x *Dictionary) Fuzzy(word string, maxDist int) []FuzzyMatch {
 	return dedupeFuzzy(x.fuzzyWalk(word, maxDist))
 }
 
-// FuzzyTop возвращает до maxWords ближайших слов, упорядоченных по
-// (расстояние, слово). Расстояние расширяется итеративно от 0 до верхней
-// границы (len(query)+наибольшая длина слова в рунах среди всех шардов),
-// пока не набраны maxWords слов или не пройден весь словарь. maxWords ≤ 0
-// — точный поиск (слово само по себе, либо пусто).
+// FuzzyTop returns up to maxWords nearest words, ordered by
+// (distance, word). The distance is widened iteratively from 0 up to an
+// upper bound (len(query) + the longest word length in runes across all
+// shards), until either maxWords words are collected or the whole
+// dictionary has been walked. maxWords ≤ 0 means exact lookup (the word
+// itself, or nothing).
 //
-// Как и Fuzzy, не поддерживает словари с плотным алфавитом
-// (Dictionary.Alphabet != nil) — возвращает nil.
+// Like Fuzzy, this does not support dictionaries with a dense alphabet
+// (Dictionary.Alphabet != nil) — it returns nil.
 func (x *Dictionary) FuzzyTop(word string, maxWords int) []FuzzyMatch {
 	if x.d.Alphabet != nil {
 		return nil
@@ -97,9 +99,9 @@ func dedupeFuzzy(matches []FuzzyMatch) []FuzzyMatch {
 	return out
 }
 
-// fuzzyWalk обходит каждый шард параллельно (по горутине на шард) и
-// склеивает результаты. Шарды — независимые DAWG, поэтому обходы не
-// делят изменяемое состояние.
+// fuzzyWalk walks each shard in parallel (one goroutine per shard) and
+// concatenates the results. Shards are independent DAWGs, so the walks
+// share no mutable state.
 func (x *Dictionary) fuzzyWalk(word string, k int) []FuzzyMatch {
 	results := make([][]FuzzyMatch, len(x.d.Words))
 
@@ -129,8 +131,8 @@ func (x *Dictionary) fuzzyWalk(word string, k int) []FuzzyMatch {
 	return out
 }
 
-// fuzzyWalkShard — один проход совместного обхода одного шарда DAWG и
-// banded DP Левенштейна.
+// fuzzyWalkShard — a single pass of the joint traversal of one DAWG shard
+// and banded Levenshtein DP.
 func fuzzyWalkShard(words *internal.DAWG, word string, k int) []FuzzyMatch {
 	f := &fuzzySearch{
 		words: words,
@@ -147,8 +149,9 @@ func fuzzyWalkShard(words *internal.DAWG, word string, k int) []FuzzyMatch {
 	return f.out
 }
 
-// fuzzySearch переносит состояние одного обхода: rows[depth] — DP-строка
-// после depth рун пути, path — байты текущего пути DAWG.
+// fuzzySearch carries the state of a single traversal: rows[depth] is the
+// DP row after depth runes of the path, path is the current DAWG path's
+// bytes.
 type fuzzySearch struct {
 	words *internal.DAWG
 	q     []rune
@@ -176,8 +179,9 @@ func (f *fuzzySearch) visit(state uint32, depth int, row []int) {
 	})
 }
 
-// explore завершает текущую руну (путь из байтов с позиции start) и
-// применяет DP-переход; продолжает рекурсию, если строка ещё в пределах k.
+// explore completes the current rune (the byte path from position start
+// onward) and applies the DP transition; recursion continues if the row is
+// still within k.
 func (f *fuzzySearch) explore(state uint32, depth int, row []int, start int) {
 	tail := f.path[start:]
 
@@ -245,8 +249,8 @@ func minRow(row []int) int {
 	return m
 }
 
-// maxWordRunes возвращает наибольшую длину словоформы словаря в рунах,
-// среди всех шардов.
+// maxWordRunes returns the longest dictionary wordform's length in runes,
+// across all shards.
 func (x *Dictionary) maxWordRunes() int {
 	best := 0
 	for _, dawg := range x.d.Words {
@@ -260,10 +264,10 @@ func (x *Dictionary) maxWordRunes() int {
 	return best
 }
 
-// maxWordRunesInShard обходит DAG одного шарда. Обход дедуплицирует узлы
-// по наибольшей достигнутой глубине — иначе разделяемые суффиксы
-// считались бы экспоненциально. Продолжающие байты UTF-8 (0x80–0xBF)
-// руну не добавляют.
+// maxWordRunesInShard walks one shard's DAG. The walk deduplicates nodes
+// by the greatest depth reached — otherwise shared suffixes would be
+// counted exponentially. UTF-8 continuation bytes (0x80-0xBF) do not add
+// a rune.
 func maxWordRunesInShard(words *internal.DAWG) int {
 	seen := make(map[uint32]int)
 	var rec func(state uint32, runes int)

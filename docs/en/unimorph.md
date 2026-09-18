@@ -1,59 +1,61 @@
-# UniMorph как источник словарных данных для gomorphy
+# UniMorph as a dictionary data source for gomorphy
 
-Анализ сайта https://unimorph.github.io/ (главная страница, раздел Schema,
-PDF-спецификация Sylak-Glassman (2016)) и фактического датасета `unimorph/rus`
-для русcкого языка: оценка применимости формата UniMorph в качестве исходных
-данных для словарей проекта.
-
----
-
-## 1. Что такое UniMorph
-
-**Universal Morphology (UniMorph)** — коллаборативный проект по аннотации
-морфологии языков мира в универсальной схеме. Идея: любая словоформа любого
-языка представляется парой
-
-```
-лемма  +  набор морфологических признаков (bundle) из UniMorph Schema
-```
-
-Например, испанское *hablaste* → `hablar` + `FIN;IND;PFV;PST;2;SG;INFM`.
-Признаки задаются в языконезависимых терминах, поэтому представления слов
-разных языков напрямую сравнимы (это «интерлингва» для словоизменительной
-морфологии, в парадигматической, word-based традиции).
-
-Ключевые факты с сайта:
-
-- На текущий момент аннотировано **169 языков** (`Ilo 639-3`-кодами).
-  На сайте по каждому языку: количество форм и парадигм, охваченные части
-  речи (Nouns / Verbs / Adjectives), типология (agglutinative/fusional/...),
-  источник данных, тип (living/historical/...), совместимость с shared-task
-  сплитами.
-- Данные каждого языка — отдельный GitHub-репозиторий `github.com/unimorph/<iso>`.
-- Лицензия данных — в основном **CC-BY-SA 3.0** (у части языков другие —
-  LGPLLR у Central Kurdish, Surrey-лицензии для тональных языков и т.п.);
-  указывается в README репозитория и на сайте.
-- Есть официальный Python-пакет `pip install unimorph` (PyPI: `unimorph`).
-- Проект связан с shared-task'ами SIGMORPHON (2016–2022): инфлекция,
-  реинфлекция, morphological analysis.
+An analysis of https://unimorph.github.io/ (the home page, the Schema
+section, the Sylak-Glassman (2016) PDF spec) and the actual
+`unimorph/rus` dataset for Russian: assessing how applicable the
+UniMorph format is as source data for the project's dictionaries.
 
 ---
 
-## 2. UniMorph Schema
+## 1. What UniMorph is
 
-### 2.1. Общая структура
+**Universal Morphology (UniMorph)** is a collaborative project
+annotating the world's languages' morphology in a universal schema.
+The idea: any wordform of any language is represented as a pair
 
-Схема (Sylak-Glassman 2016, «The Composition and Use of the Universal
-Morphological Feature Schema (UniMorph Schema)», v2 draft) — **23 измерения
-смысла (dimensions of meaning) и более 212 признаков (features)**.
+```
+lemma  +  a set of morphological features (a bundle) from the UniMorph Schema
+```
 
-Изменение (dimension) — морфологическая категория общего плана (person,
-number, tense, case...). Признак (feature) — мельчайшее различаемое внутри
-измерения значение. Число признаков в измерении от 2 (finiteness) до 39
-(case).
+For example, the Spanish *hablaste* -> `hablar` + `FIN;IND;PFV;PST;2;SG;INFM`.
+Features are given in language-independent terms, so word
+representations across different languages are directly comparable
+(it's an "interlingua" for inflectional morphology, in the
+paradigmatic, word-based tradition).
 
-Измерения (по плану документа; приложения 1–2 перечисляют также Argument
-Marking, Possession и Language-Specific Features):
+Key facts from the site:
+
+- As of now, **169 languages** are annotated (by `ISO 639-3` codes).
+  For each language, the site shows the number of forms and paradigms,
+  covered parts of speech (Nouns / Verbs / Adjectives), typology
+  (agglutinative/fusional/...), data source, type
+  (living/historical/...), and compatibility with shared-task splits.
+- Each language's data is a separate GitHub repository,
+  `github.com/unimorph/<iso>`.
+- The data license is mostly **CC-BY-SA 3.0** (some languages use
+  others — LGPLLR for Central Kurdish, Surrey licenses for tonal
+  languages, etc.); given in the repository's README and on the site.
+- There's an official Python package, `pip install unimorph` (PyPI: `unimorph`).
+- The project is tied to the SIGMORPHON shared tasks (2016-2022):
+  inflection, reinflection, morphological analysis.
+
+---
+
+## 2. The UniMorph Schema
+
+### 2.1. Overall structure
+
+The schema (Sylak-Glassman 2016, "The Composition and Use of the
+Universal Morphological Feature Schema (UniMorph Schema)," v2 draft)
+has **23 dimensions of meaning and over 212 features**.
+
+A dimension is a general-purpose morphological category (person,
+number, tense, case...). A feature is the smallest distinguishable
+value within a dimension. The number of features per dimension ranges
+from 2 (finiteness) to 39 (case).
+
+Dimensions (per the document's outline; appendices 1-2 also list
+Argument Marking, Possession, and Language-Specific Features):
 
 ```
 Aktionsart       Finiteness               Person
@@ -67,12 +69,12 @@ Deixis                                    Voice
 Evidentiality    Language-Specific (*)
 ```
 
-### 2.2. Примеры признаков (используемые в русском датасете)
+### 2.2. Example features (used in the Russian dataset)
 
-| Измерение | Признаки (label) |
+| Dimension | Features (label) |
 |---|---|
 | Part of Speech | `N` (noun), `V` (verb), `ADJ`, `ADV`, `PRO`, `NUM`, `V.CVB` (converb), `V.PTCP` (participle), ... |
-| Case | `NOM`, `ACC`, `GEN`, `DAT`, `INS`, `ESS` (essive/локатив), `VOC`, ... |
+| Case | `NOM`, `ACC`, `GEN`, `DAT`, `INS`, `ESS` (essive/locative), `VOC`, ... |
 | Number | `SG`, `PL`, `DU`, `PAUC`, ... |
 | Gender | `MASC`, `FEM`, `NEUT`, `ANIM`/`INAN` (animacy), ... |
 | Tense | `PRS`, `PST`, `FUT`, ... |
@@ -82,62 +84,62 @@ Evidentiality    Language-Specific (*)
 | Voice | `ACT`, `PASS`, `MID`, ... |
 | Language-Specific | `LGSPEC1`, `LGSPEC2`, ... |
 
-Полный реестр измерений и признаков — в приложениях 1 и 2 спецификации
-(`unimorph-schema.pdf`, стр. 60–71).
+The full registry of dimensions and features is in appendices 1 and 2
+of the spec (`unimorph-schema.pdf`, pp. 60-71).
 
-### 2.3. Правила формирования bundle
+### 2.3. Bundle formation rules
 
-- Bundle — список признаков, разделённых `;` (например, `N;ACC;SG`).
-- Обычно у слова задаются признаки только из нескольких измерений; каждое
-  измерение — один простой признак.
-- Сложные значения измерений (когда простого признака недостаточно):
-  - конъюнкция: `X+Y` (например, inessive = `in+ess`),
-  - дизъюнкция: `{X/Y}` (например, `{nom/acc}` — «nominative или accusative»),
-  - отрицание: `non{X}` (например, `non{nom}` — oblique),
-  - «любое значение измерения»: артериск `*`.
-  - На практике в выложенных в репозиториях данных используются только
-    простые признаки; конъюнкции/дизъюнкции в текущих датасетах не встречаются.
-- Признаки семантические: кодируют смысл, а не форму морфемы. Сегментация
-  на морфемы в UniMorph не хранится вообще.
+- A bundle is a list of features separated by `;` (e.g. `N;ACC;SG`).
+- Usually a word carries features from only a handful of dimensions;
+  each dimension contributes one simple feature.
+- Complex dimension values (when a simple feature isn't enough):
+  - conjunction: `X+Y` (e.g. inessive = `in+ess`),
+  - disjunction: `{X/Y}` (e.g. `{nom/acc}` — "nominative or accusative"),
+  - negation: `non{X}` (e.g. `non{nom}` — oblique),
+  - "any value of the dimension": an asterisk `*`.
+  - In practice, the data published in the repositories only uses
+    simple features; conjunctions/disjunctions don't occur in current datasets.
+- Features are semantic: they encode meaning, not a morpheme's form.
+  UniMorph doesn't store morpheme segmentation at all.
 
-### 2.4. Отношение к Universal Dependencies
+### 2.4. Relationship to Universal Dependencies
 
-Схема UniMorph близка по духу к `FEATS` в UD (v2), но имеет собственный
-набор признаков. На сайте есть ссылка на конвертер Universal Dependencies
-→ UniMorph (раздел Software). Для gomorphy это означает: существует и
-обратная возможность — привести UniMorph-теги к привычной для проекта
-(OpenCorpora-совместимой) системе граммем (см. §5.4).
+The UniMorph schema is similar in spirit to UD (v2)'s `FEATS`, but has
+its own feature set. The site links to a Universal Dependencies ->
+UniMorph converter (the Software section). For gomorphy, this means
+the reverse is also possible — mapping UniMorph tags onto the
+project's familiar (OpenCorpora-compatible) grammeme system (see §5.4).
 
 ---
 
-## 3. Формат данных
+## 3. Data format
 
-Данные каждого языка лежат в GitHub-репозитории `github.com/unimorph/<iso>`
-в файле с именем языкового кода (например, `rus`).
+Each language's data lives in a GitHub repository,
+`github.com/unimorph/<iso>`, in a file named after the language code
+(e.g. `rus`).
 
-Формат — **TSV, 3 колонки без заголовка**:
+Format — **TSV, 3 columns, no header**:
 
 ```
-лемма <TAB> словоформа <TAB> bundle
+lemma <TAB> wordform <TAB> bundle
 ```
 
-- `bundle` — признаки через `;`, порядок следования признаков сохраняется
-  и считается значимым.
-- Строковая кодировка — UTF-8.
-- Файл уже отсортирован по лемме; формы каждой леммы идут подряд
-  (но сортировка леммой не гарантирована контрактом — импортёр не должен
-  на неё полагаться).
-- Внутри одной леммы могут быть повторяющиеся словоформы с **разными**
-  bundles — это синкретизм / омонимия (аналог нескольких анкодов у одного
-  текста в OpenCorpora). Точных дубликатов строк (лемма, форма, bundle) в
-  актуальном русском файле нет.
-- Словоформа может совпадать с леммой (заголовочная форма) —
-  в русском файле таких строк ~43K.
-- Технически возможны составные (многословные/через дефис) токены,
-  например `ааронов жезл` → `ааронова жезла`. Пробел/дефис внутри текста
-  допустим.
+- `bundle` — features separated by `;`, the feature order is preserved
+  and considered meaningful.
+- String encoding — UTF-8.
+- The file is already sorted by lemma; each lemma's forms are
+  contiguous (but sorting by lemma isn't part of the contract — an
+  importer must not rely on it).
+- Within one lemma, the same wordform text can repeat with
+  **different** bundles — this is syncretism/homonymy (analogous to
+  several ancodes for one text in OpenCorpora). There are no exact
+  duplicate lines (lemma, form, bundle) in the current Russian file.
+- A wordform can coincide with the lemma (the headword form) — ~43K
+  such lines in the Russian file.
+- Multi-word/hyphenated tokens are technically possible, e.g. `ааронов
+  жезл` -> `ааронова жезла`. A space/hyphen inside the text is allowed.
 
-Пример из `unimorph/rus`:
+An example from `unimorph/rus`:
 
 ```
 ааронов жезл	ааронов жезл	N;NOM;SG
@@ -146,152 +148,157 @@ Evidentiality    Language-Specific (*)
 ааронов	ааронова	ADJ;INAN;ACC;MASC;SG
 ```
 
-README репозитория минималистичен: название языка, ISO-код, источник
-(как правило, Wikipedia), лицензия.
+The repository's README is minimal: the language name, ISO code,
+source (usually Wikipedia), license.
 
 ---
 
-## 4. Русский датасет (замерено на `unimorph/rus`)
+## 4. The Russian dataset (measured on `unimorph/rus`)
 
-| Метрика | Значение |
+| Metric | Value |
 |---|---|
-| Строк (лемма, форма, bundle) | 473 482 |
-| Уникальных лемм | 28 069 |
-| Парадигм (по сайту) | 28 068 |
-| Уникальных словоформ | 353 004 |
-| Словоформ, совпадающих с леммой | 43 406 |
-| Столбцов в строке | всегда 3 |
-| Точных дубликатов строк | 0 |
-| Макс. признаков в bundle | 5 (например, `ADJ;INAN;ACC;MASC;SG`) |
-| Покрытие частей речи | Nouns ✔, Verbs ✔, Adjectives ✔ |
-| Типология | fusional, templatic: false |
-| Источник | Wikipedia |
-| Лицензия | CC-BY-SA 3.0 |
-| Shared-task сплиты | 2016 ✔, 2017 ✔ |
+| Lines (lemma, form, bundle) | 473,482 |
+| Unique lemmas | 28,069 |
+| Paradigms (per the site) | 28,068 |
+| Unique wordforms | 353,004 |
+| Wordforms matching the lemma | 43,406 |
+| Columns per line | always 3 |
+| Exact duplicate lines | 0 |
+| Max features in a bundle | 5 (e.g. `ADJ;INAN;ACC;MASC;SG`) |
+| Part-of-speech coverage | Nouns v, Verbs v, Adjectives v |
+| Typology | fusional, templatic: false |
+| Source | Wikipedia |
+| License | CC-BY-SA 3.0 |
+| Shared-task splits | 2016 v, 2017 v |
 
-Используемые в русском файле признаки:
+Features used in the Russian file:
 
 ```
 1 2 3  ACC ACT ADJ ANIM DAT ESS FEM FUT GEN IMP INAN INS LGSPEC1
 MASC N  NEUT NFIN NOM PASS PL PRS PST SG V V.CVB V.PTCP
 ```
 
-Особенности русской аннотации, важные для интерпретации тегов:
+Peculiarities of the Russian annotation relevant for interpreting the tags:
 
-- `ESS` соответствует русскому предложному (локативному) падежу.
-- Показатель `ANIM`/`INAN` появляется в аккузативе (`N;ACC;SG` против
-  `N;ANIM;ACC;SG`), как и ожидается для русского родового vs винительного.
-- Глаголы: `NFIN` (инфинитив), `V;FIN;...` с временем/лицом/родом,
-  формы прошедшего времени без лица (`V;PST;SG;MASC`), причастия
-  `V.PTCP;ACT;PST`, деепричастия `V.CVB;PST`.
-- `IMP` — побудительное наклонение, `PASS` — страдательный залог.
-- `LGSPEC1` — языко-специфичный признак, оставляется без интерпретации.
+- `ESS` corresponds to the Russian prepositional (locative) case.
+- The `ANIM`/`INAN` marker appears in the accusative (`N;ACC;SG` vs.
+  `N;ANIM;ACC;SG`), as expected for Russian's genitive-like vs.
+  accusative animate distinction.
+- Verbs: `NFIN` (infinitive), `V;FIN;...` with tense/person/gender,
+  past-tense forms with no person (`V;PST;SG;MASC`), participles
+  `V.PTCP;ACT;PST`, gerunds/converbs `V.CVB;PST`.
+- `IMP` — imperative mood, `PASS` — passive voice.
+- `LGSPEC1` — a language-specific feature, left uninterpreted.
 
-Масштаб существенно меньше словаря OpenCorpora (473K строк против ~5,5M
-атрибутированных строк, 28K лемм против ~392K): UniMorph — аннотированный
-разборный корпус на базе Википедии, а не полный лексикон.
+The scale is significantly smaller than the OpenCorpora dictionary
+(473K lines vs. ~5.5M attributed lines, 28K lemmas vs. ~392K):
+UniMorph is an annotated analysis corpus based on Wikipedia, not a
+full lexicon.
 
 ---
 
-## 5. Поддержка формата UniMorph в gomorphy
+## 5. Supporting the UniMorph format in gomorphy
 
-### 5.1. Вывод: формат совместим, поддержка реализуется малым импортёром
+### 5.1. Conclusion: the format is compatible, support can be a small importer
 
-Строка UniMorph (лемма, словоформа, bundle) **один-в-один** ложится на
-публичный Builder API проекта (`pkg/dictionary`):
+A UniMorph line (lemma, wordform, bundle) maps **one-to-one** onto the
+project's public Builder API (`pkg/dictionary`):
 
-- `AddLemma(лемма, граммемы...)` — лемма с тегами заголовочной формы;
-- `AddForm(lemmaID, словоформа, граммемы...)` — каждая остальная строка,
-  где граммемы = признаки bundle.
+- `AddLemma(lemma, grammemes...)` — the lemma with the headword form's tags;
+- `AddForm(lemmaID, wordform, grammemes...)` — every other line, where
+  grammemes = the bundle's features.
 
-Дальше работают все существующие механизмы gomorphy без изменений:
-парадигмы (stem = LCP форм + суффиксы), пул анкодов
-(bundle → ancode), точный поиск по словоформе, лемматизация, fuzzy,
-сериализация в единый `.dat`.
+Everything else — gomorphy's existing machinery — works unchanged from
+there: paradigms (stem = LCP of the forms + suffixes), the ancode pool
+(bundle -> ancode), exact wordform lookup, lemmatization, fuzzy
+search, serialization into the unified `.dat`.
 
-### 5.2. Пайплайн импортёра
+### 5.2. The importer pipeline
 
-Предлагается пакет `pkg/morphology/importers/unimorph/` (или, в текущей
-структуре, `pkg/unimorph/` рядом с `pkg/opencorpora`):
+A package `pkg/morphology/importers/unimorph/` is proposed (or, in the
+current structure, `pkg/unimorph/` alongside `pkg/opencorpora`):
 
-1. **Считывание.** Потоковое чтение TSV (`bufio.Scanner`), разбиение строки
-   по `\t` ровно на 3 поля.
-2. **Лемма.** При непустой лемме — `AddLemma`. Если столбец леммы пуст
-   (в формате допустим), леммой считать саму словоформу.
-3. **Формы.** Каждая строка → `AddForm(lemmaID, form, features...)`,
-   признаки — после `strings.Split(bundle, ";")`.
-4. **Теги.** По умолчанию признаки UniMorph сохраняются как есть (opaque
-   строки, FT12); при желании применяется TagSet-маппинг (см. §5.4).
-5. **Компиляция/сохранение.** `Compile()` → `SaveTo()` — единый формат
-   словаря, тот же, что для OpenCorpora и PyMorphy2.
+1. **Reading.** Streaming TSV reads (`bufio.Scanner`), splitting a line
+   on `\t` into exactly 3 fields.
+2. **The lemma.** For a non-empty lemma — `AddLemma`. If the lemma
+   column is empty (allowed by the format), treat the wordform itself
+   as the lemma.
+3. **Forms.** Each line -> `AddForm(lemmaID, form, features...)`, the
+   features coming from `strings.Split(bundle, ";")`.
+4. **Tags.** By default, UniMorph features are stored as-is (opaque
+   strings, FT12); a TagSet mapping can optionally be applied (see §5.4).
+5. **Compile/save.** `Compile()` -> `SaveTo()` — the same unified
+   dictionary format as for OpenCorpora and PyMorphy2.
 
-CLI-поверхность (в духе этапа 18):
+CLI surface (in the spirit of Stage 18):
 
 ```bash
 gomorphy import unimorph <rus.tsv> -o ru-unimorph.dat
 gomorphy -dict ru-unimorph.dat lookup кота
 ```
 
-### 5.3. Сложности и граничные случаи
+### 5.3. Complications and edge cases
 
-| Случай | Решение / замечание |
+| Case | Solution / note |
 |---|---|
-| Синкретизм: один текст с разными bundles | Поддерживается нативно — несколько чтений словоформы (как в OpenCorpora) |
-| Словоформа == лемма | Привязать к лемме как форму с её bundle; отдельной пометки «заголовочная форма» в данных нет |
-| Пустая лемма | Лемма := словоформа |
-| Многословные / дефисные токены | Библиотека работает с произвольными байтами; CLI-поиск по таким токенам требует кавычек |
-| Порядок признаков в bundle значим | Сохранять как есть (gomorphy считает упорядоченные анкоды разными, `ensureAncode`) |
-| `LGSPEC*`, неизвестные признаки | Хранятся как opaque-граммемы, не падают |
-| Одинаковая (форма, bundle) в пределах леммы | Дедуплицируется самим Builder (пары интернируются) |
-| Дубликат `(lemma, form, bundle)` | В актуальном `rus` нет; при появлении — дедупликация на входе |
+| Syncretism: one text with different bundles | Supported natively — several wordform readings (as in OpenCorpora) |
+| Wordform == lemma | Attach it to the lemma as a form with its bundle; there's no separate "headword form" marker in the data |
+| Empty lemma | Lemma := wordform |
+| Multi-word / hyphenated tokens | The library works with arbitrary bytes; CLI lookups for such tokens need quoting |
+| Feature order in a bundle is meaningful | Keep it as-is (gomorphy treats ordered ancodes as distinct, `ensureAncode`) |
+| `LGSPEC*`, unknown features | Stored as opaque grammemes, no failure |
+| An identical (form, bundle) within a lemma | Deduplicated by the Builder itself (pairs are interned) |
+| A duplicate `(lemma, form, bundle)` | None in the current `rus`; if one appears, dedup on input |
 
-### 5.4. Маппинг тегов UniMorph → OpenCorpora (FT12)
+### 5.4. Mapping UniMorph -> OpenCorpora tags (FT12)
 
-Наборы тегов в UniMorph и OpenCorpora различаются. TagSet-нормализация
-позволяет либо
+UniMorph's and OpenCorpora's tag sets differ. TagSet normalization allows either
 
-- **сохранить UniMorph-теги как есть** (проект хранит теги как opaque
-  строки — это валидно и даёт сопоставимость между языками UniMorph), либо
-- **спроецировать их на OpenCorpora-теги** для единообразия с основным
-  словарём. Примеры: `N→NOUN`, `V→VERB`, `ADJ→ADJF`, `ADV→ADVB`,
+- **keeping UniMorph tags as-is** (the project stores tags as opaque
+  strings — this is valid and gives comparability across UniMorph
+  languages), or
+- **projecting them onto OpenCorpora tags** for consistency with the
+  main dictionary. Examples: `N→NOUN`, `V→VERB`, `ADJ→ADJF`, `ADV→ADVB`,
   `PRO→NPRO`, `NUM→NUMR`, `NOM/ACC/GEN/DAT/INS/VOC→nomn/accs/gent/datv/ablt/voct`,
   `ESS→loct`, `SG/PL→sing/plur`, `MASC/FEM/NEUT→masc/femn/neut`,
-  `PRS/PST/FUT→pres/past/futr`, `PFV/IPFV→perf/impf`, `NFIN→infn` (неточно:
-  `infn` — только инфинитив, `NFIN` — любой нефинит; уточнить на этапе
-  реализации).
+  `PRS/PST/FUT→pres/past/futr`, `PFV/IPFV→perf/impf`, `NFIN→infn`
+  (imprecise: `infn` is only the infinitive, `NFIN` is any non-finite
+  form; to be refined during implementation).
 
-Проекция не полная: признаки без соответствия (например, `LGSPEC1`) при
-маппинге либо игнорируются, либо остаются в каноническом виде под своим
-именем.
+The projection isn't complete: features with no counterpart (e.g.
+`LGSPEC1`) are either ignored during mapping or kept canonically under
+their own name.
 
-### 5.5. Влияние на метрики и ограничения
+### 5.5. Impact on metrics and constraints
 
-- По объёму UniMorph-словарь для русского компактен (473K строк) и занимает
-  в формате gomorphy единицы МБ.
-- Покрытие лексем в разы меньше OpenCorpora — UniMorph следует использовать
-  как дополнительный/эталонный источник, а не замену.
-- Лицензия данных CC-BY-SA 3.0 накладывает обязанности при распространении
-  производных (компилированных) словарей — отметить в лицензии.
-- Внутренний формат словаря не зависит от источника (FT8/FT11): поддержка
-  UniMorph не требует изменений формата на диске.
+- By volume, the Russian UniMorph dictionary is compact (473K lines)
+  and takes up a few MB in gomorphy's format.
+- Lexeme coverage is several times smaller than OpenCorpora's —
+  UniMorph should be used as a supplementary/reference source, not a replacement.
+- The CC-BY-SA 3.0 data license imposes obligations when distributing
+  derived (compiled) dictionaries — note this in the license.
+- The dictionary's internal format doesn't depend on the source
+  (FT8/FT11): supporting UniMorph doesn't require any on-disk format changes.
 
 ---
 
-## 6. Рекомендация
+## 6. Recommendation
 
-**Поддержку UniMorph можно и нужно реализовать как отдельный импортёр**
-(`gomorphy import unimorph`, пакет + тесты), повторно используя Builder,
-парадигменную компиляцию и единый `.dat`-формат. Затраты минимальны —
-фактически это второй «лёгкий» источник (после OpenCorpora) с инкрементом:
+**UniMorph support can and should be implemented as a separate
+importer** (`gomorphy import unimorph`, a package + tests), reusing
+the Builder, paradigm compilation, and the unified `.dat` format. The
+cost is minimal — it's effectively a second "lightweight" source
+(after OpenCorpora), with the increment:
 
-- `import.go` — стриминг TSV → Builder;
-- unit-тест: 5–10 строк → корректные леммы/парадигмы;
-- integration-тест: весь `rus` → `Lookup`/`Lemmas` на выборочных словах;
-- roundtrip: `import → SaveTo → Open → Lookup` идентичен прямому построению;
-- CLI: команда `import unimorph`.
+- `import.go` — streaming TSV -> Builder;
+- unit test: 5-10 lines -> correct lemmas/paradigms;
+- integration test: the entire `rus` -> `Lookup`/`Lemmas` on sample words;
+- roundtrip: `import -> SaveTo -> Open -> Lookup` identical to a direct build;
+- CLI: an `import unimorph` command.
 
-Бонус: благодаря языконезависимой схеме тот же импортёр работает для всех
-169 языков UniMorph без изменений — это соответствует требованию FT10
-(независимость от языка) и даёт проекту многоязычность «из коробки».
-Целесообразно добавить опцию маппинга тегов на OpenCorpora-набор для
-сравнения результатов с основным русским словарём.
+Bonus: thanks to the language-independent schema, the same importer
+works for all 169 UniMorph languages with no changes — this matches
+requirement FT10 (language independence) and gives the project
+multilingual support out of the box. It's worth adding an option to
+map tags onto the OpenCorpora set to compare results against the main
+Russian dictionary.

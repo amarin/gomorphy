@@ -168,14 +168,14 @@ func TestImportFromXMLParadigmsDedup(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, d.Paradigms, 1)
-	// Ровно 4 парадигмы для 4 лемм фикстуры: у каждой леммы своя уникальная
-	// пара (набор суффиксов, набор тегов). "кот"(сущ.) и "дом" совпадают по
-	// набору суффиксов ({"", "а"}), но различаются по тегам (anim vs inan)
-	// — поэтому их парадигмы НЕ должны схлопнуться в одну. LessOrEqual тут
-	// не годится: он пропускает и недостаточную дедупликацию (что ловим),
-	// и чрезмерную (что как раз является багом paradigmKeyHash) — только
-	// точное число различает оба случая.
-	assert.Equal(t, 4, len(d.Paradigms[0]), "число парадигм должно быть ровно 4 (по одной на уникальную пару суффиксы+теги)")
+	// Exactly 4 paradigms for the fixture's 4 lemmas: each lemma has its
+	// own unique (suffix set, tag set) pair. "кот" (NOUN) and "дом" share
+	// the same suffix set ({"", "а"}) but differ in tags (anim vs inan) —
+	// so their paradigms must NOT collapse into one. LessOrEqual doesn't
+	// work here: it misses both insufficient dedup (what we're guarding
+	// against) and excessive dedup (exactly the paradigmKeyHash bug) —
+	// only the exact count distinguishes the two cases.
+	assert.Equal(t, 4, len(d.Paradigms[0]), "paradigm count must be exactly 4 (one per unique suffix+tag pair)")
 }
 
 func TestImportFromXMLStemLCP(t *testing.T) {
@@ -316,7 +316,7 @@ func TestImportFromXMLComparativeParadigmsNormalFormPerLemma(t *testing.T) {
 // because that test only asserts tag *strings* are registered somewhere in
 // d.TagSet.Tags, never that a specific *word* resolves to its own tag.
 //
-// "кот" (сущ., lemma 1) and "дом" (lemma 4) both have suffixes {"", "а"}
+// "кот" (NOUN, lemma 1) and "дом" (lemma 4) both have suffixes {"", "а"}
 // but differ in animacy (anim vs inan) — exactly the collision shape the
 // buggy hash missed. This test resolves both words end-to-end (DAWG payload
 // -> paradigm -> tag) and asserts "дом" gets its own inan tag, never кот's
@@ -327,26 +327,26 @@ func TestImportFromXMLWordResolvesOwnLemmaTag(t *testing.T) {
 	require.Len(t, d.Words, 1)
 
 	domNomn := tagsForWord(t, d, 0, "дом")
-	assert.Contains(t, domNomn, "NOUN,inan,masc,sing,nomn", "дом (им.п.) должен получить СВОЙ тег леммы, а не тег кота")
+	assert.Contains(t, domNomn, "NOUN,inan,masc,sing,nomn", "дом (nominative) must get its OWN lemma's tag, not кот's")
 	for _, tag := range domNomn {
-		assert.NotContains(t, tag, "anim", "дом никогда не должен получить тег кота (anim): получено %q", tag)
+		assert.NotContains(t, tag, "anim", "дом must never get кот's tag (anim): got %q", tag)
 	}
 
 	domGent := tagsForWord(t, d, 0, "дома")
-	assert.Contains(t, domGent, "NOUN,inan,masc,sing,gent", "дома (род.п.) должен получить СВОЙ тег леммы, а не тег кота")
+	assert.Contains(t, domGent, "NOUN,inan,masc,sing,gent", "дома (genitive) must get its OWN lemma's tag, not кот's")
 	for _, tag := range domGent {
-		assert.NotContains(t, tag, "anim", "дома никогда не должен получить тег кота (anim): получено %q", tag)
+		assert.NotContains(t, tag, "anim", "дома must never get кот's tag (anim): got %q", tag)
 	}
 
-	// "кота" встречается только у леммы 1 ("кот", сущ.) — однозначная
-	// проверка без пересечения со словоформой "кот" (см. примечание ниже).
+	// "кота" only occurs for lemma 1 ("кот", NOUN) — an unambiguous check
+	// with no overlap with the wordform "кот" (see the note below).
 	kotaGent := tagsForWord(t, d, 0, "кота")
-	assert.Contains(t, kotaGent, "NOUN,anim,masc,sing,gent", "кота (род.п.) должен получить свой тег")
+	assert.Contains(t, kotaGent, "NOUN,anim,masc,sing,gent", "кота (genitive) must get its own tag")
 
-	// Примечание: словоформа "кот" (без учёта регистра/суффиксов)
-	// одновременно является формой леммы 1 (сущ., им.п.) и леммы 2
-	// (глаг.) — двумя РАЗНЫМИ парадигмами. Их совпадение по тексту слова
-	// проверяется отдельно, ниже — см. TestImportFromXMLHomonymFormsBothSurvive.
+	// Note: the wordform "кот" (regardless of case/suffix handling) is
+	// simultaneously a form of lemma 1 (NOUN, nominative) and lemma 2
+	// (VERB) — two DIFFERENT paradigms. Their coincidence in word text is
+	// checked separately below — see TestImportFromXMLHomonymFormsBothSurvive.
 }
 
 // TestImportFromXMLHomonymFormsBothSurvive guards against a dedupEntries

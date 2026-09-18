@@ -1,4 +1,4 @@
-// Package pymorphy2 загружает словарь pymorphy2 из директории.
+// Package pymorphy2 loads a pymorphy2 dictionary from a directory.
 package pymorphy2
 
 import (
@@ -14,14 +14,14 @@ import (
 	"github.com/amarin/gomorphy/pkg/morphology/internal"
 )
 
-// defaultPrefixes — префиксы paradigm-prefixes.json для русских словарей
-// (используются, если файл отсутствует).
+// defaultPrefixes — the paradigm-prefixes.json prefixes for Russian
+// dictionaries (used when the file is absent).
 var defaultPrefixes = []string{"", "по", "наи"}
 
-// ImportFromDir загружает словарь pymorphy2 из директории: words.dawg,
+// ImportFromDir loads a pymorphy2 dictionary from a directory: words.dawg,
 // paradigms.array, suffixes.json, paradigm-prefixes.json,
-// gramtab-opencorpora-int.json. Опционально — p_t_given_w.intdawg
-// и prediction-suffixes-{i}.dawg. Чтение прямое, без конвертации.
+// gramtab-opencorpora-int.json. Optional: p_t_given_w.intdawg
+// and prediction-suffixes-{i}.dawg. Reads directly, without conversion.
 func ImportFromDir(dir string) (*internal.Dictionary, error) {
 	d := internal.NewDictionary(
 		"ru",
@@ -93,11 +93,11 @@ func ImportFromDir(dir string) (*internal.Dictionary, error) {
 	return d, nil
 }
 
-// readMetaSourceVersion читает meta.json (формат pymorphy2: список пар
-// [key, value] вместо объекта, значения — строки или числа вперемешку)
-// и возвращает "<source_version>/<source_revision>", если оба ключа
-// найдены и являются строками; иначе "" (в т.ч. если meta.json
-// отсутствует — не все словари pymorphy2 его несут).
+// readMetaSourceVersion reads meta.json (pymorphy2's format: a list of
+// [key, value] pairs instead of an object, with values being a mix of
+// strings and numbers) and returns "<source_version>/<source_revision>" if
+// both keys are found and are strings; otherwise "" (including when
+// meta.json is absent — not every pymorphy2 dictionary carries one).
 func readMetaSourceVersion(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -139,7 +139,7 @@ func readMetaSourceVersion(path string) (string, error) {
 	return fmt.Sprintf("%s/%s", version, revision), nil
 }
 
-// readStringArray читает JSON-массив строк (suffixes.json, gramtab-*.json).
+// readStringArray reads a JSON array of strings (suffixes.json, gramtab-*.json).
 func readStringArray(path string) ([]string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -152,7 +152,7 @@ func readStringArray(path string) ([]string, error) {
 	return ss, nil
 }
 
-// readDAWGFile читает DAWG из файла (формат words.dawg: dictionary + guide).
+// readDAWGFile reads a DAWG from a file (words.dawg format: dictionary + guide).
 func readDAWGFile(path string) (*internal.DAWG, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -162,8 +162,8 @@ func readDAWGFile(path string) (*internal.DAWG, error) {
 	return internal.ReadDAWG(f)
 }
 
-// readParadigms читает paradigms.array: uint16 count + для каждого парадигмы
-// uint16 len + len×uint16 (LE).
+// readParadigms reads paradigms.array: uint16 count + for each paradigm
+// a uint16 len + len×uint16 (LE).
 func readParadigms(path string) ([]internal.Paradigm, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

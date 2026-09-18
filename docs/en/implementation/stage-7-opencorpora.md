@@ -1,25 +1,28 @@
-# Этап 7. Интеграция с OpenCorpora end-to-end — ВЫПОЛНЕН
+# Stage 7. End-to-end OpenCorpora integration — DONE
 
-## Содержание этапа
+## Stage contents
 
-Инкремент: полный цикл FT7.
+Increment: the full FT7 cycle.
 
-- `dictionary.CompileFromXML(path)`: xmlscan → Builder → снимок
-  (+ `SaveToAtomic`: temp-файл + rename).
-- `cmd/opencorpora_update`: флаги `-l` (download), `-skip-compile`, `-v`;
-  компиляция выполняется автоматически после unpack, итог с временем/памятью.
-- `pkg/opencorpora.Update()` снова вызывает компиляцию (`loader.Compile()`).
+- `dictionary.CompileFromXML(path)`: xmlscan -> Builder -> a snapshot
+  (+ `SaveToAtomic`: a temp file + rename).
+- `cmd/opencorpora_update`: flags `-l` (download), `-skip-compile`, `-v`;
+  compilation runs automatically after unpack, with a time/memory summary.
+- `pkg/opencorpora.Update()` triggers compilation again (`loader.Compile()`).
 
-## Проверка (выполнена)
+## Verification (done)
 
-- ручной прогон `go run ./cmd/opencorpora_update -l` на реальном `dict.xml`:
-  `opencorpora.dict` 303 MB создан за 13.7s (scan+build+save), peak heap ~4 GB.
-- smoke-тест (`pkg/dictionary/smoke_integration_test.go`): 50 частотных слов
-  резолвятся; контрольные слова («кота»→кот sing,gent; «домами»; омонимы
-  «стекла», «пила», «бежал» ≥2 леммы) сверены по фактическим данным словаря.
+- A manual run of `go run ./cmd/opencorpora_update -l` against the real
+  `dict.xml`: `opencorpora.dict` (303 MB) built in 13.7s (scan+build+save),
+  peak heap ~4 GB.
+- Smoke test (`pkg/dictionary/smoke_integration_test.go`): 50
+  high-frequency words resolve; control words ("кота" -> кот sing,gent;
+  "домами"; homonyms "стекла", "пила", "бежал" with >=2 lemmas each) are
+  checked against the dictionary's actual data.
 
-## Замечание для этапа 8
+## Note for Stage 8
 
-В `dict.xml` формы несут только собственные `<g>`-теги
-(падеж/число); POS и константные теги живут на лемме — при FT2/FT5 выдаче
-полную грамматическую характеристику нужно собирать из леммы + формы.
+In `dict.xml`, forms carry only their own `<g>` tags (case/number); POS
+and constant tags live on the lemma — when producing an FT2/FT5 result,
+the full grammatical characteristic needs to be assembled from the
+lemma + the form.

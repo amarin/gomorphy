@@ -1,66 +1,69 @@
 # Multi-dict: `morphology.MultiDictionary`
 
-Реализовано 2026-09-16. Спека: [2026-09-16-multi-dict-design.md](../superpowers/specs/2026-09-16-multi-dict-design.md).
-План: [2026-09-16-multi-dict.md](../superpowers/plans/2026-09-16-multi-dict.md).
+Implemented 2026-09-16. Spec: [2026-09-16-multi-dict-design.md](../superpowers/specs/2026-09-16-multi-dict-design.md).
+Plan: [2026-09-16-multi-dict.md](../superpowers/plans/2026-09-16-multi-dict.md).
 
-## Контекст
+## Context
 
-Поднято 2026-09-15 в ходе обсуждения продакшн-внедрения плотного
-1-байтового DAWG-алфавита
+Raised on 2026-09-15 while discussing the production rollout of the
+dense 1-byte DAWG alphabet
 ([docs/research/0004-dawg-dense-alphabet-with-payload.md](../research/0004-dawg-dense-alphabet-with-payload.md)):
-для текстов на разных языках каждый язык может использовать свой
-словарь со своим алфавитом, вместо одного большого словаря с широким
-(2-байтовым) алфавитом на объединённый корпус. Проверено: библиотека
-это **не** поддерживала на момент постановки задачи — только
-«технически не запрещено открыть N раз `Dictionary` вручную».
+for texts in different languages, each language could use its own
+dictionary with its own alphabet, instead of one large dictionary with
+a wide (2-byte) alphabet over a combined corpus. Checked: the library
+did **not** support this at the time the task was raised — only
+"technically nothing stops you from opening `Dictionary` N times by hand."
 
-**Известный контекст (проверено чтением кода 2026-09-15, до реализации):**
-- Реестра/менеджера нескольких словарей не было. `pkg/morphology/open.go`
-  (`Open`, `OpenPyMorphy`, `CompileFromXML*`) — каждый вызов даёт
-  независимый `*Dictionary` со своим mmap; ничего не мешало открыть
-  несколько, но библиотека их не связывала.
-- `Reading` (`parse.go:14-22`) и `LemmaRef` (`lemma.go:4-9`) несли
-  только `Shard int` — индекс шарда **внутри одного** словаря, не
-  идентификатор словаря/языка.
-- CLI принимал ровно один `-dict <path>`.
-- Поле `Shard` в `Reading`/`LemmaRef` было спроектировано расширяемо
-  именно с прицелом на будущую мультисловарность (см.
+**Known context (verified by reading the code on 2026-09-15, before
+implementation):**
+- There was no registry/manager for several dictionaries.
+  `pkg/morphology/open.go` (`Open`, `OpenPyMorphy`, `CompileFromXML*`) —
+  every call gives an independent `*Dictionary` with its own mmap;
+  nothing stopped you from opening several, but the library didn't link
+  them together.
+- `Reading` (`parse.go:14-22`) and `LemmaRef` (`lemma.go:4-9`) only
+  carried `Shard int` — a shard index **within one** dictionary, not a
+  dictionary/language identifier.
+- The CLI accepted exactly one `-dict <path>`.
+- The `Shard` field on `Reading`/`LemmaRef` was designed to be
+  extensible with future multi-dict support specifically in mind (see
   [2026-09-14-suffix-sharding-design.md](../superpowers/specs/2026-09-14-suffix-sharding-design.md)) —
-  архитектурно продумано, но не реализовано.
+  architecturally anticipated, but not implemented.
 
-Попутно закрыт пререквизит: `BuildInfo.SourceVersion` раньше не
-заполнялся ни одним импортёром — теперь заполняется обоими
-(OpenCorpora — из корневого тега `dict.xml`, pymorphy2 — из
-собственного `meta.json` словаря).
+A prerequisite was closed along the way: `BuildInfo.SourceVersion` used
+to not be filled in by any importer — now both fill it in (OpenCorpora
+from `dict.xml`'s root tag, pymorphy2 from the dictionary's own
+`meta.json`).
 
-## Принятые решения
+## Decisions made
 
-1. Идентификатор словаря — **не строка**, а `Dict int` на `Reading`/
-   `LemmaRef` (по аналогии с `Shard`), индекс в порядке регистрации
-   словаря в `MultiDictionary`. Композитный человекочитаемый
-   идентификатор (`Source`/`SourceVersion`) — по этому же индексу через
-   `MultiDictionary.DictInfo(i)`, не дублируется в каждый `Reading`.
-2. API — отдельный тип-обёртка, `morphology.MultiDictionary`
+1. A dictionary's identifier is **not a string**, but `Dict int` on
+   `Reading`/`LemmaRef` (analogous to `Shard`), an index in the order
+   the dictionary was registered in `MultiDictionary`. The composite
+   human-readable identifier (`Source`/`SourceVersion`) is looked up by
+   the same index via `MultiDictionary.DictInfo(i)`, not duplicated
+   onto every `Reading`.
+2. The API is a separate wrapper type, `morphology.MultiDictionary`
    (`NewMultiDictionary(dicts ...*Dictionary)`, `Parse`, `Lemma`,
-   `Close`, `DictInfo`, `Len`). Сами словари открываются как раньше
-   (`Open`/`OpenPyMorphy`/...), обёртка ничего не открывает сама.
-3. Пересечение результатов — **всё, с меткой**: `Parse`/`Lemma`
-   возвращают чтения из всех словарей, где слово нашлось, каждое
-   помечено `Dict`, в порядке регистрации словарей. Без приоритетов,
-   дедупа и сортировки между словарями — сознательно простой,
-   ничего-не-теряющий вариант; более умная политика возможна поверх
-   этого позже, не ломая контракт.
-4. CLI — вне охвата этого инкремента (Go API only), как и плотный
-   алфавит для pymorphy2 (см.
+   `Close`, `DictInfo`, `Len`). The dictionaries themselves are opened
+   as before (`Open`/`OpenPyMorphy`/...); the wrapper doesn't open
+   anything itself.
+3. Overlapping results — **everything, tagged**: `Parse`/`Lemma` return
+   readings from every dictionary the word was found in, each tagged
+   with `Dict`, in registration order. No priorities, dedup, or sorting
+   across dictionaries — a deliberately simple, nothing-lost default; a
+   smarter policy can be layered on top later without breaking the contract.
+4. CLI — out of scope for this increment (Go API only), same as the
+   dense alphabet for pymorphy2 (see
    [pymorphy2-dense-alphabet.md](pymorphy2-dense-alphabet.md)).
-   `cmd/gomorphy` остаётся с одним `-dict`.
-5. Связь с 2-байтовым DAWG-алфавитом — соотношение зафиксировано:
-   мультисловарь (реализован) — путь по умолчанию для «алфавит не
-   умещается в 1 байт»; 2-байтовый плотный алфавит остаётся
-   экспериментальной библиотечной возможностью без read-path/CLI — не
-   решаем одну и ту же задачу дважды.
+   `cmd/gomorphy` stays with a single `-dict`.
+5. Relationship with the 2-byte DAWG alphabet — the split is fixed:
+   multi-dict (implemented) is the default path for "the alphabet
+   doesn't fit in 1 byte"; the 2-byte dense alphabet remains an
+   experimental library-only feature with no read-path/CLI support —
+   not solving the same problem twice.
 
-Все открытые вопросы, поднятые на момент постановки задачи, решены и
-реализованы в рамках этой же сессии/спеки — нет отдельного «осталось
-сделать» по multi-dict как таковому. Известные точки роста (CLI-флаги,
-политика приоритетов между словарями) явно не в охвате, см. выше.
+Every open question raised when this task started was resolved and
+implemented within the same session/spec — there's no separate "still
+to do" for multi-dict itself. The known growth points (CLI flags, a
+cross-dictionary priority policy) are explicitly out of scope, see above.

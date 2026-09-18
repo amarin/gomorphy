@@ -1,149 +1,151 @@
-# Плотный 1-байтовый DAWG-алфавит: продакшн-внедрение для pymorphy2 `words.dawg`
+# A dense 1-byte DAWG alphabet: production rollout for pymorphy2's `words.dawg`
 
-Обсуждалось 2026-09-15/16, сразу после мерджа ветки `dawg-alphabet-harness`
-в `master`. Вариант A (pymorphy2-рекомпилятор), только для `words.dawg`,
-решён и реализован 2026-09-16. Дизайн:
+Discussed 2026-09-15/16, right after merging the `dawg-alphabet-harness`
+branch into `master`. Variant A (a pymorphy2 recompiler), for
+`words.dawg` only, was decided on and implemented on 2026-09-16.
+Design:
 [2026-09-16-pymorphy2-dense-recompile-design.md](../superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md).
-План: [2026-09-16-pymorphy2-dense-recompile.md](../superpowers/plans/2026-09-16-pymorphy2-dense-recompile.md)
-(6 задач, subagent-driven-development, финальное ревью + 1 fix-волна).
+Plan: [2026-09-16-pymorphy2-dense-recompile.md](../superpowers/plans/2026-09-16-pymorphy2-dense-recompile.md)
+(6 tasks, subagent-driven-development, a final review + 1 fix wave).
 
-## Что уже было установлено (замер, не под вопросом)
+## What had already been established (measured, not in question)
 
-- Плотный 1-байтовый DAWG-алфавит: −36.2% размера `words.dawg` и втрое
-  быстрее сборка на реальных данных с payload, без компромиссов.
-  Плотный 2-байтовый: работает корректно (после найденного и
-  исправленного бага с байтом-сентинелом `0x00`), но на текущем
-  русском корпусе (46 символов) даёт лишь ~2.4% — почти бесполезен для
-  одного языка. Подробности и цифры:
+- The dense 1-byte DAWG alphabet: -36.2% `words.dawg` size and a 3x
+  faster build on real data with a payload, with no tradeoffs. The
+  dense 2-byte alphabet: works correctly (after finding and fixing a
+  bug with the `0x00` sentinel byte), but on the current Russian corpus
+  (46 characters) it only gives ~2.4% — nearly useless for a single
+  language. Details and numbers:
   [docs/research/0004-dawg-dense-alphabet-with-payload.md](../research/0004-dawg-dense-alphabet-with-payload.md).
-- `Alphabet`/`IdentityAlphabet`/`DenseAlphabet` уже были в
-  `pkg/morphology/internal/alphabet.go` (harness) — но ничего не было
-  подключено к `import.go`/`open.go`/`save.go`/`parse.go`/`fuzzy.go`/
-  формату `.dat`.
+- `Alphabet`/`IdentityAlphabet`/`DenseAlphabet` already existed in
+  `pkg/morphology/internal/alphabet.go` (a harness) — but nothing was
+  wired up to `import.go`/`open.go`/`save.go`/`parse.go`/`fuzzy.go`/
+  the `.dat` format.
 
-## Согласованные решения по дизайну продакшн-внедрения
+## Agreed design decisions for the production rollout
 
-1. Таблица алфавита — общая на весь словарь (как `prefixes`), не
-   своя у каждого шарда.
-2. CLI (`gomorphy`) — без новых алфавитных флагов вообще. Всегда:
-   плотный 1-байтовый алфавит, русский порядок по умолчанию, режим
-   extend (см. п.4).
-3. Библиотека (Go API, встраивание) — вся гибкость: свой базовый
-   алфавит (порядок, задаётся напрямую как `[]rune` в коде, не файлом),
-   выбор ширины 1 или 2 байта, выбор режима extend/strict.
-4. Расширение алфавита — **append-only**: базовый порядок задаёт
-   фиксированные первые коды, новые символы при расширении дописываются
-   **в конец** по мере обнаружения, без пересортировки. Важно: текущая
-   `NewDenseAlphabet` в `alphabet.go` сортирует все руны корпуса по
-   кодпоинту перед назначением кодов — это **несовместимо** с
-   append-режимом (пересортировка сдвинула бы уже выданные коды) и
-   потребует переделки логики построения таблицы, не только добавления
-   опции — актуально при реализации п.5 бэклога ниже.
-5. Таблица алфавита сериализуется в `.dat` целиком (новая секция, по
-   аналогии с `prefixes`), чтобы `Open()` мог восстановить точный
-   кодек независимо от того, дефолтный он, кастомный или дополненный
-   на лету. **Не реализовано** — см. «Остаток backlog» ниже.
-6. Переполнение алфавита (в CLI — extend упёрся в потолок 254 символов
-   для ширины 1) — честная, подробная ошибка компиляции со ссылкой на
-   документацию, не тихий сбой и не обрезание.
-7. 2-байтовый алфавит остаётся экспериментальной, только библиотечной
-   возможностью — **не тащим в read-path** (`Open`/`Parse`/`Lemma`/
-   `fuzzy.go`) вообще. Собрать 2-байтовый словарь можно (`BuildDAWG` +
-   `DenseAlphabet{width:2}`, как уже делает harness), но `Open()`/
-   `Parse()` его не поймут — если реальный потребитель появится,
-   это отдельная будущая задача.
-8. Многоязычность — через параллельные словари (каждый свой файл, свой
-   алфавит), не через один словарь с широким алфавитом — см.
+1. The alphabet table is shared across the whole dictionary (like
+   `prefixes`), not per-shard.
+2. CLI (`gomorphy`) — no new alphabet flags at all. Always: a dense
+   1-byte alphabet, Russian order by default, extend mode (see item 4).
+3. The library (Go API, embedding) — full flexibility: your own base
+   alphabet (order, given directly as `[]rune` in code, not a file),
+   choice of 1- or 2-byte width, choice of extend/strict mode.
+4. Extending the alphabet is **append-only**: the base order fixes the
+   first codes, new characters found while extending are appended **at
+   the end**, with no resorting. Important: the current
+   `NewDenseAlphabet` in `alphabet.go` sorts all the corpus's runes by
+   code point before assigning codes — this is **incompatible** with
+   append mode (resorting would shift already-issued codes) and would
+   require reworking the table-building logic, not just adding an
+   option — relevant when implementing item 5 of the backlog below.
+5. The alphabet table is serialized into the `.dat` in full (a new
+   section, similar to `prefixes`), so `Open()` can reconstruct the
+   exact codec regardless of whether it's the default, custom, or
+   extended on the fly. **Not implemented** — see "Remaining backlog" below.
+6. Alphabet overflow (in the CLI — extend hitting the 254-character
+   ceiling for 1-byte width) — an honest, detailed compile error linking
+   to the documentation, not a silent failure or truncation.
+7. The 2-byte alphabet stays an experimental, library-only feature —
+   **not carried into the read path** (`Open`/`Parse`/`Lemma`/
+   `fuzzy.go`) at all. A 2-byte dictionary can be built (`BuildDAWG` +
+   `DenseAlphabet{width:2}`, as the harness already does), but
+   `Open()`/`Parse()` won't understand it — if a real consumer shows
+   up, that's a separate future task.
+8. Multilinguality — via parallel dictionaries (each its own file, its
+   own alphabet), not one dictionary with a wide alphabet — see
    [multi-dict.md](multi-dict.md).
 
-## Найденная сложность read-path (главная причина взять паузу перед решением)
+## The read-path complexity found (the main reason to pause before deciding)
 
-Внедрение — это не изолированная правка `import.go`/`open.go`/
-`save.go`, а минимум 3 связанные подсистемы, обязанные использовать
-одну кодировку синхронно:
+Rolling this out isn't an isolated change to `import.go`/`open.go`/
+`save.go`, but at least 3 interconnected subsystems that must use one
+encoding in sync:
 
-1. `words.dawg` — сборка/поиск/чтение.
-2. `d.Suffixes`/`d.Prefixes` — вычисляются из **тех же** переменных
-   `stem`/`suffix`/`prefix`, что и DAWG-ключ (`import.go:150-234`), но
-   это независимые пути. Если закодировать DAWG-ключ, а таблицы
-   оставить сырыми — `TrimPrefix`/`TrimSuffix` в `parse.go:207-209`
-   (восстановление нормальной формы) сломается почти везде, кроме форм
-   с пустым префиксом (где баг случайно замаскируется). Тот же класс
-   тихой порчи данных, что уже дважды был в проекте (`paradigmKeyHash`,
-   см. [code-review-pre-1.0-triage.md](code-review-pre-1.0-triage.md)) —
-   при реализации нужен явный regression-тест именно на эту
-   синхронизацию.
-3. `fuzzy.go` — весь аппарат нечёткого поиска (Левенштейн по рунам,
-   `utf8.DecodeRune`/`FullRune`, подсчёт рун по continuation-байтам)
-   построен на допущении «ребро DAWG — часть UTF-8». При фикс-ширине
-   должен **упроститься** (не нужна возня с мультибайтовыми рунами),
-   но это переосмысление структуры обхода, не косметика.
-4. Открытый вопрос, не исследован: распространяется ли плотный
-   алфавит на `prediction-N.dawg`/`probability.dawg`. Для OpenCorpora
-   `Prediction` сейчас не заполняется вообще (вероятно неактуально);
-   `Probability` не проверяли.
+1. `words.dawg` — build/lookup/read.
+2. `d.Suffixes`/`d.Prefixes` — computed from the **same**
+   `stem`/`suffix`/`prefix` variables as the DAWG key
+   (`import.go:150-234`), but these are independent paths. If the DAWG
+   key is encoded while the tables are left raw, `TrimPrefix`/`TrimSuffix`
+   in `parse.go:207-209` (reconstructing the base form) would break
+   almost everywhere except forms with an empty prefix (where the bug
+   would be masked by accident). The same class of silent data
+   corruption that has already happened twice in this project
+   (`paradigmKeyHash`, see
+   [code-review-pre-1.0-triage.md](code-review-pre-1.0-triage.md)) —
+   the implementation needs an explicit regression test for exactly
+   this synchronization.
+3. `fuzzy.go` — the entire fuzzy-search apparatus (rune-level
+   Levenshtein, `utf8.DecodeRune`/`FullRune`, counting runes by
+   continuation bytes) is built on the assumption that "a DAWG edge is
+   part of UTF-8". Under fixed width it should **get simpler** (no need
+   to fuss over multi-byte runes), but that's a rethink of the
+   traversal structure, not a cosmetic change.
+4. An unresolved open question: does the dense alphabet extend to
+   `prediction-N.dawg`/`probability.dawg`? For OpenCorpora, `Prediction`
+   currently isn't populated at all (probably not relevant);
+   `Probability` wasn't checked.
 
-## Обсуждали, но не приняли как единственный путь: полный pymorphy2-рекомпилятор
+## Discussed, but not adopted as the only path: a full pymorphy2 recompiler
 
-Предложение — выпилить прямую поддержку сырого pymorphy2 `words.dawg`
-(на тот момент `pkg/morphology/importers/pymorphy2/import.go` просто
-алиасил готовые бинарные артефакты pymorphy2 as-is, без единой
-трансформации) и вместо этого пересобирать pymorphy2-словари через тот
-же конвейер, что и OpenCorpora.
+A proposal — remove direct support for raw pymorphy2 `words.dawg`
+files (at the time, `pkg/morphology/importers/pymorphy2/import.go`
+simply aliased pymorphy2's ready-made binary artifacts as-is, with no
+transformation at all) and instead rebuild pymorphy2 dictionaries
+through the same pipeline as OpenCorpora.
 
-- Оценка трудоёмкости шага «прочитать весь `words.dawg`» была
-  завышена: полный обход реального pymorphy2-словаря (3 064 708 пар
-  словоформа→(para,form)) через уже существующие экспортированные
-  `DAWG.ForEachChild`+`DAWG.ValuesForIndex` занял 570 мс на ~35 строках
-  кода. Подробности:
+- The effort estimate for the "read the whole `words.dawg`" step turned
+  out to be inflated: a full traversal of a real pymorphy2 dictionary
+  (3,064,708 wordform->(para,form) pairs) via the already-exported
+  `DAWG.ForEachChild`+`DAWG.ValuesForIndex` took 570 ms in ~35 lines of
+  code. Details:
   [docs/research/0005-pymorphy2-full-dawg-walk-cost.md](../research/0005-pymorphy2-full-dawg-walk-cost.md).
-- Выбран узкий вариант A: рекомпилятор только для `words.dawg` (не
-  `Prediction`/`Probability` — остаются неисследованными).
+- The narrow variant A was chosen: a recompiler for `words.dawg` only
+  (not `Prediction`/`Probability`, which remain unexplored).
 
-## Что реализовано (2026-09-16)
+## What's implemented (2026-09-16)
 
-- `internal.DAWG.Walk(fn func(key string, values [][]byte))` — общий
-  примитив полного обхода DAWG (не завязан на pymorphy2; пригодился и
-  для multi-dict).
-- `internal.Dictionary.Alphabet` — новое поле (nil по умолчанию = сырой
-  UTF-8, поведение существующих словарей не меняется).
-  `internal.DAWG.SimilarItems` получил третий параметр `alphabet`.
-- `pymorphy2.RecompileDense(dir)` — импортирует словарь как
-  `ImportFromDir`, затем пересобирает только `Words[0]` под плотный
-  1-байтовый алфавит, построенный из собственных словоформ словаря;
+- `internal.DAWG.Walk(fn func(key string, values [][]byte))` — a
+  general full-DAWG-traversal primitive (not tied to pymorphy2; it also
+  turned out useful for multi-dict).
+- `internal.Dictionary.Alphabet` — a new field (nil by default = raw
+  UTF-8, existing dictionaries' behavior unchanged).
+  `internal.DAWG.SimilarItems` gained a third parameter, `alphabet`.
+- `pymorphy2.RecompileDense(dir)` — imports the dictionary via
+  `ImportFromDir`, then rebuilds only `Words[0]` under a dense 1-byte
+  alphabet built from the dictionary's own wordforms;
   `Paradigms`/`Suffixes`/`Prefixes`/`Prediction`/`Probability`/`TagSet`
-  копируются без изменений.
-- `morphology.OpenPyMorphyDense(dir)` — публичная точка входа (по
-  образцу `OpenPyMorphy`). `Parse()` на результате даёт те же чтения,
-  что и `OpenPyMorphy` — проверено на fixture round-trip и на реальном
-  словаре (3 064 708 слов, 25.7 с на пересборку+сравнение).
-- **Явные ограждения от тихой порчи данных** (найдено финальным ревью
-  всей ветки, тот же класс риска, что и `paradigmKeyHash`): `SaveTo`
-  возвращает ошибку для словаря с непустым `Alphabet` (без этого
-  сохранение+повторное открытие тихо теряло кодек и давало неверные
-  разборы — воспроизведено ревью на реальных данных: «кот» 1→2 чтения,
-  «все» 5→4). `Fuzzy`/`FuzzyTop` возвращают `nil` для такого словаря
-  (без ограждения дэнс-коды случайно декодировались как «валидный»
-  UTF-8-мусор вместо ошибки).
+  are copied unchanged.
+- `morphology.OpenPyMorphyDense(dir)` — a public entry point (modeled
+  on `OpenPyMorphy`). `Parse()` on the result gives the same readings
+  as `OpenPyMorphy` — verified on a fixture roundtrip and on a real
+  dictionary (3,064,708 words, 25.7s to rebuild+compare).
+- **Explicit guards against silent data corruption** (found by the
+  final review of the whole branch, the same risk class as
+  `paradigmKeyHash`): `SaveTo` now returns an error for a dictionary
+  with a non-empty `Alphabet` (without this, saving+reopening silently
+  lost the codec and produced wrong readings — reproduced by the review
+  on real data: "кот" 1->2 readings, "все" 5->4). `Fuzzy`/`FuzzyTop`
+  return `nil` for such a dictionary (without the guard, dense codes
+  would accidentally decode as "valid" UTF-8 garbage instead of an error).
 
-## Остаток backlog (не блокирует 1.0.0, отдельные будущие задачи)
+## Remaining backlog (doesn't block 1.0.0, separate future tasks)
 
-Осознанно не сделано в заходе 2026-09-16:
+Deliberately not done in the 2026-09-16 pass:
 
-1. **Сериализация `Alphabet` в `.dat` и поддержка в `Open()`** — п.5 из
-   согласованных решений выше остаётся нереализованным; поэтому
-   `SaveTo` сейчас просто отказывает для словаря с плотным алфавитом, а
-   не сохраняет его. Без этого `OpenPyMorphyDense` бесполезен для
-   постоянного хранения — пересборка нужна при каждом запуске.
-2. **`fuzzy.go`** — по-прежнему предполагает UTF-8-байты DAWG; для
-   плотных словарей отключён (возвращает `nil`), не переосмыслен под
-   фикс-ширину (п.3 read-path сложности выше).
-3. **`Prediction`/`Probability` DAWG** — не исследованы (другой формат
-   ключей: суффиксы слов и `"слово:тег"` с ASCII-граммемами), п.4 выше.
-4. **2-байтовый алфавит в read-path** — сознательно не тащится
-   (`Open`/`Parse`/`Lemma`/`fuzzy.go` его не понимают), см. п.7 выше;
-   актуально только если появится реальный многоязычный потребитель,
-   для которого multi-dict (см. [multi-dict.md](multi-dict.md)) почему-то
-   не подходит.
-5. **CLI** (`gomorphy`) не тронут — это был Go-API-only инкремент; нет
-   способа получить плотный словарь из CLI без написания кода.
+1. **Serializing `Alphabet` into the `.dat` and support in `Open()`** —
+   item 5 of the agreed decisions above remains unimplemented; so
+   `SaveTo` currently just refuses a dictionary with a dense alphabet,
+   rather than saving it. Without this, `OpenPyMorphyDense` is useless
+   for persistent storage — a rebuild is needed on every run.
+2. **`fuzzy.go`** — still assumes the DAWG's bytes are UTF-8; disabled
+   for dense dictionaries (returns `nil`), not rethought for fixed
+   width (item 3 of the read-path complexity above).
+3. **`Prediction`/`Probability` DAWGs** — not investigated (a different
+   key format: word suffixes and `"word:tag"` with ASCII grammemes), item 4 above.
+4. **The 2-byte alphabet in the read path** — deliberately not carried
+   in (`Open`/`Parse`/`Lemma`/`fuzzy.go` don't understand it), see item
+   7 above; only relevant if a real multilingual consumer shows up for
+   whom multi-dict (see [multi-dict.md](multi-dict.md)) somehow doesn't fit.
+5. **CLI** (`gomorphy`) is untouched — this was a Go-API-only increment;
+   there's no way to get a dense dictionary from the CLI without writing code.

@@ -1,68 +1,68 @@
 # CLI: gomorphy
 
-Утилита морфологического анализа слов на основе скомпилированного словаря
-GMOR (`.dat`, единый формат для источников pymorphy2/OpenCorpora/UniMorph
-— см. [library.md](library.md)), а также утилита получения и сборки
-исходных словарей.
+A utility for morphological analysis of words based on a compiled GMOR
+dictionary (`.dat`, a unified format for the pymorphy2/OpenCorpora/UniMorph
+sources — see [library.md](library.md)), plus a utility for fetching and
+building source dictionaries.
 
-## Общая форма вызова
+## General invocation form
 
 ```bash
 gomorphy <command> [flags] [args]
-gomorphy cli [flags]        # интерактивная консоль
+gomorphy cli [flags]        # interactive console
 ```
 
-### Глобальные флаги (общие для всех команд поиска)
+### Global flags (common to all lookup commands)
 
-| Флаг | Описание |
+| Flag | Description |
 |------|----------|
-| `-d, --dictionary <path>` | путь к `.dat`-файлу или каталогу с `.dat`-файлами (можно указывать несколько раз — словари объединяются в один индекс с сохранением порядка) |
-| `-v, --verbose` | подробное логирование |
-| `-l, --log <path>` | писать лог в файл вместо stderr |
+| `-d, --dictionary <path>` | path to a `.dat` file or a directory of `.dat` files (can be given multiple times — dictionaries are merged into a single index, preserving order) |
+| `-v, --verbose` | verbose logging |
+| `-l, --log <path>` | write the log to a file instead of stderr |
 
-Если `-d/--dictionary` не задан, используется путь из переменной окружения
-`GOMORPHY_DICTIONARY`.
+If `-d/--dictionary` is not set, the path is taken from the
+`GOMORPHY_DICTIONARY` environment variable.
 
-## Команды поиска
+## Lookup commands
 
-### `lookup` — точный поиск словоформы
+### `lookup` — exact wordform lookup
 
-Возвращает все грамматические разборы заданного слова.
+Returns all grammatical readings for a given word.
 
 ```bash
 gomorphy lookup -d opencorpora.dat кота
 ```
 
-Вывод (по одной строке на разбор, поля через TAB):
+Output (one line per reading, tab-separated fields):
 
 ```
 кота	кот	sing,nomn	para#0/33/1
 ```
 
-Формат: `<слово>\t<лемма>\t<тег>\tpara#<dict>/<shard>/<para>` — компонент
-`dict` указывает, из какого по счёту (начиная с 0) объединённого словаря
-пришёл разбор, если указано несколько `-d`.
+Format: `<word>\t<lemma>\t<tag>\tpara#<dict>/<shard>/<para>` — the `dict`
+component indicates which merged dictionary (0-based) the reading came
+from, when multiple `-d` flags were given.
 
-### `lemmas` — поиск начальных форм
+### `lemmas` — lemma lookup
 
-Находит начальную форму (лемму) для заданного слова.
+Finds the lemma (base form) for a given word.
 
 ```bash
 gomorphy lemmas -d opencorpora.dat кота
 ```
 
-Вывод: `<лемма>\t<тег начальной формы>` — по одной строке на омоним
-(разные части речи/значения одного текста).
+Output: `<lemma>\t<lemma's tag>` — one line per homonym (different parts
+of speech/meanings of the same text).
 
-### `fuzzy` — нечёткий поиск
+### `fuzzy` — fuzzy search
 
-Слова словаря в пределах расстояния Левенштейна `maxDist` (по умолчанию 2).
+Dictionary words within Levenshtein distance `maxDist` (default 2).
 
 ```bash
 gomorphy fuzzy -d opencorpora.dat кот 1
 ```
 
-Вывод (отсортирован по расстоянию, затем по слову):
+Output (sorted by distance, then by word):
 
 ```
 0	кот	dict#0
@@ -72,11 +72,12 @@ gomorphy fuzzy -d opencorpora.dat кот 1
 ...
 ```
 
-Формат: `<расстояние>\t<слово>\tdict#<dict>`.
+Format: `<distance>\t<word>\tdict#<dict>`.
 
-### `top` — N ближайших слов
+### `top` — N nearest words
 
-Как `fuzzy`, но расстояние расширяется итеративно, пока не набрано `N` слов.
+Like `fuzzy`, but the distance expands iteratively until `N` words have
+been collected.
 
 ```bash
 gomorphy top -d opencorpora.dat кот 5
@@ -90,7 +91,7 @@ gomorphy top -d opencorpora.dat кот 5
 1	дот	dict#0
 ```
 
-### `cli` — интерактивная консоль
+### `cli` — interactive console
 
 ```bash
 gomorphy cli -d opencorpora.dat
@@ -102,56 +103,56 @@ gomorphy> lookup кота
 gomorphy> exit
 ```
 
-TAB — автодополнение команд (`lookup`, `lemmas`, `fuzzy`, `top`, `exit`,
-`quit`), `exit`/`quit` — выход.
+TAB — command autocompletion (`lookup`, `lemmas`, `fuzzy`, `top`, `exit`,
+`quit`), `exit`/`quit` — exit.
 
-## Получение и сборка словарей
+## Fetching and building dictionaries
 
-### `download` — скачать исходный архив
+### `download` — download the source archive
 
 ```bash
 gomorphy download opencorpora
 gomorphy download pymorphy
 ```
 
-### `unpack` — распаковать уже скачанный архив
+### `unpack` — unpack an already-downloaded archive
 
 ```bash
 gomorphy unpack opencorpora
 gomorphy unpack pymorphy
 ```
 
-### `build` — скомпилировать источник в `.dat`
+### `build` — compile a source into `.dat`
 
-По умолчанию берёт уже распакованный источник; `-i/--input` позволяет
-указать путь явно (например, чтобы скомпилировать `dict.xml` напрямую,
-без сети).
+By default it uses an already-unpacked source; `-i/--input` lets you
+specify the path explicitly (e.g. to compile `dict.xml` directly, without
+network access).
 
 ```bash
 gomorphy build opencorpora -i dict.xml -o out.dat
 gomorphy build pymorphy -i /path/to/unpacked/dir -o out.dat
 ```
 
-Флаги:
+Flags:
 
-| Флаг | Описание |
+| Flag | Description |
 |------|----------|
-| `-i, --input <path>` | скомпилировать этот путь напрямую, минуя загрузчик |
-| `-o, --output <path>` | путь выходного `.dat`-файла (по умолчанию `.data/<type>/<type>.dat`) |
+| `-i, --input <path>` | compile this path directly, bypassing the loader |
+| `-o, --output <path>` | path to the output `.dat` file (default `.data/<type>/<type>.dat`) |
 
-### `update` — download + unpack + build одной командой
+### `update` — download + unpack + build in one command
 
 ```bash
 gomorphy update opencorpora
 gomorphy update pymorphy -o /tmp/pymorphy.dat
 ```
 
-Флаги: `-o, --output <path>` — как у `build`.
+Flags: `-o, --output <path>` — same as `build`.
 
-### `merge` / `split` — пока не реализованы
+### `merge` / `split` — not yet implemented
 
-Команды-заглушки для будущего объединения/разбиения `.dat`-словарей;
-сейчас завершаются ошибкой `not yet implemented`.
+Placeholder commands for future `.dat` dictionary merging/splitting;
+currently they fail with a `not yet implemented` error.
 
 ### `version`
 
@@ -159,8 +160,8 @@ gomorphy update pymorphy -o /tmp/pymorphy.dat
 gomorphy version
 ```
 
-Печатает версию библиотеки.
+Prints the library version.
 
 ---
 
-Подробнее о программном использовании библиотеки → [library.md](library.md).
+More details on programmatic library usage -> [library.md](library.md).

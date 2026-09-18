@@ -1,89 +1,97 @@
-# Почему в gomorphy нет встроенного MCP-сервера
+# Why gomorphy Has No Built-in MCP Server
 
-Решение: **встроенный MCP-сервер в gomorphy не реализуется**. Это осознанный
-выбор на основе анализа сценариев использования библиотеки программным
-агентом (создание тематических словарей, запросы словоформ/лемм). Документ
-фиксирует аргументацию, чтобы решение не пересматривалось без новых фактов.
-Планирование — в [todo.md](todo.md), этап 19.
+Decision: **an embedded MCP server in gomorphy will not be implemented.**
+This is a deliberate choice based on an analysis of how a software agent
+would use the library (building topical dictionaries, querying
+wordforms/lemmas). This document records the reasoning so the decision
+isn't revisited without new facts. Planning is tracked in
+[todo.md](todo.md), Stage 19.
 
-## Что такое MCP в данном контексте
+## What MCP means in this context
 
-MCP (Model Context Protocol) — транспорт между агентом и сервисом: в нашем
-случае *тонкий слой поверх `pkg/dictionary`*, который вместо CLI-вызовов даёт
-агенту вызовы инструментов:
+MCP (Model Context Protocol) is a transport between an agent and a
+service: in our case, a *thin layer over `pkg/dictionary`* that, instead
+of CLI calls, gives the agent tool calls for:
 
-- импорт подготовленного файла → `.dat`;
-- запросы к словарю: wordform / лемма / нечёткий поиск;
-- (в идеале) сессию с открытым словарём, переиспользуемым между вызовами.
+- importing a prepared file -> `.dat`;
+- dictionary queries: wordform / lemma / fuzzy search;
+- (ideally) a session with an open dictionary, reused across calls.
 
-## Почему MCP не экономит токены
+## Why MCP doesn't save tokens
 
-Затраты токенов на операцию складываются из **данных** (полезная нагрузка,
-которую агент всё равно генерирует) и **оверхеда транспорта** (обёртка
-инструмента, JSON, чтение ответа). Оценки для сценария «тематический словарь»:
+Token cost per operation is made up of **data** (the payload the agent
+generates anyway) and **transport overhead** (tool wrapper, JSON, reading
+the response). Estimates for the "topical dictionary" scenario:
 
-| Операция | CLI (скилл) | MCP (по одной) | MCP (батч) |
+| Operation | CLI (skill) | MCP (one at a time) | MCP (batched) |
 |---|---|---|---|
-| Импорт 15K форм (~120–180K токенов данных) | +50–100 оверхеда | — | +150–250 оверхеда |
-| Импорт 100 форм/файл | +50–100 оверхеда | — | +150–250 оверхеда |
-| Проверка 1000 словоформ | ~60–80K оверхеда (по одному вызову на слово) | ~150–250K оверхеда | ~200–300 оверхеда |
-| Запрос одной формы | ~50–80 оверхеда | ~100–200 оверхеда | ~100–200 оверхеда |
+| Import 15K forms (~120-180K tokens of data) | +50-100 overhead | — | +150-250 overhead |
+| Import 100 forms/file | +50-100 overhead | — | +150-250 overhead |
+| Check 1000 wordforms | ~60-80K overhead (one call per word) | ~150-250K overhead | ~200-300 overhead |
+| Query a single form | ~50-80 overhead | ~100-200 overhead | ~100-200 overhead |
 
-Выводы:
+Conclusions:
 
-1. **Импорт: выигрыша нет.** Токены почти на 100% — это сами данные (агент
-   генерирует каждую форму в любом случае); обёртка добавляет фиксированные
-   сотни токенов, что несоизмеримо и для CLI, и для MCP. MCP при этом чуть
-   дороже (аргумент + подтверждение).
-2. **Запросы: выигрыш даёт только батчинг, а не транспорт.** Раздувание
-   начинается оттого, что CLI принимает одно слово за вызов: 1000 проверок =
-   1000 вызовов. Решение — **батч-режим в CLI** (`lookup -` со stdin или
-   несколько слов в аргументах): один вызов на весь список, оверхед ~200–300
-   токенов. Этот же выигрыш MCP дал бы лишь батч-инструментом — с той же
-   нагрузкой, но ценой серверной машинерии.
-3. **Мелкие запросы.** Косметическая разница, не влияющая на решение.
+1. **Import: no gain.** Tokens are almost 100% the data itself (the agent
+   generates every form regardless); the wrapper adds a fixed few hundred
+   tokens, which is negligible for both CLI and MCP. MCP is even slightly
+   more expensive here (argument + confirmation).
+2. **Queries: the gain comes from batching, not the transport.** The
+   bloat comes from the CLI accepting one word per call: 1000 checks =
+   1000 calls. The fix is **CLI batch mode** (`lookup -` via stdin, or
+   multiple words as arguments): one call for the whole list, ~200-300
+   tokens of overhead. MCP would deliver the same gain only through a
+   batch tool — same payload, but at the cost of server-side machinery.
+3. **Small queries.** A cosmetic difference that doesn't affect the
+   decision.
 
-## Накладные расходы на реализацию и поддержку
+## Implementation and maintenance overhead
 
-MCP-сервер — это не «ещё один метод», а новый подсистемный кусок:
+An MCP server isn't "one more method" — it's a new subsystem:
 
-- новая внешняя зависимость (например, `mark3labs/mcp-go`) в проект с `vendor/`;
-- отдельный бинарь/подкоманда (`gomorphy mcp`), stdio-транспорт, сессия;
-- JSON-схемы инструментов и маппинг ошибок (`ErrNotFound`, `ErrClosed`,
-  `ErrInvalidMaxDist` → структурированные ответы);
-- тесты транспорта, упаковка, документация — оценка ~300–500 строк против
-  ~100 строк TSV-импортёра;
-- долгосрочное бремя: каждый формат импорта и каждое новое query-API
-  приходится дублировать в MCP-контракте.
+- a new external dependency (e.g. `mark3labs/mcp-go`) in a project that
+  vendors (`vendor/`);
+- a separate binary/subcommand (`gomorphy mcp`), stdio transport, session
+  handling;
+- JSON schemas for tools and error mapping (`ErrNotFound`, `ErrClosed`,
+  `ErrInvalidMaxDist` -> structured responses);
+- transport tests, packaging, documentation — estimated at ~300-500 lines
+  versus ~100 lines for a TSV importer;
+- long-term burden: every import format and every new query API has to be
+  duplicated in the MCP contract.
 
-CLI-батч-режимы, закрывающие ту же токен-проблему, — это ~20–40 строк Go,
-ноль зависимостей и переиспользование существующих `Lookup`/`Lemmas`/`Fuzzy`.
+CLI batch modes that solve the same token problem are ~20-40 lines of Go,
+zero dependencies, and reuse the existing `Lookup`/`Lemmas`/`Fuzzy`.
 
-## Что MCP дал бы на самом деле
+## What MCP would actually provide
 
-MCP даёт **UX-интеграцию**, а не токены:
+MCP provides **UX integration**, not token savings:
 
-- агент в IDE/Desktop без доступа к шеллу (Cursor, Claude Desktop, MCP-хабы);
-- структурированный JSON-контракт вместо парсинга stdout;
-- сессию с открытым словарём (без повторного mmap и без перезапуска процесса).
+- an agent in an IDE/Desktop app without shell access (Cursor, Claude
+  Desktop, MCP hubs);
+- a structured JSON contract instead of parsing stdout;
+- a session with an open dictionary (no repeated mmap, no process
+  restart).
 
-Ни один из этих пунктов не является текущим приоритетом: целевой агент
-gomorphy работает из терминала (подход «скилл + CLI»). Лагентность повторного
-запуска процесса (единицы–десятки мс) несоизмерима с временем ответа модели.
+None of these is a current priority: the target gomorphy agent works from
+a terminal (the "skill + CLI" approach). The latency of restarting the
+process (single- to tens-of-milliseconds) is negligible compared to the
+model's response time.
 
-## Когда решение можно пересмотреть
+## When this decision could be revisited
 
-MCP-сервер оправдан, только если появится конкретный потребитель — агент,
-который **не может** выполнять локальные команды, — и его ценность для
-проекта выше цены поддержки. Если это произойдёт, сервер обязан быть тонким
-транспортом поверх тех же примитивов библиотеки:
+An MCP server is justified only if a concrete consumer appears — an agent
+that **cannot** run local commands — and its value to the project
+outweighs the maintenance cost. If that happens, the server must be a
+thin transport over the same library primitives:
 
-- инструменты импорта принимают файл или TSV-строку в том же формате;
-- запросы — **батч-инструменты** (`lookup_batch`, `lemmas_batch`, `fuzzy_batch`);
-- единый источник истины — `pkg/dictionary` / импортёры, MCP только
-  прокидывает вызовы.
+- import tools accept a file or a TSV string in the same format;
+- queries are **batch tools** (`lookup_batch`, `lemmas_batch`,
+  `fuzzy_batch`);
+- a single source of truth — `pkg/dictionary` / importers — with MCP only
+  forwarding calls.
 
-До появления такого потребителя: сознательно минимальный CLI (импорт,
-батч-запросы) + скиллы «использование словаря gomorphy» (этап 18) и
-«тематический словарь» (этап 19, см. [todo.md](todo.md)) — единственный
-интерфейс агента к gomorphy.
+Until such a consumer appears: a deliberately minimal CLI (import, batch
+queries) + the "using the gomorphy dictionary" skill (Stage 18) and the
+"topical dictionary" skill (Stage 19, see [todo.md](todo.md)) remain the
+agent's only interface to gomorphy.

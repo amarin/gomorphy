@@ -2,27 +2,27 @@ package internal
 
 import "unicode/utf8"
 
-// Item — результат поиска: найденный ключ и его payload-значения.
+// Item is a search result: the found key and its payload values.
 type Item struct {
 	Key    string
 	Values [][]byte
 }
 
-// SimilarItems ищет ключ с учётом подмен символов CharPolicy. Для 'е→ё'
-// находит словоформы, различающиеся е/ё, например "ежик" и "ёжик".
-// alphabet кодирует каждую руну перед переходом по DAWG (nil — сырой
-// UTF-8, поведение не отличается от предыдущей версии); возвращаемый
-// Item.Key — всегда исходный человекочитаемый текст и не требует
-// декодирования независимо от alphabet.
+// SimilarItems looks up a key while accounting for CharPolicy character
+// substitutions. For 'е→ё', it finds wordforms differing only in е/ё,
+// e.g. "ежик" and "ёжик". alphabet encodes each rune before following an
+// edge in the DAWG (nil = raw UTF-8, same behavior as the previous
+// version); the returned Item.Key is always the original human-readable
+// text and never needs decoding regardless of alphabet.
 func (d *DAWG) SimilarItems(key string, pol *CharPolicy, alphabet Alphabet) []Item {
 	return d.similarItemsRecursive("", []rune(key), 0, pol, alphabet)
 }
 
-// followRuneVia переходит по одной руне r из index, кодируя её через
-// alphabet. alphabet == nil сохраняет старое поведение (FollowRune, сырой
-// UTF-8). Возвращает 0, если alphabet не может закодировать r (руна вне
-// корпуса, на котором был построен алфавит) — тот же контракт "нет
-// перехода", что и у FollowByte/FollowRune.
+// followRuneVia follows one rune r from index, encoding it via alphabet.
+// alphabet == nil preserves the old behavior (FollowRune, raw UTF-8).
+// Returns 0 if alphabet cannot encode r (a rune outside the corpus the
+// alphabet was built from) — the same "no edge" contract as
+// FollowByte/FollowRune.
 func (d *DAWG) followRuneVia(alphabet Alphabet, r rune, index uint32) uint32 {
 	if alphabet == nil {
 		return d.FollowRune(r, index)

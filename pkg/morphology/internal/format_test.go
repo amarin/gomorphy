@@ -49,8 +49,8 @@ func TestSaveContainerRoundtrip(t *testing.T) {
 
 func TestSaveContainerAlignsSections(t *testing.T) {
 	cont, err := OpenContainer(readFile(t, writeContainer(t, []Section{
-		{Name: "a", Data: []byte("123")}, // длина 3
-		{Name: "b", Data: []byte("xy")},  // длина 2
+		{Name: "a", Data: []byte("123")}, // length 3
+		{Name: "b", Data: []byte("xy")},  // length 2
 		{Name: "words.dawg", Data: []byte{9, 9, 9, 9, 9, 9, 9, 9}},
 	})))
 	require.NoError(t, err)

@@ -8,8 +8,7 @@ import (
 
 func TestTokenizeOpenCorporaIntSplitsSpaceThenComma(t *testing.T) {
 	// Real example from a pymorphy2 gramtab-opencorpora-int.json, quoted
-	// in docs/todo.md's "Универсальный маппинг тегов между словарями"
-	// section.
+	// in docs/en/todo.md's universal tag mapping section.
 	assert.Equal(t,
 		[]string{"NOUN", "anim", "masc", "sing", "nomn"},
 		tokenizeOpenCorporaInt("NOUN,anim,masc sing,nomn"))

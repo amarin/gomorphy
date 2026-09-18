@@ -4,15 +4,15 @@
 // code should use pkg/morphology instead.
 package internal
 
-// Dictionary — иммутабельный снимок словаря.
+// Dictionary is an immutable dictionary snapshot.
 //
-// Suffixes, Paradigms и Words — по одному элементу на шард; индекс 0 —
-// единственный шард для несегментированных словарей (нет отдельного
-// "нешардированного" представления). Шарды существуют потому, что
-// suffix id адресуется uint16: словарь с суффиксов больше, чем помещается
-// в один uint16-диапазон, делится на несколько шардов с независимыми
-// id-пространствами (см. docs/superpowers/specs/2026-09-14-suffix-sharding-design.md).
-// TagSet и Prefixes остаются общими для всех шардов.
+// Suffixes, Paradigms, and Words each hold one element per shard; index 0
+// is the only shard for unsharded dictionaries (there's no separate
+// "unsharded" representation). Shards exist because a suffix id is
+// addressed as a uint16: a dictionary with more suffixes than fit in one
+// uint16 range is split into several shards with independent id spaces
+// (see docs/en/superpowers/specs/2026-09-14-suffix-sharding-design.md).
+// TagSet and Prefixes stay shared across all shards.
 type Dictionary struct {
 	Language    string
 	TagSet      *TagSet
@@ -27,13 +27,13 @@ type Dictionary struct {
 	Info        *BuildInfo
 }
 
-// NewDictionary собирает Dictionary из компонентов. suffixes, paradigms и
-// words обязаны иметь одинаковую длину (число шардов) — паникует иначе,
-// как и NewParadigm паникует на несовпадении длин своих частей. Prediction,
-// Probability и Info остаются nil; Prediction/Probability заполняются
-// импортёрами при чтении prediction-файлов, Info — импортёром (обычно
-// только Source) или SaveTo (BuiltAt/LibraryVersion — при каждом
-// сохранении).
+// NewDictionary assembles a Dictionary from its components. suffixes,
+// paradigms, and words must have equal length (the number of shards) — it
+// panics otherwise, the same way NewParadigm panics on mismatched part
+// lengths. Prediction, Probability, and Info stay nil; Prediction/
+// Probability are filled in by importers when reading prediction files,
+// Info by an importer (usually just Source) or by SaveTo
+// (BuiltAt/LibraryVersion — on every save).
 func NewDictionary(
 	language string,
 	tagSet *TagSet,

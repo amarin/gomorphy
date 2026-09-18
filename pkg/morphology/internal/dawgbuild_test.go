@@ -56,9 +56,9 @@ func TestBuildDAWGRoundtrip(t *testing.T) {
 	}
 }
 
-// TestBuildDAWGSimilarItems проверяет путь разбора: словарь, построенный
-// сборщиком, читается существующим механизмом SimilarItems+ValuesForIndex
-// (payload в base64 после разделителя 0x01).
+// TestBuildDAWGSimilarItems verifies the parsing path: a dictionary built
+// by the builder is readable by the existing SimilarItems+ValuesForIndex
+// mechanism (payload in base64 after the 0x01 separator).
 func TestBuildDAWGSimilarItems(t *testing.T) {
 	payload := func(para, form uint16) string {
 		return base64.StdEncoding.EncodeToString([]byte{
@@ -81,16 +81,16 @@ func TestBuildDAWGSimilarItems(t *testing.T) {
 	assert.Len(t, items[0].Values, 2, "ожидались два чтения омонима")
 	assert.Equal(t, []byte{0, 0, 0, 0}, items[0].Values[0])
 
-	// е/ё подмена работает для построенного словаря: "ежик" находит "ёжик".
+	// The е/ё substitution works for the built dictionary: "ежик" finds "ёжик".
 	items = d.SimilarItems("ежик", RussianCharPolicy(), nil)
 	require.Len(t, items, 1)
 	assert.Equal(t, "ёжик", items[0].Key)
-	// payload(2, 0) = {0, 2, 0, 0} — para=2, form=0 в big-endian.
+	// payload(2, 0) = {0, 2, 0, 0} — para=2, form=0 in big-endian.
 	assert.Equal(t, []byte{0, 2, 0, 0}, items[0].Values[0])
 }
 
-// TestBuildDAWGExhaustiveAcceptance исчерпывающе сверяет принимаемые
-// автоматом строки с опорным множеством (малый алфавит → сильная проверка).
+// TestBuildDAWGExhaustiveAcceptance exhaustively checks the strings accepted
+// by the automaton against a reference set (small alphabet → strong check).
 func TestBuildDAWGExhaustiveAcceptance(t *testing.T) {
 	alphabet := []byte("ab")
 	all := func(maxLen int) []string {
@@ -111,7 +111,7 @@ func TestBuildDAWGExhaustiveAcceptance(t *testing.T) {
 		return out
 	}
 
-	// Произвольное подмножество строк длины 1..3.
+	// A random subset of strings of length 1..3.
 	rnd := rand.New(rand.NewSource(7)) //nolint:gosec // deterministic test
 	reference := make(map[string]bool)
 	var keys []string
@@ -146,14 +146,14 @@ func TestBuildDAWGDuplicates(t *testing.T) {
 	assert.False(t, d.Contains("кот"))
 }
 
-// TestBuildDAWGMinimizesSharedSuffixes регрессионный тест на баг в chainSig:
-// подпись цепочки братьев ошибочно кодировала id самого узла вместо id его
-// ребёнка, из-за чего register никогда не находил совпадений и суффиксы
-// никогда не сливались (DAWG вырождался в неминимизированный trie — на
-// реальном словаре OpenCorpora это раздувало double-array с ~2М до ~71М
-// слотов). Много ключей с разными префиксами и одним общим длинным
-// суффиксом: без слияния суффиксов double-array потребовал бы отдельную
-// копию суффиксной цепочки на каждый ключ.
+// TestBuildDAWGMinimizesSharedSuffixes is a regression test for a bug in
+// chainSig: the sibling-chain signature erroneously encoded the id of the
+// node itself instead of the id of its child, so register never found
+// matches and suffixes were never merged (the DAWG degenerated into an
+// unminimized trie — on the real OpenCorpora dictionary this bloated the
+// double-array from ~2M to ~71M slots). Many keys with different prefixes
+// and one shared long suffix: without suffix merging, the double-array
+// would need a separate copy of the suffix chain for every key.
 func TestBuildDAWGMinimizesSharedSuffixes(t *testing.T) {
 	const n = 200
 	const suffix = "-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -169,10 +169,10 @@ func TestBuildDAWGMinimizesSharedSuffixes(t *testing.T) {
 		require.True(t, d.Contains(k), "key %q must be found", k)
 	}
 
-	// Без слияния суффиксов потребовалось бы ~n*len(suffix) слотов (общий
-	// хвост копировался бы под каждый ключ). При корректной минимизации
-	// хвост — одна общая цепочка, и размер массива должен остаться на
-	// порядок меньше этой границы.
+	// Without suffix merging this would need ~n*len(suffix) slots (the
+	// shared tail would be copied for each key). With correct minimization
+	// the tail is one shared chain, and the array size should stay an
+	// order of magnitude below this bound.
 	unminimizedFloor := n * len(suffix)
 	assert.Less(t, len(d.dict), unminimizedFloor/4,
 		"dictionary array has %d slots for %d keys sharing a %d-byte suffix — suffix minimization appears broken",
@@ -188,7 +188,7 @@ func TestBuildDAWGEmpty(t *testing.T) {
 }
 
 // TestBuildDAWGLargeScalePlacement stresses the placer (compileImpl split
-// out during the pre-1.0 review, docs/code-review-pre-1.0.md) with far more
+// out during the pre-1.0 review, docs/en/code-review-pre-1.0.md) with far more
 // nodes and shared-suffix merges than the small fixtures elsewhere in this
 // file exercise, since node placement / base reuse is exactly the logic
 // that refactor touched.
@@ -231,8 +231,8 @@ func TestBuildDAWGLargeScalePlacement(t *testing.T) {
 	assert.Zero(t, missing, "DAWG accepted keys that were never inserted")
 }
 
-// TestBuildDAWGManyKeysAndSortingStress гоняет большее множество ключей
-// (в том числе с общими префиксами и суффиксами) и сверяет приёмочку.
+// TestBuildDAWGManyKeysAndSortingStress runs a larger set of keys
+// (including ones with shared prefixes and suffixes) and checks acceptance.
 func TestBuildDAWGManyKeysAndSortingStress(t *testing.T) {
 	var keys []string
 	for _, w := range []string{"кот", "кода", "коды", "коду", "дом", "дома", "дому", "ёж", "ежа", "овёс", "овса"} {

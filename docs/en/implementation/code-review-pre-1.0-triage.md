@@ -1,241 +1,245 @@
-# Ревью кода перед 1.0.0: разбор находок и фикс переполнения суффиксов
+# Pre-1.0.0 code review: findings triage and the suffix-overflow fix
 
-Две связанные, но отдельные работы, обе выполнены 2026-09-14: полный
-разбор находок [code-review-pre-1.0.md](../code-review-pre-1.0.md) по
-пунктам, и — как отдельная задача, вскрытая по ходу этого разбора —
-фикс критического переполнения суффиксов через шардирование.
+Two related but separate pieces of work, both done on 2026-09-14: a
+full item-by-item triage of the findings in
+[code-review-pre-1.0.md](../code-review-pre-1.0.md), and — a separate
+task uncovered along the way — a fix for the critical suffix overflow
+via sharding.
 
-## Ревью кода перед 1.0.0 — разбор находок
+## Pre-1.0.0 code review — findings triage
 
-Полный отчёт ревью: [code-review-pre-1.0.md](../code-review-pre-1.0.md).
+Full review report: [code-review-pre-1.0.md](../code-review-pre-1.0.md).
 
-При первом проходе ревью (до разбора) исправлены по ходу безопасные
-механические находки: nil-panic на ошибке `os.Stat`, утечка
-`response.Body`, дублирующий метод, два мёртвых типа — 131/131 тестов
-зелёные.
+During the review's first pass (before the triage), safe mechanical
+findings were fixed along the way: a nil-panic on an `os.Stat` error, a
+`response.Body` leak, a duplicate method, two dead types — 131/131
+tests green.
 
-Разбор находок отчёта по пунктам (отдельная сессия сразу после ревью)
-закрыл почти все некритичные пункты:
+An item-by-item triage of the report's findings (a separate session
+right after the review) closed almost all the non-critical items:
 
-- **Дрейф документации** — `pkg/dictionary`→`pkg/morphology` во всех
-  активно вводящих в заблуждение местах.
-- **Мёртвый код** — все 4 кандидата: `internal/intern`+`internal/stringsx`
-  целиком, `BlockDAWG`/`Block`/`NewBlockDAWG`/`Flatten`,
+- **Documentation drift** — `pkg/dictionary`->`pkg/morphology`
+  everywhere it was actively misleading.
+- **Dead code** — all 4 candidates: `internal/intern`+`internal/stringsx`
+  in their entirety, `BlockDAWG`/`Block`/`NewBlockDAWG`/`Flatten`,
   `pkg/common.ErrPath`, `cmd/gomorphy_build`'s `programVersion`
-  (заменена на рабочий флаг `-version`).
-- **Edge-case баги** — Windows-сборка `internal/mmapx` (build tag +
-  понятная ошибка вместо провала компиляции), зависание
-  `internal/xmlscan` при маленьком буфере (защитная проверка),
-  граница буфера рвущая `<!--` комментарий (баг + regression-тест),
-  числовые XML-сущности (`&#39;`/`&#x27;`), id-переполнение в
-  tagset/suffix/paradigm (см. ниже — суффиксы оказались реальным, не
-  гипотетическим случаем), неатомарная запись `SaveContainer`
-  (temp-файл + rename).
-- **Дублирование** — общий `insertKeys` для
-  `buildDAWGWithPayload`/`BuildDAWGWithValuesProgress` (закрыл слепую
-  зону тестового покрытия — реальный production-путь сборки DAWG был
-  протестирован только через непродублированную копию), общая
-  `importAndSave` для веток `runImport` в `cmd/gomorphy`.
-- **Дробление крупных функций** — `compileAndSave`→`progressPrinter`,
-  `SaveContainer`→3 именованные фазы, `compileImpl`→`placer`,
-  `predict`→`predictForPrefix`.
-- **`.golangci.yml`** — отсутствовал полностью; добавлен, плюс
-  исправлены 17 из 18 находок первого реального прогона линтера (13
-  errcheck, 3 staticcheck, 1 unused) — единственная оставленная
-  находка (`import.go`'s `lGrams`) сознательно не тронута, так как
-  привязана к критическому багу с тегами (см. ниже).
-- **Прочее** — HTTP→HTTPS для `pkg/opencorpora.RemoteURL`,
-  `opencorpora.Error`→`ErrOpenCorpora` с godoc, godoc для `pkg/common`.
+  (replaced with a working `-version` flag).
+- **Edge-case bugs** — the Windows build of `internal/mmapx` (a build
+  tag + a clear error instead of a compile failure), `internal/xmlscan`
+  hanging on a small buffer (a defensive check), a buffer boundary
+  splitting a `<!--` comment (a bug + a regression test), numeric XML
+  entities (`&#39;`/`&#x27;`), id overflow in tagset/suffix/paradigm
+  (see below — suffixes turned out to be a real case, not a
+  hypothetical one), a non-atomic `SaveContainer` write (a temp file + rename).
+- **Duplication** — a shared `insertKeys` for
+  `buildDAWGWithPayload`/`BuildDAWGWithValuesProgress` (closed a blind
+  spot in test coverage — the real production DAWG-build path had only
+  been tested through an undeduplicated copy), a shared `importAndSave`
+  for the `runImport` branches in `cmd/gomorphy`.
+- **Splitting up large functions** — `compileAndSave`->`progressPrinter`,
+  `SaveContainer`-> 3 named phases, `compileImpl`->`placer`,
+  `predict`->`predictForPrefix`.
+- **`.golangci.yml`** — was missing entirely; added, plus 17 of 18
+  findings from the linter's first real run were fixed (13 errcheck, 3
+  staticcheck, 1 unused) — the one finding left untouched
+  (`import.go`'s `lGrams`) was deliberately not fixed, since it's tied
+  to the critical tag bug (see below).
+- **Other** — HTTP->HTTPS for `pkg/opencorpora.RemoteURL`,
+  `opencorpora.Error`->`ErrOpenCorpora` with godoc, godoc for `pkg/common`.
 
-Каждый шаг проверялся `go build`+`go vet`+`go test -race` (финально —
-147/147 тестов).
+Every step was checked with `go build`+`go vet`+`go test -race`
+(147/147 tests, finally).
 
-**Оба критических бага ревью сознательно не тронуты** в рамках этого
-разбора — искажение тегов OpenCorpora-словоформ и переполнение
-суффиксного id-пространства; per-пункту решение принимал пользователь
-отдельно. Оба закрыты — суффиксы ниже, теги — в отдельном разделе
-«Критический баг: искажённые теги OpenCorpora-словоформ» ближе к концу
-этого файла.
+**Both of the review's critical bugs were deliberately left untouched**
+as part of this triage — the corrupted OpenCorpora wordform tags and
+the suffix id-space overflow; the user made the per-item decision
+separately. Both are now closed — suffixes below, tags in a separate
+section, "Critical bug: corrupted OpenCorpora wordform tags," closer to
+the end of this file.
 
-## Критическая находка: суффиксов больше, чем вмещает uint16 — ИСПРАВЛЕНО
+## Critical finding: more suffixes than fit in a uint16 — FIXED
 
-Обнаружена при работе над находкой «id присваивается без проверки на
-переполнение»: добавленная явная проверка на 65536 уникальных
-суффиксов сработала на реальном `dict.xml` — `lemmas=391842
-suffixes=65835 paradigms=16939 tags=3437`. `suffixes=65835` — на 299
-больше вместимости `uint16` (0..65535). До проверки это была тихая
-порча ~299 суффиксных id (переполнение оборачивается в 0, коллизия с
-первым зарегистрированным суффиксом); после — честная ошибка сборки,
-но `gomorphy_build compile` на полном `dict.xml` не собирался вовсе.
+Found while working on the "an id is assigned with no overflow check"
+finding: an added explicit check for 65,536 unique suffixes tripped on
+the real `dict.xml` — `lemmas=391842 suffixes=65835 paradigms=16939
+tags=3437`. `suffixes=65835` is 299 over a `uint16`'s capacity
+(0..65535). Before the check, this silently corrupted ~299 suffix ids
+(the overflow wraps to 0, colliding with the first registered suffix);
+after it, a proper build error — but `gomorphy_build compile` on the
+full `dict.xml` didn't build at all.
 
-**Решение**: шардирование, не расширение разрядности id. Обоснование
-(после брейншторма с оценкой на реальных данных — рост числа суффиксов
-явно сублинейный, +5.9%/+0.6%/+0.02% overhead у
-round-robin/fill-on-demand/paradigm-grouped при N=2, растущий, но
-остающийся низким у paradigm-grouped даже при N=6-7): переполнение
-ожидается редким и небольшим, а разрядность id пришлось бы поднимать
-навсегда для всех данных ради редкого случая. Шардирование не меняет
-формат `.dat` (именованные секции с номером шарда, `suffixes-N`/
-`paradigms-N`/`words.dawg-N`, по аналогии с уже существовавшим
-`prediction-N`) и почти не трогает публичный API (только аддитивное
-`Reading.Shard`/`LemmaRef.Shard int`). v1 — единственная стратегия
-`FillOnDemand` (наполняем шард до упора) за интерфейсом
-`ShardingStrategy`, чтобы другие стратегии (paradigm-grouped и т.п.)
-можно было добавить позже без переделки конвейера сборки/поиска.
+**Solution**: sharding, not widening the id type. Rationale (after
+brainstorming with an estimate on real data — the suffix count clearly
+grows sub-linearly, +5.9%/+0.6%/+0.02% overhead for
+round-robin/fill-on-demand/paradigm-grouped at N=2, growing but staying
+low for paradigm-grouped even at N=6-7): overflow is expected to be
+rare and small, and widening the id type would have meant permanently
+raising it for all data for a rare case. Sharding doesn't change the
+`.dat` format (named sections with a shard number,
+`suffixes-N`/`paradigms-N`/`words.dawg-N`, similar to the already
+existing `prediction-N`) and barely touches the public API (only the
+additive `Reading.Shard`/`LemmaRef.Shard int`). v1 has a single
+strategy, `FillOnDemand` (fill a shard to capacity), behind a
+`ShardingStrategy` interface, so other strategies (paradigm-grouped,
+etc.) can be added later without reworking the build/lookup pipeline.
 
-Полная спека (включая таблицу измерений и альтернативы):
+Full spec (including a measurement table and alternatives):
 [2026-09-14-suffix-sharding-design.md](../superpowers/specs/2026-09-14-suffix-sharding-design.md).
-План реализации (6 задач + процесс subagent-driven-development, включая
-находки финального ревью — пропуск покрытия N>1 шардов, неоднозначный
-CLI-вывод, устаревшие доки формата, все закрыты в fix-wave):
+Implementation plan (6 tasks + subagent-driven-development, including
+findings from the final review — missing coverage for N>1 shards,
+ambiguous CLI output, stale format docs, all closed in a fix wave):
 [2026-09-14-suffix-sharding.md](../superpowers/plans/2026-09-14-suffix-sharding.md).
 
-**Результат**: `gomorphy_build compile` на полном
-`.data/opencorpora/dict.xml` успешно собирается в 2 шарда (~65с).
-Проверено дважды — при слиянии ветки в `master` и при ручной пересборке
-пользователем (`bin/gomorphy_build compile -o
-.data/opencorpora/opencorpora.dat`).
+**Result**: `gomorphy_build compile` on the full
+`.data/opencorpora/dict.xml` successfully builds into 2 shards (~65s).
+Verified twice — when the branch was merged into `master`, and when
+the user manually rebuilt it
+(`bin/gomorphy_build compile -o .data/opencorpora/opencorpora.dat`).
 
-**Отложено, не часть этой работы** (см. «Deferred ideas» спеки):
-адаптивный/широкий вариант (`uint32`-индексы) для заведомо больших
-словарей — отдельная реализация/флаг рядом с шардированием, не замена
-ему; узкий вариант (`uint8`-индексы) для маленьких словарей с низкой
-кардинальностью — актуально для Этапа 19.
+**Deferred, not part of this work** (see the spec's "Deferred ideas"):
+an adaptive/wide variant (`uint32` indices) for dictionaries known to
+be huge — a separate implementation/flag alongside sharding, not a
+replacement for it; a narrow variant (`uint8` indices) for small,
+low-cardinality dictionaries — relevant for Stage 19.
 
-**Follow-up, требует отдельного расследования**: пользователь упомянул
-возможность «потери лемм из opencorpora», не идентифицированную и не
-обязательно связанную ни с одним из двух критических багов — не
-расследовано, нужна отдельная сессия до всякого фикса.
+**Follow-up, needs a separate investigation**: the user mentioned a
+possible "loss of lemmas from opencorpora," not identified and not
+necessarily related to either of the two critical bugs — not
+investigated, needs a separate session before any fix.
 
-## Критический баг: искажённые теги OpenCorpora-словоформ — ИСПРАВЛЕНО
+## Critical bug: corrupted OpenCorpora wordform tags — FIXED
 
-Второй критический баг ревью (см. выше). Два независимых бага, оба
-закрыты в рамках одной ветки: первый — редизайном сборки тега формы,
-второй — финальным ревью всей ветки перед мержем.
+The review's second critical bug (see above). Two independent bugs,
+both closed within the same branch: the first via a redesign of how a
+form's tag is assembled, the second by the final review of the whole
+branch before merging.
 
-### Баг 1: тег формы собирался как снимок «на момент открытия», а не после разбора граммем
+### Bug 1: a form's tag was assembled as a snapshot "at open time," not after its grammemes were parsed
 
-**Файл**: `pkg/morphology/importers/opencorpora/import.go`,
-`xmlHandler` (методы `OnForm`/`OnFormEnd`/`OnLemma`/`OnLemmaHeadEnd`).
+**File**: `pkg/morphology/importers/opencorpora/import.go`,
+`xmlHandler` (methods `OnForm`/`OnFormEnd`/`OnLemma`/`OnLemmaHeadEnd`).
 
-**Был механизм** (на момент находки, до фикса): `h.curGrams`
-сбрасывался только на границе леммы (`OnLemma`/`OnLemmaEnd` — метод
-`OnLemmaEnd` с тех пор переименован в `OnLemmaHeadEnd`, см. ниже), а
-не между формами одной леммы. Тег формы фиксировался как снимок
-`curGrams` **в момент открытия** `<f t="...">` — до того, как
-разобраны собственные `<g v="..."/>` этой формы (они идут в XML после
-открывающего тега). Итог: каждая форма получала не свои граммемы, а
-накопленную смесь граммем всех предыдущих форм этой леммы; первая
-форма — пустой тег. Плюс второй, связанный дефект: собственные
-граммемы `<l>` (часть речи, одушевлённость, род) вообще никогда не
-попадали ни в один тег форм — `OnLemmaEnd` сбрасывал `curGrams` раньше,
-чем до них доходила очередь у первой формы.
+**The mechanism that existed** (at the time of the finding, before the
+fix): `h.curGrams` was only reset at a lemma boundary
+(`OnLemma`/`OnLemmaEnd` — the `OnLemmaEnd` method has since been
+renamed `OnLemmaHeadEnd`, see below), not between forms within one
+lemma. A form's tag was captured as a snapshot of `curGrams` **at the
+moment `<f t="...">` opened** — before that form's own `<g v="..."/>`
+tags were parsed (they come after the opening tag in the XML). Result:
+every form got not its own grammemes, but an accumulated mix of all
+preceding forms' grammemes in that lemma; the first form got an empty
+tag. Plus a second, related defect: the `<l>` element's own grammemes
+(part of speech, animacy, gender) never made it into any form's tag at
+all — `OnLemmaEnd` reset `curGrams` before the first form even got to them.
 
-**Было подтверждено дважды независимо**:
-1. Крафченный репро на фрагменте реальной схемы (`ёж`/`ежа`/`ежу`) —
-   полная таблица «должно быть / реально получено» в
+**Confirmed twice, independently**:
+1. A crafted repro against a fragment of the real schema
+   (`ёж`/`ежа`/`ежу`) — the full "should be / actually got" table is in
    [code-review-pre-1.0.md](../code-review-pre-1.0.md).
-2. Ручная проверка на реальном, полностью пересобранном
-   `.data/opencorpora/opencorpora.dat` (после фикса шардирования):
-   `gomorphy lookup занудами` → тег
+2. A manual check against a real, fully rebuilt
+   `.data/opencorpora/opencorpora.dat` (after the sharding fix):
+   `gomorphy lookup занудами` -> the tag
    `sing,nomn,sing,gent,sing,datv,sing,accs,sing,ablt,sing,ablt,V-oy,sing,loct,plur,nomn,plur,gent,plur,datv,plur,accs`
-   вместо правильного `plur,ablt` — конкатенация граммем ~11
-   предыдущих форм парадигмы «зануда», наглядно демонстрирует механизм
-   накопления на реальных данных с большим числом форм. Текст слова и
-   леммы искажён не был — только тег.
+   instead of the correct `plur,ablt` — a concatenation of grammemes
+   from ~11 preceding forms of the "зануда" paradigm, clearly
+   demonstrating the accumulation mechanism on real data with a large
+   number of forms. The word's and lemma's text weren't corrupted —
+   only the tag.
 
-**Масштаб**: практически весь словарь, импортированный из OpenCorpora
-(у существительных ~12 форм, у глаголов больше).
+**Scope**: essentially the entire OpenCorpora-imported dictionary
+(nouns have ~12 forms, verbs more).
 
-**Почему не было поймано тестами до находки**: на момент находки
-`import_test.go` не сверял содержимое тега с конкретной формой при
-2+ формах в лемме. Кроме того, сама фикстура `testDictXML` не
-соответствовала реальной схеме: граммемы леммы были записаны как
-атрибут (`<l g="NOUN,anim,masc,sing">`), тогда как реальный `dict.xml`
-хранит их как вложенные элементы (`<l t="ёж"><g v="NOUN"/>...</l>`), а
-`internal/xmlscan/dispatch.go` для тега `l` читает только атрибут `t`
-— атрибут `g` не читается никогда. Поэтому исправление тега потребовало
-сначала решить формат объединения граммем леммы и формы (порядок,
-дедуп), и только потом переписать фикстуру и regression-тест под
-финальное поведение — что и было сделано (см. «Фикс» ниже).
+**Why tests didn't catch this before the finding**: at the time of the
+finding, `import_test.go` didn't check the tag's content against a
+specific form when a lemma had 2+ forms. On top of that, the
+`testDictXML` fixture itself didn't match the real schema: lemma
+grammemes were written as an attribute (`<l g="NOUN,anim,masc,sing">`),
+whereas the real `dict.xml` stores them as nested elements
+(`<l t="ёж"><g v="NOUN"/>...</l>`), and `internal/xmlscan/dispatch.go`
+only reads the `t` attribute for the `l` tag — the `g` attribute is
+never read. So fixing the tag first required deciding the format for
+merging lemma and form grammemes (order, dedup), and only then
+rewriting the fixture and the regression test to match the final
+behavior — which is what was done (see "The fix" below).
 
-**Не исследовано, но упомянуто пользователем**: возможная «потеря лемм
-из opencorpora» — не идентифицировано, не обязательно связано с этим
-багом или с багом суффиксов (тот же открытый follow-up, что и выше).
+**Not investigated, but mentioned by the user**: a possible "loss of
+lemmas from opencorpora" — not identified, not necessarily related to
+this bug or the suffix bug (the same open follow-up as above).
 
-**Фикс** (процесс: brainstorming → спека → план →
-subagent-driven-development, по образцу фикса суффиксов):
-см. [2026-09-15-opencorpora-tag-fix-design.md](../superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md)
-и [2026-09-15-opencorpora-tag-fix.md](../superpowers/plans/2026-09-15-opencorpora-tag-fix.md).
-Корень бага — `</l>` (закрытие заголовка леммы) по ошибке вызывал
-событие, трактовавшееся как «конец леммы», и стирал собранные граммемы
-леммы до разбора хоть одной формы; событие переименовано
-(`OnLemma` → `OnLemmaHeadEnd`), сборка тега формы перенесена на
-`OnFormEnd` (вызывается после разбора всех `<g>` формы). Фикстура
-`testDictXML` переписана под реальную схему (`<g v="..."/>` вложенными
-элементами), добавлен regression-тест
-`TestImportFromXMLFormTagsCombineLemmaAndOwnGrammemes`, проверяющий
-итоговую строку тега на каждую форму, а не только факт отсутствия
-пустых тегов.
+**The fix** (process: brainstorming -> spec -> plan ->
+subagent-driven-development, modeled on the suffix fix): see
+[2026-09-15-opencorpora-tag-fix-design.md](../superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md)
+and [2026-09-15-opencorpora-tag-fix.md](../superpowers/plans/2026-09-15-opencorpora-tag-fix.md).
+The bug's root cause: `</l>` (closing the lemma's headword) mistakenly
+fired an event treated as "end of lemma," wiping the lemma's collected
+grammemes before even one form was parsed; the event was renamed
+(`OnLemma` -> `OnLemmaHeadEnd`), and assembling the form's tag was
+moved to `OnFormEnd` (called after all of a form's `<g>` tags are
+parsed). The `testDictXML` fixture was rewritten to match the real
+schema (`<g v="..."/>` as nested elements), and a regression test,
+`TestImportFromXMLFormTagsCombineLemmaAndOwnGrammemes`, was added,
+checking the final tag string for every form, not just the absence of empty tags.
 
-### Баг 2: дедупликация парадигм игнорировала теги (`paradigmKeyHash`)
+### Bug 2: paradigm deduplication ignored tags (`paradigmKeyHash`)
 
-Найден финальным ревью всей ветки — уже **после** того, как баг 1 был
-исправлен и помечен «ИСПРАВЛЕНО» — при прослеживании фикса до
-реального поиска словоформ. Это баг, существовавший в коде и до этой
-ветки (не внесён фиксом бага 1), но напрямую сводивший на нет эффект
-фикса бага 1 в реальных разборах, поэтому исправлен в той же ветке
-перед мержем.
+Found by the final review of the whole branch — already **after** bug
+1 had been fixed and marked "FIXED" — while tracing the fix down to
+real wordform lookups. This bug existed in the code before this
+branch too (not introduced by bug 1's fix), but it directly undid bug
+1's fix in real-world readings, so it was fixed in the same branch
+before merging.
 
-**Файл**: `pkg/morphology/importers/opencorpora/import.go`,
+**File**: `pkg/morphology/importers/opencorpora/import.go`,
 `paradigmKeyHash`.
 
-**Механизм**: функция строила ключ дедупликации парадигм, склеивая
-байты кодированных id суффиксов (`sk`) и id тегов (`tk`) в общий
-буфер, но вычисляла итоговую длину как `n = copy(...)` вместо
-`n += copy(...)` на второй строке — второе присваивание затирало, а не
-накапливало счётчик байт. Поскольку для вызова в `ImportFromXML`
-всегда верно `len(sk) == len(tk)`, оба присваивания численно совпадали,
-и `buf[:n]` тихо возвращал только байты суффиксов — байты тегов
-физически записывались в буфер по правильному смещению, но никогда не
-попадали в возвращаемую строку. Итог: `paradigmsDedup[hash]` —
-map, решающая, схлопывать ли парадигмы двух лемм в одну — ключевалась
-только по набору id суффиксов, полностью игнорируя id тегов. Две
-леммы с одинаковым набором суффиксов, но разными граммемами (например,
-одна NOUN,anim, другая NOUN,inan, обе с суффиксами `""`,`"а"`),
-схлопывались в одну сохранённую парадигму, и формы второй леммы тихо
-получали теги первой.
+**Mechanism**: the function built a paradigm-dedup key by concatenating
+the encoded suffix ids (`sk`) and tag ids (`tk`) bytes into a shared
+buffer, but computed the final length as `n = copy(...)` instead of
+`n += copy(...)` on the second line — the second assignment overwrote
+the byte counter instead of accumulating it. Since for the call site in
+`ImportFromXML`, `len(sk) == len(tk)` always holds, both assignments
+were numerically equal, and `buf[:n]` silently returned only the suffix
+bytes — the tag bytes were physically written into the buffer at the
+right offset, but never made it into the returned string. Result:
+`paradigmsDedup[hash]` — the map deciding whether to collapse two
+lemmas' paradigms into one — was keyed only on the suffix id set,
+completely ignoring the tag ids. Two lemmas with the same suffix set
+but different grammemes (e.g. one NOUN,anim, another NOUN,inan, both
+with suffixes `""`,`"а"`) collapsed into one stored paradigm, and the
+second lemma's forms silently got the first one's tags.
 
-**Масштаб**: любая пара лемм OpenCorpora с совпадающим набором
-суффиксов словоформ, но разными граммемами леммы или её форм — не
-редкость среди существительных, различающихся только одушевлённостью,
-родом и т. п. при одинаковой парадигме склонения.
+**Scope**: any pair of OpenCorpora lemmas with a matching wordform
+suffix set but different lemma or form grammemes — not rare among
+nouns that differ only in animacy, gender, etc. while sharing the same
+declension paradigm.
 
-**Почему не было поймано тестами**: `TestImportFromXMLParadigmsDedup`
-проверял только `len(d.Paradigms[0]) <= 3` — такая проверка пропускает
-именно чрезмерное схлопывание (симптом этого бага), а не ловит его.
-Regression-тест на теги форм (`TestImportFromXMLFormTagsCombineLemmaAndOwnGrammemes`,
-добавленный при фиксе бага 1) тоже не ловил это: он проверяет, что
-нужные строки тегов зарегистрированы в `d.TagSet.Tags`, но не что
-конкретное *слово* при поиске резолвится в *свой* тег — а именно это
-ломает баг дедупликации парадигм. Само по себе вычисление тега формы
-(`gramm` в `OnFormEnd`), которое чинил баг 1, было к этому моменту уже
-корректным — ломался более поздний шаг конвейера.
+**Why tests didn't catch this**: `TestImportFromXMLParadigmsDedup` only
+checked `len(d.Paradigms[0]) <= 3` — such a check misses exactly the
+excessive-collapse case (this bug's symptom), rather than catching it.
+The form-tags regression test
+(`TestImportFromXMLFormTagsCombineLemmaAndOwnGrammemes`, added when bug
+1 was fixed) didn't catch this either: it checks that the right tag
+strings are registered in `d.TagSet.Tags`, but not that a specific
+*word*, when looked up, resolves to *its own* tag — which is exactly
+what the paradigm-dedup bug breaks. The form-tag computation itself
+(`gramm` in `OnFormEnd`), which bug 1's fix addressed, was already
+correct by this point — a later pipeline step was broken.
 
-**Фикс**: `paradigmKeyHash` переписан на `n += copy(...)` (накопление
-вместо перезаписи); заодно фиксированный буфер `[1024]byte` заменён на
-буфер без произвольного предела (`make([]byte, 0, ...)` + `append`),
-чтобы переполнение буфера при очень большом числе форм в лемме не
-могло тихо повторить тот же класс бага в будущем. Фикстура
-`testDictXML` дополнена леммой «дом» (неодуш.) с тем же набором
-суффиксов, что и у леммы «кот» (сущ., одуш.), но другими граммемами —
-именно такая коллизия, которую пропускала старая хеш-функция.
-`TestImportFromXMLParadigmsDedup` заменён на точную проверку числа
-парадигм (`assert.Equal`, не `LessOrEqual` — точное число ловит и
-недостаточную, и избыточную дедупликацию). Добавлен сквозной
-regression-тест `TestImportFromXMLWordResolvesOwnLemmaTag`,
-резолвящий слово через DAWG-payload → парадигму → тег (а не просто
-проверяющий наличие строки тега где-то в `TagSet`) и проверяющий, что
-«дом» получает свой тег (`inan`), а не тег «кота» (`anim`).
+**The fix**: `paradigmKeyHash` was rewritten to `n += copy(...)`
+(accumulating instead of overwriting); while at it, the fixed
+`[1024]byte` buffer was replaced with an unbounded one
+(`make([]byte, 0, ...)` + `append`), so a buffer overflow with a very
+large number of forms in a lemma couldn't silently repeat the same bug
+class in the future. The `testDictXML` fixture gained a lemma "дом"
+(inanimate) with the same suffix set as the lemma "кот" (a noun,
+animate), but different grammemes — exactly the collision the old hash
+function missed. `TestImportFromXMLParadigmsDedup` was replaced with an
+exact check on the paradigm count (`assert.Equal`, not
+`LessOrEqual` — an exact count catches both insufficient and excessive
+dedup). An end-to-end regression test,
+`TestImportFromXMLWordResolvesOwnLemmaTag`, was added, resolving a word
+through the DAWG payload -> paradigm -> tag (rather than just checking
+that a tag string exists somewhere in `TagSet`) and checking that "дом"
+gets its own tag (`inan`), never "кот"'s tag (`anim`).
 
-Обе критические находки код-ревью перед 1.0.0 закрыты.
+Both critical findings from the pre-1.0.0 code review are closed.

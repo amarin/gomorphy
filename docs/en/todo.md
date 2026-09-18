@@ -1,409 +1,424 @@
-# План работ
+# Roadmap
 
-Этапы 0–15 выполнены. Подробности каждого этапа — в
-[implementation.md](implementation.md) и отдельных файлах в
-[implementation/](implementation/); там же — обоснование редизайна
-хранилища (этапы 11–18: CSR-trie + exact-hash + пары → парадигмы +
-DAWG) и внеплановые, но значимые находки и фичи, обнаруженные по ходу
-(ускорение сборки DAWG, исправление минимизации DAWG, критические баги
-пре-1.0-ревью, multi-dict, плотный DAWG-алфавит для pymorphy2,
-источник pymorphy2 в CLI, маппинг тегов между словарями).
+Stages 0-15 are done. Details for each stage are in
+[implementation.md](implementation.md) and the individual files under
+[implementation/](implementation/); the same place holds the storage
+redesign rationale (stages 11-18: CSR-trie + exact-hash + pairs ->
+paradigms + DAWG) and unplanned but significant findings and features
+discovered along the way (DAWG build speedup, DAWG minimization fix,
+critical pre-1.0 review bugs, multi-dict, the dense DAWG alphabet for
+pymorphy2, the pymorphy2 source in the CLI, tag mapping between
+dictionaries).
 
-Этот файл (`todo.md`) — только то, что ещё предстоит: текущий путь к
-версии 1.0.0, незавершённые/будущие этапы и нерешённые идеи. Всё
-выполненное — в `implementation/`, здесь не дублируется.
+This file (`todo.md`) is only what's still ahead: the current path to
+version 1.0.0, unfinished/future stages, and open ideas. Everything
+that's done lives in `implementation/` and isn't duplicated here.
 
-## Требования к оформлению
+## Formatting requirements
 
-Каждый этап — самостоятельный инкремент с проверяемым результатом.
-Любой агент может продолжить с места остановки: состояние репозитория после
-каждого этапа собирается (`go build ./...`), тесты этапа зелёные.
-Отмечать выполненное: `[x]`.
+Each stage is a self-contained increment with a verifiable result. Any
+agent can pick up where a previous one left off: after each stage the
+repository builds (`go build ./...`), and the stage's tests are green.
+Mark completed items with `[x]`.
 
-## Выполненные этапы
+## Completed stages
 
-Краткий статус с ссылками на подробности — сами описания в
-`implementation/`, здесь не повторяются.
+A short status with links to details — the write-ups themselves live in
+`implementation/` and aren't repeated here.
 
-| Этап | Статус | Подробности |
+| Stage | Status | Details |
 |---|---|---|
-| 0. Анализ и подготовка репозитория | ВЫПОЛНЕН | [implementation/stage-0-analysis.md](implementation/stage-0-analysis.md) |
-| 1. Примитивы формата (internal/format) | ВЫПОЛНЕН | [implementation/stage-1-format.md](implementation/stage-1-format.md) |
-| 2. Интернирование строк | ВЫПОЛНЕН | [implementation/stage-2-intern.md](implementation/stage-2-intern.md) |
-| 3. Сканер dict.xml (internal/xmlscan) | ВЫПОЛНЕН | [implementation/stage-3-xmlscan.md](implementation/stage-3-xmlscan.md) |
-| 4. Builder и CSR-структуры | ВЫПОЛНЕН | [implementation/stage-4-builder-csr.md](implementation/stage-4-builder-csr.md) |
-| 5. Компилятор и загрузчик файла | ВЫПОЛНЕН | [implementation/stage-5-compiler-loader.md](implementation/stage-5-compiler-loader.md) |
-| 6. Публичный фасад pkg/dictionary | ВЫПОЛНЕН | [implementation/stage-6-facade.md](implementation/stage-6-facade.md) |
-| 7. Интеграция с OpenCorpora end-to-end | ВЫПОЛНЕН | [implementation/stage-7-opencorpora.md](implementation/stage-7-opencorpora.md) |
-| 8. Поиск лемм FT5 | ВЫПОЛНЕН | [implementation/stage-8-lemmas.md](implementation/stage-8-lemmas.md) |
-| 9. Нечёткий поиск FT6 | ВЫПОЛНЕН | [implementation/stage-9-fuzzy.md](implementation/stage-9-fuzzy.md) |
-| 10. Финализация (первая реализация) | ВЫПОЛНЕН | [implementation/stage-10-finalize.md](implementation/stage-10-finalize.md) |
-| — (обоснование редизайна хранилища, этапы 11–18) | — | [implementation/redesign-rationale.md](implementation/redesign-rationale.md) |
-| 11. Внутренний формат: TagSet + Paradigm + DAWG reader | ВЫПОЛНЕН | [implementation/stage-11-internal-format.md](implementation/stage-11-internal-format.md) |
-| 12. Импорт PyMorphy2 | ВЫПОЛНЕН | [implementation/stage-12-import-pymorphy2.md](implementation/stage-12-import-pymorphy2.md) |
-| 13. Публичный API: Parse, Lemma, Fuzzy | ВЫПОЛНЕН | [implementation/stage-13-public-api.md](implementation/stage-13-public-api.md) |
-| 14. Сериализация: единый формат на диске | ВЫПОЛНЕН | [implementation/stage-14-serialization.md](implementation/stage-14-serialization.md) |
-| 15. Импорт OpenCorpora | ВЫПОЛНЕН | [implementation/stage-15-import-opencorpora.md](implementation/stage-15-import-opencorpora.md) |
-| — Ускорение сборки DAWG (free-list вместо O(n²)) | ВЫПОЛНЕНО | [implementation/dawg-freelist-optimization.md](implementation/dawg-freelist-optimization.md) |
-| — Исправление минимизации DAWG (баг в chainSig, ~29× к размеру `.dat`) | ВЫПОЛНЕНО | [implementation/dawg-minimization-fix.md](implementation/dawg-minimization-fix.md) |
-| 17. Сужение типов ID + формат-задел под сжатие + секция `info` | ЧАСТИЧНО (см. ниже) | [implementation/stage-17-optimize.md](implementation/stage-17-optimize.md), [implementation/info-section.md](implementation/info-section.md) |
-| — Ревью кода перед 1.0.0: разбор находок + оба критических бага (переполнение суффиксов, искажённые теги словоформ) | ВЫПОЛНЕНО | [implementation/code-review-pre-1.0-triage.md](implementation/code-review-pre-1.0-triage.md) |
-| — Multi-dict: `morphology.MultiDictionary` | ВЫПОЛНЕНО | [implementation/multi-dict.md](implementation/multi-dict.md) |
-| — Плотный 1-байтовый DAWG-алфавит для pymorphy2 `words.dawg` | ВЫПОЛНЕНО (частично, см. остаток backlog ниже) | [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md) |
-| — Источник pymorphy2 (`pkg/pymorphy`) + интеграция в CLI `gomorphy` | ВЫПОЛНЕНО | [implementation/pymorphy-source-and-cli.md](implementation/pymorphy-source-and-cli.md) |
-| — Универсальный маппинг тегов между словарями (`pkg/morphology/tagmap`, native → universal) | ВЫПОЛНЕНО (частично, см. остаток backlog ниже) | [implementation/tag-mapping.md](implementation/tag-mapping.md) |
-| — Этап 18 (документация + тесты + аудит godoc; CLI-часть закрыта отдельно, см. выше) | ВЫПОЛНЕНО 2026-09-17 | [implementation/stage-18-finalize.md](implementation/stage-18-finalize.md) |
+| 0. Repository analysis and preparation | DONE | [implementation/stage-0-analysis.md](implementation/stage-0-analysis.md) |
+| 1. Format primitives (internal/format) | DONE | [implementation/stage-1-format.md](implementation/stage-1-format.md) |
+| 2. String interning | DONE | [implementation/stage-2-intern.md](implementation/stage-2-intern.md) |
+| 3. dict.xml scanner (internal/xmlscan) | DONE | [implementation/stage-3-xmlscan.md](implementation/stage-3-xmlscan.md) |
+| 4. Builder and CSR structures | DONE | [implementation/stage-4-builder-csr.md](implementation/stage-4-builder-csr.md) |
+| 5. Compiler and file loader | DONE | [implementation/stage-5-compiler-loader.md](implementation/stage-5-compiler-loader.md) |
+| 6. Public facade pkg/dictionary | DONE | [implementation/stage-6-facade.md](implementation/stage-6-facade.md) |
+| 7. End-to-end OpenCorpora integration | DONE | [implementation/stage-7-opencorpora.md](implementation/stage-7-opencorpora.md) |
+| 8. FT5 lemma lookup | DONE | [implementation/stage-8-lemmas.md](implementation/stage-8-lemmas.md) |
+| 9. FT6 fuzzy search | DONE | [implementation/stage-9-fuzzy.md](implementation/stage-9-fuzzy.md) |
+| 10. Finalization (first implementation) | DONE | [implementation/stage-10-finalize.md](implementation/stage-10-finalize.md) |
+| — (storage redesign rationale, stages 11-18) | — | [implementation/redesign-rationale.md](implementation/redesign-rationale.md) |
+| 11. Internal format: TagSet + Paradigm + DAWG reader | DONE | [implementation/stage-11-internal-format.md](implementation/stage-11-internal-format.md) |
+| 12. PyMorphy2 import | DONE | [implementation/stage-12-import-pymorphy2.md](implementation/stage-12-import-pymorphy2.md) |
+| 13. Public API: Parse, Lemma, Fuzzy | DONE | [implementation/stage-13-public-api.md](implementation/stage-13-public-api.md) |
+| 14. Serialization: unified on-disk format | DONE | [implementation/stage-14-serialization.md](implementation/stage-14-serialization.md) |
+| 15. OpenCorpora import | DONE | [implementation/stage-15-import-opencorpora.md](implementation/stage-15-import-opencorpora.md) |
+| — DAWG build speedup (free list instead of O(n^2)) | DONE | [implementation/dawg-freelist-optimization.md](implementation/dawg-freelist-optimization.md) |
+| — DAWG minimization fix (chainSig bug, ~29x .dat size) | DONE | [implementation/dawg-minimization-fix.md](implementation/dawg-minimization-fix.md) |
+| 17. Narrowing ID types + format groundwork for compression + `info` section | PARTIAL (see below) | [implementation/stage-17-optimize.md](implementation/stage-17-optimize.md), [implementation/info-section.md](implementation/info-section.md) |
+| — Pre-1.0.0 code review: findings triage + both critical bugs (suffix overflow, corrupted wordform tags) | DONE | [implementation/code-review-pre-1.0-triage.md](implementation/code-review-pre-1.0-triage.md) |
+| — Multi-dict: `morphology.MultiDictionary` | DONE | [implementation/multi-dict.md](implementation/multi-dict.md) |
+| — Dense 1-byte DAWG alphabet for pymorphy2 `words.dawg` | DONE (partial, see remaining backlog below) | [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md) |
+| — pymorphy2 source (`pkg/pymorphy`) + integration into the `gomorphy` CLI | DONE | [implementation/pymorphy-source-and-cli.md](implementation/pymorphy-source-and-cli.md) |
+| — Universal tag mapping between dictionaries (`pkg/morphology/tagmap`, native -> universal) | DONE (partial, see remaining backlog below) | [implementation/tag-mapping.md](implementation/tag-mapping.md) |
+| — Stage 18 (documentation + tests + godoc audit; the CLI part was closed separately, see above) | DONE 2026-09-17 | [implementation/stage-18-finalize.md](implementation/stage-18-finalize.md) |
 
-## Незавершённые/будущие этапы
+## Unfinished/future stages
 
-### Этап 16. Импорт UniMorph — НЕ НАЧАТО
+### Stage 16. UniMorph import — NOT STARTED
 
-Импорт словаря UniMorph из TSV. Полный план — в
+Import a UniMorph dictionary from TSV. Full plan in
 [implementation/stage-16-import-unimorph.md](implementation/stage-16-import-unimorph.md)
-(готов к реализации, план не менялся). Не входит в путь к 1.0.0 (см.
-ниже) — приоритизация после релиза.
+(ready to implement, the plan hasn't changed). Not on the path to 1.0.0
+(see below) — prioritized after release.
 
-### Этап 17 — остаток: zstd-сжатие + два кандидата из анализа формата
+### Stage 17 — remainder: zstd compression + two candidates from the format analysis
 
-Сужение типов ID, формат-задел под сжатие и анализ плотности упаковки
-DAWG/кодирования `tagset` уже сделаны (см. таблицу выше,
+Narrowing ID types, format groundwork for compression, and the density
+analysis of DAWG packing/`tagset` encoding are already done (see the
+table above,
 [docs/research/0001-dawg-alphabet-density.md](research/0001-dawg-alphabet-density.md)
-и [docs/research/0002-paradigm-tagset-binary-encoding.md](research/0002-paradigm-tagset-binary-encoding.md)).
-Осталось — отдельные будущие задачи, **не блокирующие 1.0.0**, по
-приоритету:
+and [docs/research/0002-paradigm-tagset-binary-encoding.md](research/0002-paradigm-tagset-binary-encoding.md)).
+What's left — separate future tasks, **not blocking 1.0.0**, in priority
+order:
 
-1. zstd для холодных секций suffixes/prefixes/tagset/paradigms
-   (`klauspost/compress`, максимальный уровень сжатия).
-2. Плотный однобайтовый алфавит меток для `words.dawg` (вместо
-   побайтового UTF-8) — для pymorphy2 уже реализован как отдельная
-   фича, см. [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md)
-   и «Плотный алфавит: остаток backlog» ниже — для OpenCorpora-сборки
-   не начато.
-3. Словарь граммем + индексные списки вместо JSON для секции `tagset`
-   — найден эффект ~78.2% на секции (≈1.09% от всего файла) на реальном
-   словаре, без изменения горячего пути чтения. Меньше по эффекту, чем
-   п. 2, но без открытых вопросов о применимости — реализация
-   низкорискованная. Подробности — в
-   [implementation/stage-17-optimize.md](implementation/stage-17-optimize.md#анализ-кодирования-tagset--выполнено-есть-кандидат-в-backlog).
+1. zstd for the cold suffixes/prefixes/tagset/paradigms sections
+   (`klauspost/compress`, maximum compression level).
+2. A dense one-byte label alphabet for `words.dawg` (instead of
+   per-byte UTF-8) — already implemented for pymorphy2 as a separate
+   feature, see [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md)
+   and "Dense alphabet: remaining backlog" below — not started for the
+   OpenCorpora build.
+3. A grammeme dictionary + index lists instead of JSON for the `tagset`
+   section — found a ~78.2% effect on the section (~1.09% of the whole
+   file) on a real dictionary, with no change to the hot read path.
+   Smaller effect than item 2, but with no open applicability
+   questions — a low-risk implementation. Details in
+   [implementation/stage-17-optimize.md](implementation/stage-17-optimize.md#tagset-encoding-analysis--done-a-backlog-candidate-exists).
 
-Подробности и уже сделанное — в
+Details and what's already done are in
 [implementation/stage-17-optimize.md](implementation/stage-17-optimize.md).
 
-### Плотный алфавит: остаток backlog (не блокирует 1.0.0)
+### Dense alphabet: remaining backlog (not blocking 1.0.0)
 
-Для pymorphy2 `words.dawg` плотный 1-байтовый алфавит реализован (см.
-таблицу выше). Полная разбивка того, что сделано и что осталось — в
+For pymorphy2 `words.dawg`, the dense 1-byte alphabet is implemented
+(see the table above). The full breakdown of what's done and what's
+left is in
 [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md).
-Короткая сводка остатка, по приоритету:
+A short summary of what remains, in priority order:
 
-1. Сериализация `Alphabet` в `.dat` + поддержка в `Open()` — без неё
-   плотный словарь нужно пересобирать при каждом запуске
-   (`OpenPyMorphyDense` не даёт постоянного хранения).
-2. `fuzzy.go` — не работает для плотных словарей (`nil`), нужно
-   переосмыслить обход под фикс-ширину.
-3. `Prediction`/`Probability` DAWG — не исследованы под плотный алфавит.
-4. 2-байтовый алфавит в read-path — не тащится в `Open`/`Parse`; нужен
-   только реальному многоязычному потребителю, для которого multi-dict
-   (см. [implementation/multi-dict.md](implementation/multi-dict.md)) не подходит.
-5. CLI (`gomorphy`) — плотный словарь получить можно только через Go API.
+1. Serializing `Alphabet` into `.dat` + support in `Open()` — without
+   this, a dense dictionary must be rebuilt on every run
+   (`OpenPyMorphyDense` gives no persistent storage).
+2. `fuzzy.go` — doesn't work for dense dictionaries (`nil`); the
+   traversal needs to be rethought for fixed width.
+3. `Prediction`/`Probability` DAWGs — not investigated under a dense
+   alphabet.
+4. A 2-byte alphabet in the read path — not carried into `Open`/`Parse`;
+   only needed by a real multilingual consumer for whom multi-dict
+   (see [implementation/multi-dict.md](implementation/multi-dict.md)) doesn't fit.
+5. CLI (`gomorphy`) — a dense dictionary can only be obtained via the Go API.
 
-### Универсальный маппинг тегов: остаток backlog (не блокирует 1.0.0)
+### Universal tag mapping: remaining backlog (not blocking 1.0.0)
 
-Направление `native → universal` реализовано (см. таблицу выше). Два
-пункта, найденные при реализации, остаются отдельными будущими
-задачами — подробности в
+The `native -> universal` direction is implemented (see the table
+above). Two items found during implementation remain separate future
+tasks — details in
 [implementation/tag-mapping.md](implementation/tag-mapping.md):
 
-1. **`Unmap` (universal → native)** — нужен для экспорта словарей,
-   см. «Экспорт словарей» ниже; откладывался сознательно до появления
-   конкретного потребителя (неоднозначность обратного маппинга нужно
-   решать под конкретный экспортёр).
-2. **`TagSet.Name` недостижим из публичного API `pkg/morphology`** —
-   у `tagmap.Map`'у нужен `dictName`, а получить его снаружи пакета
-   сейчас нечем (`Dictionary` не экспортирует `TagSet`,
-   `BuildInfo.Source` — не заменитель, значения расходятся). Не мешает
-   сейчас (`tagmap` — никем не используемый leaf-пакет), но
-   первый пункт для любого реального потребителя `tagmap.Map` или для
-   экспорта.
+1. **`Unmap` (universal -> native)** — needed for dictionary export,
+   see "Dictionary export" below; deliberately deferred until a
+   concrete consumer appears (the ambiguity of the reverse mapping
+   needs to be resolved against a specific exporter).
+2. **`TagSet.Name` is unreachable from `pkg/morphology`'s public API** —
+   `tagmap.Map` needs a `dictName`, and there's currently no way to get
+   one from outside the package (`Dictionary` doesn't export `TagSet`,
+   and `BuildInfo.Source` isn't a substitute — their values diverge).
+   Doesn't block anything right now (`tagmap` is a leaf package nobody
+   uses yet), but it's the first item for any real consumer of
+   `tagmap.Map` or for export.
 
-### Экспорт словарей: pymorphy2 / OpenCorpora — НЕ НАЧАТО, оценка готова
+### Dictionary export: pymorphy2 / OpenCorpora — NOT STARTED, feasibility assessed
 
-Оценка реализуемости (без реализации) —
+Feasibility assessment (no implementation) —
 [docs/research/0008-dictionary-export-feasibility.md](research/0008-dictionary-export-feasibility.md).
-Рекомендованный порядок, если задача возьмётся в работу:
+Recommended order if this work is picked up:
 
-1. **pymorphy2-экспорт для словарей pymorphy2-происхождения (round-trip)**
-   — низкий риск, вся бинарная инфраструктура сериализации
-   (`DAWG.Bytes()`, `Paradigm.Data()`) уже существует и протестирована.
-   Самостоятельная задача, ничем не блокирована.
-2. **Универсальный экспорт (любой словарь → pymorphy2)** — блокирован
-   `tagmap.Unmap` (см. выше) и требует решения по шардированию суффиксов
-   и плотному алфавиту при экспорте словарей не pymorphy2-происхождения.
-3. **OpenCorpora XML-экспорт** — не рекомендуется как round-trip:
-   импорт необратимо склеивает граммемы леммы и формы в один тег,
-   метаданные схемы (id, `<links>`, ревизии) не хранятся в
-   `internal.Dictionary`. Если понадобится — специфицировать как
-   «экспорт в XML для чтения человеком/сторонними инструментами», не
-   как обратимую операцию.
+1. **pymorphy2 export for pymorphy2-origin dictionaries (round-trip)** —
+   low risk, all the serialization infrastructure (`DAWG.Bytes()`,
+   `Paradigm.Data()`) already exists and is tested. A self-contained
+   task, blocked by nothing.
+2. **Universal export (any dictionary -> pymorphy2)** — blocked by
+   `tagmap.Unmap` (see above) and needs a decision on suffix sharding
+   and the dense alphabet when exporting dictionaries not of
+   pymorphy2 origin.
+3. **OpenCorpora XML export** — not recommended as a round-trip: import
+   irreversibly merges lemma and form grammemes into a single tag, and
+   schema metadata (ids, `<links>`, revisions) isn't stored in
+   `internal.Dictionary`. If ever needed, specify it as "XML export for
+   human/third-party-tool reading," not as a reversible operation.
 
-## Путь к версии 1.0.0
+## Path to version 1.0.0
 
-Порядок до релиза (зафиксирован 2026-09-14, дополнен 2026-09-15/16):
+Release order (fixed on 2026-09-14, extended on 2026-09-15/16):
 
-1. ~~Формат: задел под расширяемое сжатие + секция info~~ — ВЫПОЛНЕНО.
-2. ~~Ревью кода перед 1.0.0 + разбор находок + оба критических бага
-   (переполнение суффиксов через шардирование, искажённые теги
-   OpenCorpora-словоформ включая баг дедупликации парадигм)~~ —
-   ВЫПОЛНЕНО, см. [implementation/code-review-pre-1.0-triage.md](implementation/code-review-pre-1.0-triage.md).
-3. ~~Фикс корня-в-суффиксе для сравнительной степени (`Cmp2`/«по-») +
-   руно-безопасный `lcp()`~~ — ВЫПОЛНЕНО, см.
+1. ~~Format: groundwork for extensible compression + info section~~ — DONE.
+2. ~~Pre-1.0.0 code review + findings triage + both critical bugs
+   (suffix overflow via sharding, corrupted OpenCorpora wordform tags
+   including the paradigm dedup bug)~~ —
+   DONE, see [implementation/code-review-pre-1.0-triage.md](implementation/code-review-pre-1.0-triage.md).
+3. ~~Fix for the root-in-suffix issue with the comparative degree
+   (`Cmp2`/"по-") + a rune-safe `lcp()`~~ — DONE, see
    [docs/research/0003-comparative-paradigms-not-merging.md](research/0003-comparative-paradigms-not-merging.md),
    [docs/superpowers/specs/2026-09-15-comparative-prefix-split-design.md](superpowers/specs/2026-09-15-comparative-prefix-split-design.md),
    [docs/superpowers/plans/2026-09-15-comparative-prefix-split.md](superpowers/plans/2026-09-15-comparative-prefix-split.md).
-   Реальный эффект: парадигмы shard 0 сократились с 17 934 до 3 245,
-   словарь теперь умещается в 1 шард вместо 2, доля невалидных UTF-8
-   суффиксов упала с 61.7% до 0%.
-4. ~~Поддержка нескольких параллельно открытых словарей (multi-dict)~~
-   — ВЫПОЛНЕНО 2026-09-16, см. [implementation/multi-dict.md](implementation/multi-dict.md).
-5. ~~Продакшн-внедрение плотного 1-байтового DAWG-алфавита~~ — для
-   pymorphy2 `words.dawg` ВЫПОЛНЕНО 2026-09-16, см.
+   Real effect: shard 0's paradigms shrank from 17,934 to 3,245, the
+   dictionary now fits in 1 shard instead of 2, and the share of
+   invalid UTF-8 suffixes dropped from 61.7% to 0%.
+4. ~~Support for several dictionaries open at once (multi-dict)~~ —
+   DONE 2026-09-16, see [implementation/multi-dict.md](implementation/multi-dict.md).
+5. ~~Production rollout of the dense 1-byte DAWG alphabet~~ — for
+   pymorphy2 `words.dawg`, DONE 2026-09-16, see
    [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md).
-   Остаток (`.dat`-сериализация алфавита, `fuzzy.go`,
-   `Prediction`/`Probability`) — в бэклоге, не блокирует 1.0.0, см.
-   «Плотный алфавит: остаток backlog» выше.
-6. ~~Груминг + редизайн CLI-команд~~ — ВЫПОЛНЕНО 2026-09-16 — единый
-   cobra-based бинарь `gomorphy` (`cmd/gomorphy_build` удалён), команды
+   The remainder (`.dat` serialization of the alphabet, `fuzzy.go`,
+   `Prediction`/`Probability`) is backlog, not blocking 1.0.0, see
+   "Dense alphabet: remaining backlog" above.
+6. ~~CLI grooming + redesign~~ — DONE 2026-09-16 — a single cobra-based
+   `gomorphy` binary (`cmd/gomorphy_build` removed), commands
    `lookup`/`lemmas`/`fuzzy`/`top`/`cli`/`download`/`unpack`/`build`/`update`/
-   `version`/`merge`(заглушка)/`split`(заглушка), `-d/--dictionary` всегда
-   через `MultiDictionary`, `$GOMORPHY_DICTIONARY`, `-v/-l` логирование. См.
+   `version`/`merge`(stub)/`split`(stub), `-d/--dictionary` always
+   goes through `MultiDictionary`, `$GOMORPHY_DICTIONARY`, `-v/-l`
+   logging. See
    `docs/superpowers/specs/2026-09-16-cli-redesign-design.md`,
-   `docs/superpowers/plans/2026-09-16-cli-redesign.md` и
+   `docs/superpowers/plans/2026-09-16-cli-redesign.md`, and
    [implementation/pymorphy-source-and-cli.md](implementation/pymorphy-source-and-cli.md).
-7. ~~Этап 18 (документация, тесты, метрики)~~ — ВЫПОЛНЕНО 2026-09-17,
-   см. [implementation/stage-18-finalize.md](implementation/stage-18-finalize.md).
-   CLI-часть была закрыта раньше, пунктом 6. Навык для агента и
-   `examples/` — сознательно вынесены из этого этапа, см. «Навык
-   использования словаря + examples» ниже.
-8. **Релиз 1.0.0 — следующий шаг, ничего не блокирует.**
+7. ~~Stage 18 (documentation, tests, metrics)~~ — DONE 2026-09-17,
+   see [implementation/stage-18-finalize.md](implementation/stage-18-finalize.md).
+   The CLI part was closed earlier, in item 6. The agent skill and
+   `examples/` were deliberately split out of this stage, see "Dictionary
+   usage skill + examples" below.
+8. **Release 1.0.0 — the next step, nothing blocks it.**
 
-Всё остальное (zstd-реализация из Этапа 17, Этап 16, Этап 19, Этап 20,
-остаток плотного алфавита, остаток маппинга тегов, экспорт словарей,
-навык + examples, Universal Dependencies) — в бэклог после 1.0.0,
-приоритизируется и уточняется отдельно перед стартом каждой задачи.
+Everything else (the zstd implementation from Stage 17, Stage 16, Stage
+19, Stage 20, the remaining dense-alphabet work, the remaining tag-mapping
+work, dictionary export, the skill + examples, Universal Dependencies) is
+backlog after 1.0.0, to be prioritized and refined separately before each
+task starts.
 
-### Навык использования словаря + `examples/` — НЕ НАЧАТО
+### Dictionary usage skill + `examples/` — NOT STARTED
 
-Вынесено из Этапа 18 (2026-09-17) как новый контент со своим дизайном,
-а не исправление документации:
+Split out of Stage 18 (2026-09-17) as new content with its own design,
+not a documentation fix:
 
-- `skills/use-dictionary/SKILL.md` — навык для агента: `lookup`/
-  `lemmas`/`fuzzy`/`top`, работа с несколькими `.dat` через `-d`,
-  интерактивный режим (`gomorphy cli`). Версионируется вместе с
-  библиотекой, копируется в конфигурацию агента. (Не путать с навыком
-  «тематический словарь» из Этапа 19 — этот про использование, тот про
-  создание словаря.)
-- `examples/` — минимальные Go-примеры для каждой точки входа
-  `pkg/morphology` (`Open`/`OpenPyMorphy`/`CompileFromXMLFile`/
+- `skills/use-dictionary/SKILL.md` — an agent skill: `lookup`/
+  `lemmas`/`fuzzy`/`top`, working with several `.dat` files via `-d`,
+  interactive mode (`gomorphy cli`). Versioned together with the
+  library, copied into the agent's configuration. (Not to be confused
+  with the "thematic dictionary" skill from Stage 19 — this one is
+  about using a dictionary, that one is about building one.)
+- `examples/` — minimal Go examples for each `pkg/morphology` entry
+  point (`Open`/`OpenPyMorphy`/`CompileFromXMLFile`/
   `Parse`/`MultiDictionary`).
 
-### Universal Dependencies как источник данных — открытые вопросы, включая конфликт с уже реализованным tag-mapping
+### Universal Dependencies as a data source — open questions, including a conflict with the already-implemented tag mapping
 
-Разведочное исследование: [docs/research/0007-universal-dependencies-import-plan.md](research/0007-universal-dependencies-import-plan.md).
-Три варианта применения UD: (A) полноценный импортёр в `.dat` — не
-рекомендован (низкая предельная ценность, риск лицензионной путаницы у
-части русских трибанков); (B) эталонный корпус для проверки точности
-`Parse()`; (C) готовая схема UD FEATS как целевая для универсального
-маппинга тегов между словарями.
+Exploratory research: [docs/research/0007-universal-dependencies-import-plan.md](research/0007-universal-dependencies-import-plan.md).
+Three ways to use UD: (A) a full importer into `.dat` — not
+recommended (low marginal value, licensing-confusion risk for some
+Russian treebanks); (B) a reference corpus for checking `Parse()`'s
+accuracy; (C) UD FEATS' ready-made schema as the target for universal
+tag mapping between dictionaries.
 
-**Обнаруженный конфликт (не был замечен до сегодняшней сверки
-документов)**: рекомендация исследования — начинать с варианта C, взяв
-**UD FEATS** как целевую схему маппинга. Реализованный 2026-09-17
-`pkg/morphology/tagmap` (см. [implementation/tag-mapping.md](implementation/tag-mapping.md))
-использует схему **UniMorph**, не UD FEATS — решение принято в отдельном
-brainstorming 2026-09-17 без сверки с этим исследованием (которое на тот
-момент не было учтено). Не факт, что это ошибка — у UniMorph тоже есть
-основания (уже был проанализирован формат, уже был референс в
-`docs/unimorph.md` §5.4) — но выбор между двумя схемами универсального
-тега сделан фактически по умолчанию, не осознанно. Открытый вопрос перед
-любым продолжением работы над маппингом тегов или экспортом словарей:
-пересматривать ли схему на UD FEATS, оставить UniMorph, или это
-не имеет значения на практике (обе — фиксированные внешние стандарты,
-конверсия между ними сама по себе не сложнее исходной задачи).
+**A conflict found (not noticed until today's cross-check of the
+documents)**: the research's recommendation is to start with variant C,
+taking **UD FEATS** as the target mapping schema. The `pkg/morphology/tagmap`
+implemented on 2026-09-17 (see [implementation/tag-mapping.md](implementation/tag-mapping.md))
+uses the **UniMorph** schema, not UD FEATS — a decision made in a
+separate brainstorming session on 2026-09-17 without cross-checking
+this research (which wasn't accounted for at the time). That's not
+necessarily a mistake — UniMorph has its own grounds too (its format
+was already analyzed, and it was already referenced in
+`docs/unimorph.md` §5.4) — but the choice between the two universal-tag
+schemas was effectively made by default, not deliberately. An open
+question before any further work on tag mapping or dictionary export:
+whether to switch the schema to UD FEATS, keep UniMorph, or whether it
+doesn't matter in practice (both are fixed external standards, and
+converting between them isn't any harder than the original task).
 
-Остальные открытые вопросы исследования (Q1–Q5: трибанк-эталон для
-варианта B, ручной vs программный маппинг, формат хранения тестовых
-CoNLL-U-файлов, нужен ли отдельный CoNLL-U-ридер) — не решены, ждут
-обсуждения с пользователем при выборе, браться ли за UD вообще.
+The research's other open questions (Q1-Q5: which treebank to use as
+the reference for variant B, manual vs. programmatic mapping, how to
+store test CoNLL-U files, whether a separate CoNLL-U reader is needed)
+are unresolved, awaiting discussion with the user on whether to take on
+UD at all.
 
-### Сравнение с альтернативными Go-реализациями — НЕ НАЧАТО
+### Comparison with alternative Go implementations — NOT STARTED
 
-На Go существует как минимум три других проекта морфологического
-анализа русского языка:
+There are at least three other Go projects for Russian morphological
+analysis:
 
 - [jus1d/gomorphy](https://github.com/jus1d/gomorphy)
 - [AlexMaxy/gomorphy](https://github.com/AlexMaxy/gomorphy)
 - [SteosOfficial/SteosMorphy](https://github.com/SteosOfficial/SteosMorphy)
 
-Задача: проанализировать реализации (архитектура, источник словарных
-данных, охват API — точный поиск/леммы/fuzzy/предсказание, формат
-хранения и его размер, производительность если есть бенчмарки,
-активность поддержки, лицензия) и сделать сравнение по плюсам/минусам/
-отличиям от gomorphy. Результат — таблица/раздел в README и/или
-отдельный документ (`docs/en/comparison.md`?), на который уже сейчас
-ссылается README из раздела «Related projects».
+Task: analyze these implementations (architecture, dictionary data
+source, API coverage — exact lookup/lemmas/fuzzy/prediction, storage
+format and its size, performance if benchmarks exist, maintenance
+activity, license) and produce a pros/cons/differences comparison
+against gomorphy. Result: a table/section in the README and/or a
+separate document (`docs/en/comparison.md`?), which the README's
+"Related projects" section already links to.
 
-## Этап 19. Тематические словари: TSV-импорт, CLI-батчи, навыки, решение по MCP — ЗАПЛАНИРОВАН
+## Stage 19. Thematic dictionaries: TSV import, CLI batches, skills, MCP decision — PLANNED
 
-**Сводка**: Сделать библиотеку и CLI удобным инструментом для создания
-**тематических словарей** программным агентом без внешних ресурсов (нет
-интернета, нет базового словаря OpenCorpora): подготовка набора словоформ в
-простом текстовом формате → импорт → `.dat`. Сопровождается навыком
-«тематический словарь» для агента (навык «использование словаря gomorphy» —
-в этапе 18) и зафиксированным решением не реализовывать MCP
-([docs/mcp.md](mcp.md)).
+**Summary**: Make the library and CLI a convenient tool for an agent to
+build **thematic dictionaries** with no external resources (no
+internet, no base OpenCorpora dictionary): preparing a set of
+wordforms in a simple text format -> import -> `.dat`. Comes with a
+"thematic dictionary" skill for the agent (the "using the gomorphy
+dictionary" skill is in Stage 18) and a settled decision not to
+implement an MCP server ([docs/mcp.md](mcp.md)).
 
-Формат строки — **TSV, третий столбец опционален**:
+Line format — **TSV, the third column is optional**:
 
 ```
-лемма<TAB>форма[<TAB>теги через запятую]
+lemma<TAB>form[<TAB>comma-separated tags]
 ```
 
-Ключевые свойства:
-- **Опциональные теги.** Третий столбец можно опускать: для тематического
-  словаря связь «форма → лемма» важнее граммематики. Без тегов агент не
-  тратит токены на подбор OpenCorpora-тегов.
-- **Opaque-теги.** Теги — произвольные строки, включая кастомные метки
-  пользователя (`разг`, `устар`, `флотск` и т.п.); регистрируются
-  автоматически как граммемы. Никакого маппинга на OpenCorpora-набор.
-- **Авто-лемма.** Пустая лемма → лемма := словоформа (неизменяемые формы).
-- **Дедупликация.** Повторы пары (форма, теги) в пределах леммы отбрасываются
-  Builder'ом.
+Key properties:
+- **Optional tags.** The third column can be omitted: for a thematic
+  dictionary, the "form -> lemma" link matters more than grammar. Without
+  tags, the agent doesn't spend tokens picking OpenCorpora tags.
+- **Opaque tags.** Tags are arbitrary strings, including custom user
+  labels (`colloquial`, `archaic`, `naval`, etc.); they're registered
+  automatically as grammemes. No mapping onto the OpenCorpora set at all.
+- **Auto-lemma.** An empty lemma means lemma := wordform (for
+  non-inflecting forms).
+- **Deduplication.** Repeated (form, tags) pairs within a lemma are
+  dropped by the Builder.
 
-**Инкремент**:
-- `pkg/morphology` (текущий фасад, FT8 Builder сохраняется и в новой
-  реализации):
+**Increment**:
+- `pkg/morphology` (the current facade, FT8 Builder is kept in the new
+  implementation too):
   - `import_tsv.go`: `ImportTSV(r io.Reader, opts Options) (*Dictionary, error)`,
-    `ImportTSVFile(path string, opts Options) (*Dictionary, error)` — потоковое
-    чтение `bufio.Scanner`, разбиение по `\t` на 2–3 поля → `AddLemma`/`AddForm`,
-    авторегистрация граммем, дедуп.
-  - `report.go`: отчёт импорта — число лемм/форм, леммы без тегов,
-    предупреждения о расходящихся стемах (LCP) и аномально коротких
-    парадигмах (замена внешней верификации в offline-сценарии).
+    `ImportTSVFile(path string, opts Options) (*Dictionary, error)` —
+    streaming `bufio.Scanner` reads, splitting on `\t` into 2-3 fields ->
+    `AddLemma`/`AddForm`, grammeme auto-registration, dedup.
+  - `report.go`: an import report — lemma/form counts, lemmas without
+    tags, warnings about diverging stems (LCP) and anomalously short
+    paradigms (a substitute for external verification in offline
+    scenarios).
 - CLI `cmd/gomorphy`:
   - `gomorphy import tsv <file> -o out.dict [--summary]`;
-  - **батч-режимы запросов**: `lookup`/`lemmas`/`fuzzy` принимают несколько
-    слов в аргументах или читают из stdin по одному слову на строку (аргумент
-    `-`); результаты — секции по слову. Батчинг закрывает главный источник
-    раздувания токенов у агента (см. [docs/mcp.md](mcp.md), §Токены).
-- Навык `skills/thematic-dictionary/SKILL.md` — «тематический словарь»
-  (оформляется как `SKILL.md` в репозитории, версионируется вместе с
-  библиотекой, копируется в конфигурацию агента): как подготовить TSV для
-  произвольной лексики (существительные, названия кораблей/областей,
-  изменяющиеся как прилагательные), таблицы парадигм, кастомные теги,
-  автономность без OpenCorpora, верификация через батч-`lookup` и отчёт
-  импорта. (Скилл «использование словаря gomorphy» — в этапе 18.)
-- Решение по MCP: [docs/mcp.md](mcp.md) — зафиксировать намерение не
-  реализовывать встроенный MCP-сервер с аргументацией (нет экономии токенов,
-  накладные расходы, закрывается CLI-батчами).
+  - **batch query modes**: `lookup`/`lemmas`/`fuzzy` accept several
+    words as arguments or read from stdin one word per line (the `-`
+    argument); results are sectioned by word. Batching closes the main
+    source of token bloat for an agent (see [docs/mcp.md](mcp.md), §Tokens).
+- Skill `skills/thematic-dictionary/SKILL.md` — "thematic dictionary"
+  (authored as a `SKILL.md` in the repository, versioned together with
+  the library, copied into the agent's configuration): how to prepare a
+  TSV for arbitrary vocabulary (nouns, ship/region names that inflect
+  like adjectives), paradigm tables, custom tags, working standalone
+  without OpenCorpora, verification via batch `lookup` and the import
+  report. (The "using the gomorphy dictionary" skill is in Stage 18.)
+- MCP decision: [docs/mcp.md](mcp.md) — record the intent not to
+  implement a built-in MCP server, with the reasoning (no token
+  savings, overhead, already covered by CLI batching).
 
-**Автоматические проверки (тесты)**:
-- unit: мини-TSV (5–10 лемм) → корректные леммы, формы, теги;
-- unit: опциональные теги, пустая лемма, кастомные теги, дедуп;
-- unit: отчёт импорта — счётчики и предупреждения;
-- roundtrip: `ImportTSV → SaveTo → Open → Lookup` идентичен прямому построению;
-- CLI: батч `lookup` по нескольким аргументам и по stdin;
-- `go test -race ./...` — зелёные.
+**Automated checks (tests)**:
+- unit: a mini TSV (5-10 lemmas) -> correct lemmas, forms, tags;
+- unit: optional tags, empty lemma, custom tags, dedup;
+- unit: import report — counters and warnings;
+- roundtrip: `ImportTSV -> SaveTo -> Open -> Lookup` identical to a
+  direct build;
+- CLI: batch `lookup` with several arguments and via stdin;
+- `go test -race ./...` — green.
 
-**Ручные проверки**:
-- `gomorphy import tsv names.tsv -o names.dict --summary` → `.dat` создан;
-- `gomorphy -dict names.dict lookup - < words.txt` → секции по слову;
-- прогон скилла «тематический словарь» через агента на примере «словарь
-  прилагательных-названий кораблей» без загруженного OpenCorpora.
+**Manual checks**:
+- `gomorphy import tsv names.tsv -o names.dict --summary` -> `.dat` created;
+- `gomorphy -dict names.dict lookup - < words.txt` -> sections per word;
+- run the "thematic dictionary" skill through an agent on the example
+  "a dictionary of ship-name adjectives" with no OpenCorpora loaded.
 
-## Этап 20. База синонимов: группы, теги, sidecar-файл — ЗАПЛАНИРОВАН (сценарии — открытый вопрос)
+## Stage 20. Synonym database: groups, tags, sidecar file — PLANNED (scenarios are an open question)
 
-**Сводка**: Рядом со словарём словоформ — отдельная база **синонимов и
-производных понятий** (sidecar-файл `.syn`). Задачи, которые она решает и
-которые не выводятся из словоформ:
+**Summary**: Alongside the wordform dictionary — a separate database of
+**synonyms and derived concepts** (sidecar file `.syn`). Problems it
+solves that can't be derived from wordforms:
 
-- «основное / официальное понятие»: топорище → топор, холодильник → холод;
-- «неканоническая форма → официальная»: Лёша → Алексей, Дима → Дмитрий,
-  Шурик → Александр (формы могут быть вообще не связаны по Левенштейну);
-- **обратный запрос** «все производные от базового понятия»: холод →
-  {холодильник, холодец, охлаждение}; Александр → {Саша, Шура, Шурик, Саня};
-- **m2m**: у леммы может быть несколько интерпретаций (Лёня → и Леонид,
-  и Алексей) — модель «групп» (clique), а не пар.
+- "the primary/official concept": axe handle -> axe, refrigerator -> cold;
+- "non-canonical form -> official form": Lyosha -> Alexey, Dima ->
+  Dmitry, Shurik -> Alexander (the forms may be entirely unrelated by
+  Levenshtein distance);
+- **reverse query** "all derivatives of a base concept": cold ->
+  {refrigerator, ice cream, cooling}; Alexander -> {Sasha, Shura, Shurik, Sanya};
+- **m2m**: a lemma can have several interpretations (Lyonya -> both
+  Leonid and Alexey) — a "group" (clique) model, not pairs.
 
-Связи достаточно задавать на уровне **лемм** (грамматические производные
-вроде «Шуриком от Александра» докручиваются в коде через `Lookup`).
+It's enough to define links at the **lemma** level (grammatical
+derivatives like "Shurikom from Alexander" are worked out in code
+through `Lookup`).
 
-**Гипотеза о применении (проверить сценариями)**: база синонимов рядом со
-словарём словоформ и словообразованием — или сама по себе — перспективна для
-задач обработки и генерации текстов: синонимическая замена, генерация
-вариантов, нормализация неканонических форм. Сценарии вырабатываются до
-реализации (см. «Открытые вопросы»).
+**Hypothesis about applicability (to be checked with scenarios)**: a
+synonym database alongside the wordform dictionary and word formation —
+or on its own — looks promising for text-processing and generation
+tasks: synonym substitution, generating variants, normalizing
+non-canonical forms. Scenarios are worked out before implementation
+(see "Open questions").
 
-### Теги разметки (требуется дальнейшее проектирование)
+### Tagging (needs further design)
 
-Внутри секций синонимов желательна разметка тегами, и набор тегов
-существенно зависит от домена слова:
+Tagging within synonym sections is desirable, and the tag set depends
+heavily on the word's domain:
 
-- для имён: «официальное», «просторечное», «ласкательное», «грубое»;
-- для инструментов: официальные названия, просторечные, местные/диалектные
-  и т.д.
+- for names: "official", "colloquial", "affectionate", "coarse";
+- for tools: official names, colloquial names, local/dialectal names, etc.
 
-Поэтому этап **не фиксирует набор тегов**: теги задаются пользователем как
-opaque-граммемы (аналогично тематическим словарям, этап 19) и регистрируются
-при импорте.
+So this stage **doesn't fix a tag set**: tags are supplied by the user
+as opaque grammemes (like the thematic dictionaries in Stage 19) and
+registered on import.
 
-**Открытые вопросы (проработать до реализации, помечено в плане)**:
-- семантика тегов: набор задаёт библиотека или пользователь; обязательны ли
-  они; размечают группу целиком или отдельных участников;
-- домен-специфичность наборов тегов (имена vs инструменты) — как её
-  моделировать без жёстких предопределённых списков;
-- ключ синонимов: текст леммы (просто, омонимия смешивается) vs `LemmaID`
-  (точно, но привязка к версии `.dat`);
-- хранилище: sidecar `.syn` (независимое обновление, не требует пересборки
-  большого словаря) vs секция в `.dat` (пересборка при каждой правке
-  синонимов) — предпочтителен sidecar;
-- совместный и standalone-режимы: вход через существующие `Lookup`/`Lemmas`
-  при наличии словаря, либо прямые запросы по ключу без словаря.
+**Open questions (to work out before implementation, flagged in the plan)**:
+- tag semantics: is the set defined by the library or the user; are
+  tags mandatory; do they mark the whole group or individual members;
+- domain-specificity of tag sets (names vs. tools) — how to model this
+  without rigid predefined lists;
+- the synonym key: lemma text (simple, but mixes in homonymy) vs.
+  `LemmaID` (precise, but tied to a `.dat` version);
+- storage: a sidecar `.syn` (updates independently, no need to rebuild
+  the large dictionary) vs. a section in `.dat` (rebuild on every
+  synonym edit) — sidecar is preferred;
+- combined and standalone modes: entry through the existing
+  `Lookup`/`Lemmas` when a dictionary is present, or direct key lookups
+  with no dictionary.
 
-**Инкремент** (уточняется после проработки сценариев):
-- пакет `pkg/synonyms`:
-  - модель «групп»: лемма → []id групп; группа → []участников + опциональные
-    теги (opaque-граммемы);
-  - импорт TSV `группа<TAB>лемма[<TAB>теги]` (переиспользование схемы импорта
-    этапа 19), дедуп, авторегистрация тегов;
-  - сериализация в компактный sidecar-файл (varint-массивы, xxh3, mmap);
-  - API: `Synonyms(lemma)`, `Derivations(lemma)`; при наличии словаря — вход
-    через `Lookup`;
+**Increment** (to be refined once scenarios are worked out):
+- package `pkg/synonyms`:
+  - a "group" model: lemma -> []group ids; group -> []members +
+    optional tags (opaque grammemes);
+  - TSV import `group<TAB>lemma[<TAB>tags]` (reusing Stage 19's import
+    scheme), dedup, tag auto-registration;
+  - serialization into a compact sidecar file (varint arrays, xxh3, mmap);
+  - API: `Synonyms(lemma)`, `Derivations(lemma)`; entry through `Lookup`
+    when a dictionary is present;
   - CLI: `gomorphy import synonyms <file> -o dict.syn`,
     `gomorphy -dict dict.dat synonyms <word>`, `derivations <word>`;
-    standalone-режим без `-dict`.
+    a standalone mode with no `-dict`.
 
-**Автоматические проверки (тесты)**:
-- unit: m2m (Лёня → {Леонид, Алексей});
-- unit: обратный запрос «производные от базового понятия» (холод → …);
-- unit: импорт с тегами (именительный набор / доменный набор), дедуп;
-- roundtrip: `import → SaveTo → Open → Synonyms/Derivations` идентичен
-  прямому построению;
-- интеграция: словоформа → `Lookup` → лемма → `Synonyms`;
-- `go test -race ./...` — зелёные.
+**Automated checks (tests)**:
+- unit: m2m (Lyonya -> {Leonid, Alexey});
+- unit: reverse query "derivatives of a base concept" (cold -> ...);
+- unit: import with tags (a nominal set / a domain set), dedup;
+- roundtrip: `import -> SaveTo -> Open -> Synonyms/Derivations` identical
+  to a direct build;
+- integration: wordform -> `Lookup` -> lemma -> `Synonyms`;
+- `go test -race ./...` — green.
 
-**Ручные проверки**:
-- пример на именах: «Лёша → Алексей», «Шурик → Александр», обратный
-  «Александр → {Саша, Шура, Шурик, Саня}»;
-- пример на инструментах с доменным набором тегов;
-- standalone-режим без загруженного словаря словоформ.
+**Manual checks**:
+- an example with names: "Lyosha -> Alexey", "Shurik -> Alexander", the
+  reverse "Alexander -> {Sasha, Shura, Shurik, Sanya}";
+- an example with tools using a domain tag set;
+- standalone mode with no wordform dictionary loaded.
 
-## Windows: нативный mmap — ЗАПЛАНИРОВАНО (post-1.0 backlog)
+## Windows: native mmap — PLANNED (post-1.0 backlog)
 
-`internal/mmapx` собирается на Windows (`go build` не падает — см. ревью
-перед 1.0.0), но `Open` там возвращает ошибку «not supported on windows
-yet»: реализация читает файл только через `syscall.Mmap`/`MAP_PRIVATE`
-(Unix-only). Задача — добавить `internal/mmapx/mmap_windows.go` через
-`golang.org/x/sys/windows` (`CreateFileMapping`/`MapViewOfFile`), покрыть
-тем же контрактом (`Open`/`Bytes`/`Len`/`Close`), проверить на реальной
-Windows-машине (CI или вручную) — кросс-компиляция без вменяемого теста
-самой мапы недостаточна.
+`internal/mmapx` builds on Windows (`go build` doesn't fail — see the
+pre-1.0.0 review), but `Open` there returns a "not supported on windows
+yet" error: the implementation only reads the file via
+`syscall.Mmap`/`MAP_PRIVATE` (Unix-only). Task: add
+`internal/mmapx/mmap_windows.go` via `golang.org/x/sys/windows`
+(`CreateFileMapping`/`MapViewOfFile`), covering the same contract
+(`Open`/`Bytes`/`Len`/`Close`), and verify it on a real Windows machine
+(CI or by hand) — cross-compilation with no real test of the mapping
+itself isn't enough.

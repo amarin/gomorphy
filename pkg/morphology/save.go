@@ -7,10 +7,10 @@ import (
 	"github.com/amarin/gomorphy/pkg/morphology/internal"
 )
 
-// SaveTo записывает словарь в файл GMOR — единый дисковый формат.
-// Секции: meta, info, tagset, prefixes, suffixes-N, paradigms-N,
-// words.dawg-N (по одному набору на шард, N от 0), prediction-N,
-// probability (если есть).
+// SaveTo writes the dictionary to a GMOR file — the single on-disk format.
+// Sections: meta, info, tagset, prefixes, suffixes-N, paradigms-N,
+// words.dawg-N (one set per shard, N starting at 0), prediction-N,
+// probability (if present).
 func (x *Dictionary) SaveTo(path string) error {
 	if x == nil || x.d == nil {
 		return fmt.Errorf("morphology: nil dictionary")
@@ -23,9 +23,9 @@ func (x *Dictionary) SaveTo(path string) error {
 			"2026-09-16-pymorphy2-dense-recompile-design.md's non-goals")
 	}
 
-	// info — копия x.d.Info (если импортёр её заполнил, например Source),
-	// с BuiltAt/LibraryVersion, проставленными заново при каждом
-	// сохранении; сам x.d не мутируется (Dictionary иммутабелен).
+	// info is a copy of x.d.Info (if an importer populated it, e.g.
+	// Source), with BuiltAt/LibraryVersion set anew on every save; x.d
+	// itself is not mutated (Dictionary is immutable).
 	info := internal.BuildInfo{}
 	if x.d.Info != nil {
 		info = *x.d.Info
@@ -33,10 +33,11 @@ func (x *Dictionary) SaveTo(path string) error {
 	info.BuiltAt = time.Now().UTC()
 	info.LibraryVersion = Version
 
-	// Сжатие пока не реализовано (см. docs/todo.md, "Этап 17") — все секции
-	// пишутся как есть. words.dawg-N всегда останется CompressionNone: она
-	// алиасится из mmap без копирования, а сжатая секция требует полной
-	// декомпрессии в память при загрузке.
+	// Compression is not yet implemented (see docs/en/todo.md, "Stage 17")
+	// — all sections are written as-is. words.dawg-N will always stay
+	// CompressionNone: it is aliased from mmap without copying, while a
+	// compressed section would require full decompression into memory on
+	// load.
 	const noCompression = internal.CompressionNone
 	sections := []internal.Section{
 		{Name: "meta", Data: internal.EncodeMeta(x.d.Language, x.d.CharPolicy), Flags: noCompression},

@@ -1,81 +1,86 @@
-# Ревью кода перед 1.0.0
+# Pre-1.0.0 code review
 
-Дата: 2026-09-14. Объём: вся кодовая база (`cmd/`, `internal/`, `pkg/`),
-~4850 строк прод-кода + ~3025 строк тестов. Общее покрытие тестами —
-65.8% (`go test ./... -cover`); подробности по пакетам — в разделе
-«Тестовое покрытие» ниже.
+Date: 2026-09-14. Scope: the entire codebase (`cmd/`, `internal/`,
+`pkg/`), ~4850 lines of production code + ~3025 lines of tests. Overall
+test coverage — 65.8% (`go test ./... -cover`); per-package details are
+in the "Test coverage" section below.
 
-Часть находок исправлена по ходу ревью (безопасные, механические правки
-— см. «Исправлено по ходу»); остальные — решения по каждой принимает
-пользователь отдельно, как и договаривались.
+Some findings were fixed along the way during the review (safe,
+mechanical fixes — see "Fixed along the way"); the rest are decided on
+a per-finding basis by the user separately, as agreed.
 
-## 🔴 Критическая находка (обнаружена при последующей работе над отчётом, 2026-09-14): суффиксов больше, чем вмещает uint16
+## 🔴 Critical finding (found during follow-up work on this report, 2026-09-14): more suffixes than fit in a uint16
 
-**Файлы**: `pkg/morphology/importers/opencorpora/import.go` (сборка
-`suffixList`), `pkg/morphology/internal/paradigm.go` (формат `Paradigm` —
-суффиксы адресуются `uint16`).
+**Files**: `pkg/morphology/importers/opencorpora/import.go` (building
+`suffixList`), `pkg/morphology/internal/paradigm.go` (the `Paradigm`
+format — suffixes are addressed by `uint16`).
 
-При работе над находкой «id присваивается без проверки на переполнение»
-(раздел «Баги / edge cases» ниже) добавлена явная проверка на 65536
-уникальных суффиксов — и она **сработала на реальном `dict.xml`**, а не
-только гипотетически:
+While working on the "an id is assigned with no overflow check" finding
+(the "Bugs / edge cases" section below), an explicit check for 65,536
+unique suffixes was added — and it **triggered on the real
+`dict.xml`**, not just hypothetically:
 
 ```
 lemmas=391842  suffixes=65835  paradigms=16939  tags=3437
 ```
 
-`suffixes=65835` — на 299 больше вместимости `uint16` (0..65535).
-Формулировка предыдущей оценки в этом отчёте («Сегодня с запасом (реально
-~1K/5K/3K)», см. раздел про id-переполнение) была ошибочной — не измерялась
-на полном `dict.xml`.
+`suffixes=65835` is 299 over a `uint16`'s capacity (0..65535). This
+report's earlier estimate ("comfortable margin today (actually
+~1K/5K/3K)", see the section on id overflow) was wrong — it wasn't
+measured against the full `dict.xml`.
 
-**Последствие без проверки** (код до этой находки): `sid :=
-uint16(len(suffixList))` при достижении 65536-й уникальной суффиксной
-строки тихо оборачивается в `0` — новый суффикс получает id, совпадающий с
-id самого первого зарегистрированного суффикса. Все парадигмы, ссылающиеся
-на суффиксы с id ≥ 65536 (299 суффиксов), молча указывают не на тот текст.
-Это происходит **при обычной сборке словаря из текущего `dict.xml`**, без
-каких-либо специальных условий — не future-proofing, а активный баг.
+**Consequence with no check** (the code before this finding): `sid :=
+uint16(len(suffixList))`, on reaching the 65,536th unique suffix
+string, silently wraps to `0` — the new suffix gets an id colliding with
+the very first registered suffix's id. Every paradigm referencing a
+suffix with id >= 65536 (299 suffixes) silently points to the wrong
+text. This happens **during an ordinary build of the dictionary from
+the current `dict.xml`**, with no special conditions at all — not
+future-proofing, an active bug.
 
-**Текущее состояние (после находки)**: добавлена явная проверка (`if
-len(suffixList) >= 1<<16 { return error }`), которая превращает тихую
-порчу данных в громкую ошибку — `gomorphy_build compile` на текущем
-`dict.xml` теперь **не собирается вовсе** с ошибкой `too many unique
-suffixes (max 65536)`. Это осознанный компромисс: честная ошибка лучше
-тихого повреждения, но релиз 1.0.0 сейчас не может собрать полный словарь
-из официального экспорта OpenCorpora.
+**Current state (after the finding)**: an explicit check was added
+(`if len(suffixList) >= 1<<16 { return error }`), turning silent data
+corruption into a loud error — `gomorphy_build compile` on the current
+`dict.xml` now **doesn't build at all**, failing with `too many unique
+suffixes (max 65536)`. This is a deliberate tradeoff: an honest error
+is better than silent corruption, but the 1.0.0 release currently
+can't build the full dictionary from OpenCorpora's official export.
 
-**Не исправлено сейчас** — решение по подходу и груминг задачи в
-`docs/todo.md` (см. «Суффиксы: расширение адресации» в бэклоге). Варианты
-для обсуждения: переменный размер индекса (`uint16`/`uint32` по факту
-данных, с флагом формата), автоматическое разбиение словаря на несколько
-DAWG-сегментов с параллельным поиском по ним, либо что-то ещё.
+**Not fixed right now** — the approach and grooming this task in
+`docs/en/todo.md` is a decision to make (see "Suffixes: widening the
+addressing" in the backlog). Options to discuss: a variable-size index
+(`uint16`/`uint32` chosen based on the actual data, with a format
+flag), automatically splitting the dictionary into several DAWG
+segments searched in parallel, or something else.
 
-**Независимо** от уже известного критического бага с тегами
-OpenCorpora-словоформ (ниже) — обе находки release-blocking, но про разные
-части конвейера импорта (граммемы форм vs адресация суффиксов).
+**Independently** of the already-known critical tag bug for
+OpenCorpora wordforms (below) — both findings are release-blocking, but
+concern different parts of the import pipeline (form grammemes vs.
+suffix addressing).
 
-## 🔴 Критическая находка: теги OpenCorpora-словоформ перепутаны
+## 🔴 Critical finding: OpenCorpora wordform tags are scrambled
 
-**Статус на 2026-09-14 (после разбора остальных находок отчёта)**: не
-исправлено, остаётся единственным открытым критическим блокером релиза
-(второй критический баг, про переполнение суффиксов выше, — исправлен
-шардированием, см. [implementation/code-review-pre-1.0-triage.md](implementation/code-review-pre-1.0-triage.md)
-и самодостаточное описание в [todo.md](todo.md)). Номера строк ниже
-сместились из-за последующего рефакторинга (сама логика бага не
-менялась) — актуальную строку `OnForm` смотреть через
+**Status as of 2026-09-14 (after triaging the report's other
+findings)**: not fixed, remains the only open critical release
+blocker (the second critical bug, the suffix overflow above, was fixed
+via sharding, see
+[implementation/code-review-pre-1.0-triage.md](implementation/code-review-pre-1.0-triage.md)
+and the self-contained writeup in [todo.md](todo.md)). The line
+numbers below have since shifted due to later refactoring (the bug's
+own logic didn't change) — check `OnForm`'s current line via
 `grep -n "func (h \*xmlHandler) OnForm" pkg/morphology/importers/opencorpora/import.go`
-(на 2026-09-14 — около 302).
+(around line 302 as of 2026-09-14).
 
-**Файл**: `pkg/morphology/importers/opencorpora/import.go:225-235` (`xmlHandler.OnForm`) — номера строк на момент первого обнаружения бага
+**File**: `pkg/morphology/importers/opencorpora/import.go:225-235`
+(`xmlHandler.OnForm`) — line numbers as of when the bug was first found
 
-При импорте `dict.xml` грамматический тег словоформы (`gramm`) фиксируется
-**в момент открытия** тега `<f t="...">`:
+When importing `dict.xml`, a wordform's grammatical tag (`gramm`) is
+captured **at the moment** the `<f t="...">` tag opens:
 
 ```go
 func (h *xmlHandler) OnForm(text []byte) error {
     ...
-    gramm := strings.Join(h.curGrams, ",")   // ← снимок ДО разбора <g> этой формы
+    gramm := strings.Join(h.curGrams, ",")   // <- a snapshot taken BEFORE this form's <g> tags are parsed
     frm := formGrams{text: string(text), gramm: gramm}
     lem.forms = append(lem.forms, frm)
     h.curForm = &lem.forms[len(lem.forms)-1]
@@ -83,101 +88,104 @@ func (h *xmlHandler) OnForm(text []byte) error {
 }
 ```
 
-Но собственные `<g v="..."/>` формы идут в XML **после** открывающего
-`<f t="...">` (реальная схема dict.xml: `<f t="ежа"><g v="sing"/><g
-v="gent"/></f>`), а `h.curGrams` **не сбрасывается между формами одной
-леммы** (сброс — только в `OnLemma`/`OnLemmaEnd`, т.е. на границах лемм).
-В результате каждая форма получает не свои граммемы, а накопленную смесь
-граммем ВСЕХ предыдущих форм этой леммы; первая форма — пустой тег.
+But a form's own `<g v="..."/>` tags come in the XML **after** the
+opening `<f t="...">` (the real dict.xml schema: `<f t="ежа"><g
+v="sing"/><g v="gent"/></f>`), and `h.curGrams` **isn't reset between
+forms within one lemma** (it's only reset in
+`OnLemma`/`OnLemmaEnd`, i.e. at lemma boundaries). As a result, every
+form gets not its own grammemes, but an accumulated mix of ALL
+preceding forms' grammemes in that lemma; the first form gets an empty
+tag.
 
-**Подтверждено эмпирически** на фрагменте реальной схемы dict.xml
-(`<lemma><l t="ёж"><g.../></l><f t="ёж"><g v="sing"/><g v="nomn"/></f><f
-t="ежа"><g v="sing"/><g v="gent"/></f><f t="ежу"><g v="sing"/><g
-v="datv"/></f></lemma>`):
+**Confirmed empirically** against a fragment of the real dict.xml
+schema (`<lemma><l t="ёж"><g.../></l><f t="ёж"><g v="sing"/><g
+v="nomn"/></f><f t="ежа"><g v="sing"/><g v="gent"/></f><f t="ежу"><g
+v="sing"/><g v="datv"/></f></lemma>`):
 
-| Форма | Должно быть | Реально получено |
+| Form | Should be | Actually got |
 |---|---|---|
-| ёж (им.п.) | `sing,nomn` | `""` (пусто) |
-| ежа (род.п.) | `sing,gent` | `sing,nomn` |
-| ежу (дат.п.) | `sing,datv` | `sing,nomn,sing,gent` |
+| ёж (nominative) | `sing,nomn` | `""` (empty) |
+| ежа (genitive) | `sing,gent` | `sing,nomn` |
+| ежу (dative) | `sing,datv` | `sing,nomn,sing,gent` |
 
-Это объясняет замеченную ранее в сессии аномалию:
-`gomorphy lookup кота` → тег `sing,nomn` (это тег формы «кот», а не
-родительного падежа «кота»).
+This explains an anomaly noticed earlier in the session: `gomorphy
+lookup кота` -> the tag `sing,nomn` (that's the form "кот"'s tag, not
+the genitive "кота"'s).
 
-**Второе независимое подтверждение** (2026-09-14, ручная проверка на
-реальном, полностью пересобранном `.data/opencorpora/opencorpora.dat`,
-уже после фикса переполнения суффиксов — т.е. это не артефакт того
-бага, а тот же баг с тегами на боевых данных):
+**A second, independent confirmation** (2026-09-14, a manual check
+against a real, fully rebuilt `.data/opencorpora/opencorpora.dat`,
+after the suffix-overflow fix — i.e. this isn't an artifact of that
+bug, but the same tag bug on production data):
 
 ```
 $ gomorphy -dict .data/opencorpora/opencorpora.dat lookup занудами
 занудами  зануда  sing,nomn,sing,gent,sing,datv,sing,accs,sing,ablt,sing,ablt,V-oy,sing,loct,plur,nomn,plur,gent,plur,datv,plur,accs  para#0/23
 ```
 
-Тег — конкатенация граммем ~11 предыдущих форм парадигмы «зануда»
-(должно быть `plur,ablt` — твор.п. мн.ч.). Слово и лемма верны, тег
-искажён ровно по описанному выше механизму, только на существительном
-с большим числом форм (sing+plur × nomn/gent/datv/accs/ablt/loct) видно
-особенно наглядно.
+The tag is a concatenation of ~11 preceding forms' grammemes from the
+"зануда" paradigm (should be `plur,ablt` — instrumental plural). The
+word and lemma are correct, the tag is corrupted by exactly the
+mechanism described above — it's just especially visible on a noun
+with a large number of forms (sing+plur x nomn/gent/datv/accs/ablt/loct).
 
-**Второй, связанный дефект**: собственные граммемы `<l>` (часть речи,
-одушевлённость, род — общие для всех форм леммы, например
-`<l t="ёж"><g v="NOUN"/><g v="anim"/><g v="masc"/></l>`) накапливаются в
-`h.curGrams`, но `OnLemmaEnd` сбрасывает `curGrams` раньше, чем до них
-доходит очередь у первой формы — эти граммемы **никогда не попадают ни в
-один тег**. Отсюда теги вида `sing,nomn` вместо ожидаемого
-`NOUN,anim,masc,sing,nomn`.
+**A second, related defect**: the `<l>` element's own grammemes (part
+of speech, animacy, gender — shared across all of a lemma's forms,
+e.g. `<l t="ёж"><g v="NOUN"/><g v="anim"/><g v="masc"/></l>`)
+accumulate into `h.curGrams`, but `OnLemmaEnd` resets `curGrams` before
+the first form even gets to them — these grammemes **never make it
+into any tag at all**. Hence tags like `sing,nomn` instead of the
+expected `NOUN,anim,masc,sing,nomn`.
 
-**Почему не поймано тестами**: `import_test.go` проверяет только
-структуру результата (непустой `TagSet`, находимость слова в DAWG,
-`len(Paradigms) <= len(лемм)`) — ни один тест не сверяет содержимое тега
-с конкретной формой при 2+ формах в лемме.
+**Why tests didn't catch this**: `import_test.go` only checks the
+result's structure (a non-empty `TagSet`, the word being findable in
+the DAWG, `len(Paradigms) <= len(lemmas)`) — no test checks a tag's
+content against a specific form when a lemma has 2+ forms.
 
-**Важно для будущего фикса — фикстура теста сама не соответствует
-реальной схеме**: `testDictXML` в `import_test.go` пишет граммемы леммы
-как атрибут — `<l g="NOUN,anim,masc,sing">` — а реальный `dict.xml`
-хранит их как вложенные элементы — `<l t="ёж"><g v="NOUN"/><g
-v="anim"/><g v="masc"/></l>` (проверено на `.data/opencorpora/dict.xml`).
-`internal/xmlscan/dispatch.go` для тега `l` читает только атрибут `t`
-(`s.attr("t")`) — атрибут `g` никогда не читается ни в каком виде. То
-есть в текущей фикстуре ветка «граммемы леммы» вообще не задействует
-реальный код (мертва по отношению к тестируемой логике), и просто
-переписать фикстуру на нужную схему недостаточно — сначала нужно решить
-формат объединения лемма+форма (см. выше), потом уже писать фикстуру и
-регрессионный тест под финальное поведение.
+**Important for a future fix — the test fixture itself doesn't match
+the real schema**: `testDictXML` in `import_test.go` writes lemma
+grammemes as an attribute — `<l g="NOUN,anim,masc,sing">` — while the
+real `dict.xml` stores them as nested elements — `<l t="ёж"><g
+v="NOUN"/><g v="anim"/><g v="masc"/></l>` (verified against
+`.data/opencorpora/dict.xml`). For the `l` tag,
+`internal/xmlscan/dispatch.go` only reads the `t` attribute
+(`s.attr("t")`) — the `g` attribute is never read at all. So in the
+current fixture, the "lemma grammemes" branch never exercises the real
+code path at all (dead relative to the logic under test), and simply
+rewriting the fixture to the right schema isn't enough — the format for
+merging lemma+form grammemes (see above) needs to be decided first,
+and only then should the fixture and regression test be written to
+match the final behavior.
 
-**Масштаб**: затрагивает практически все словоформы, импортированные из
-OpenCorpora (у существительных ~12 форм, у глаголов больше) — то есть
-основной источник данных библиотеки. Слово и лемма (сам текст) не
-страдают — искажён именно грамматический тег.
+**Scope**: affects practically every wordform imported from
+OpenCorpora (nouns have ~12 forms, verbs more) — i.e. the library's
+main data source. The word and lemma (the text itself) aren't
+affected — it's specifically the grammatical tag that's corrupted.
 
-**Не исправлено сейчас**: требует продуманного редизайна состояния
-`xmlHandler` (когда переносить граммемы формы из «в процессе накопления»
-в «зафиксировано») и решения по формату (объединять ли граммемы `<l>` с
-граммемами `<f>`, в каком порядке) — решения, которые стоит обсудить
-отдельно, а не фиксить на автомате в рамках ревью.
+**Not fixed right now**: needs a well-thought-out redesign of
+`xmlHandler`'s state (when to move a form's grammemes from "still
+accumulating" to "finalized") and a decision on format (whether to
+merge `<l>`'s grammemes with `<f>`'s, in what order) — decisions worth
+discussing separately, not something to auto-fix as part of the review.
 
-## Исправлено по ходу (безопасные, механические правки)
+## Fixed along the way (safe, mechanical fixes)
 
-Все правки — в этом же коммите, `go build ./... && go vet ./... && go
-test ./... -race` зелёные (131/131) на каждом шаге.
+All fixes are in the same commit; `go build ./... && go vet ./... && go
+test ./... -race` green (131/131) at every step.
 
-| Файл | Что было | Что сделано |
+| File | What it was | What was done |
 |---|---|---|
-| `pkg/opencorpora/loader.go:IsUpdateRequired` | `os.Stat` возвращает ошибку не-`ErrNotExist` (например, permission denied) → `fileStat` остаётся `nil`, но код продолжает и падает с nil pointer dereference на `fileStat.ModTime()` | Ранний `return false, err` для любой ошибки `os.Stat`, кроме `ErrNotExist` |
-| `pkg/opencorpora/loader.go:IsUpdateRequired` | `http.Head` ответ не закрывался (`response.Body` без `Close`) — утечка соединения | Добавлен `defer response.Body.Close()` |
-| `pkg/opencorpora/loader.go:IsDownloadExists` | `switch` с двумя идентичными по действию ветками (`errors.Is(err, os.ErrNotExist)` и просто `err != nil`) | Схлопнуто в простой `if err != nil { return false }` |
-| `pkg/opencorpora/loader.go` | Дублирующие методы `UnpackedFilePath` (публичный) и `unpackedFilePath` (приватный) с идентичной реализацией | Приватный удалён, все вызовы — через публичный |
-| `pkg/opencorpora/progress.go` | Неиспользуемый тип `Progress` — тёзка другого (реального) типа `Progress` в `pkg/morphology/importers/opencorpora`, путает при чтении | Файл удалён (0 обращений вне пакета) |
+| `pkg/opencorpora/loader.go:IsUpdateRequired` | `os.Stat` returns a non-`ErrNotExist` error (e.g. permission denied) -> `fileStat` stays `nil`, but the code continues and crashes with a nil pointer dereference on `fileStat.ModTime()` | An early `return false, err` for any `os.Stat` error except `ErrNotExist` |
+| `pkg/opencorpora/loader.go:IsUpdateRequired` | The `http.Head` response was never closed (`response.Body` with no `Close`) — a connection leak | Added `defer response.Body.Close()` |
+| `pkg/opencorpora/loader.go:IsDownloadExists` | A `switch` with two branches doing the identical thing (`errors.Is(err, os.ErrNotExist)` and plain `err != nil`) | Collapsed into a plain `if err != nil { return false }` |
+| `pkg/opencorpora/loader.go` | Duplicate methods `UnpackedFilePath` (public) and `unpackedFilePath` (private) with identical implementations | The private one removed, all calls go through the public one |
+| `pkg/opencorpora/progress.go` | An unused type `Progress` — a namesake of another (real) `Progress` type in `pkg/morphology/importers/opencorpora`, confusing when reading | The file removed (0 references outside the package) |
 
-## Мёртвый код (не удалено — решение за пользователем)
+## Dead code (not removed — a decision for the user)
 
-Найдено больше мёртвого/неиспользуемого кода, чем безопасно удалять
-молча в рамках «тривиальных правок по ходу» — ниже с обоснованием
-каждого случая.
+Found more dead/unused code than is safe to silently remove as part of
+"trivial fixes along the way" — with a rationale for each case below.
 
-### Пакеты `internal/intern` и `internal/stringsx` — не импортируются вообще
+### The `internal/intern` and `internal/stringsx` packages — never imported at all
 
 ```
 $ grep -rln "gomorphy/internal/stringsx\|gomorphy/internal/intern" --include="*.go" .
@@ -186,254 +194,260 @@ internal/intern/table_test.go
 internal/stringsx/arena_test.go
 ```
 
-Ни один пакет вне их самих (и их же тестов) их не импортирует — 410
-строк (128+150+59+73) кода, оставшегося от удалённой CSR-trie/exact-hash
-реализации (этапы 0-10). `internal/xmlscan` и `internal/mmapx` из того же
-«переиспользуемого» списка (см. `docs/todo.md`, шапка) реально
-используются; `intern`/`stringsx` — нет: DAWG самодостаточен, отдельная
-таблица интернирования ему не нужна. Кандидат на удаление целиком.
+No package outside themselves (and their own tests) imports them — 410
+lines (128+150+59+73) of code left over from the removed
+CSR-trie/exact-hash implementation (stages 0-10). `internal/xmlscan`
+and `internal/mmapx`, from the same "reusable" list (see
+`docs/en/todo.md`'s header), are actually used; `intern`/`stringsx`
+aren't: the DAWG is self-contained and doesn't need a separate
+interning table. A candidate for removal in full.
 
 ### `BlockDAWG`/`Block`/`NewBlockDAWG`/`Flatten` — `pkg/morphology/internal/dawg.go:351-403`
 
 ```
 $ grep -rn "BlockDAWG\|NewBlockDAWG\|\.Flatten(" --include="*.go" .
-pkg/morphology/internal/dawg.go   (только определения, 0 вызовов)
+pkg/morphology/internal/dawg.go   (definitions only, 0 call sites)
 ```
 
-~53 строки, 0% покрытие тестами, 0 использований. Комментарий
-(«блочная версия DAWG для ускорения компиляции») указывает на
-заброшенный ранний подход к той же проблеме, которую в итоге решил
-free-list allocator (см. `docs/implementation/dawg-freelist-optimization.md`)
-другим способом. Кандидат на удаление.
+~53 lines, 0% test coverage, 0 usages. The comment ("a blocked DAWG
+variant for faster compilation") points to an abandoned early approach
+to the same problem eventually solved a different way by the free-list
+allocator (see `docs/implementation/dawg-freelist-optimization.md`). A
+candidate for removal.
 
 ### `pkg/common.ErrPath` — `pkg/common/utils.go:11`
 
-Объявлен, нигде не используется (`grep -rn "common.ErrPath"` — только
-определение).
+Declared, never used anywhere (`grep -rn "common.ErrPath"` finds only
+the definition).
 
 ### `cmd/gomorphy_build/main.go:30` — `const programVersion = "0.1.0"`
 
-Затравка, с которой стартовала эта задача (см. `docs/todo.md`) —
-подтверждаю: нигде не используется. Теперь, когда есть
-`pkg/morphology.Version` (см. `docs/implementation/info-section.md`),
-имеет смысл либо удалить эту константу, либо сделать её печать в
-`gomorphy_build -version`/`--version` (сейчас такого флага нет).
+The seed this task started from (see `docs/en/todo.md`) — confirming:
+never used anywhere. Now that `pkg/morphology.Version` exists (see
+`docs/implementation/info-section.md`), it makes sense to either
+remove this constant or have it printed by
+`gomorphy_build -version`/`--version` (there's no such flag right now).
 
-## Другие находки по категориям
+## Other findings by category
 
-### Баги / edge cases (не исправлены — требуют решения по подходу)
+### Bugs / edge cases (not fixed — need a decision on approach)
 
-- **`internal/mmapx/mmap.go`** (весь файл) — использует
-  `syscall.Mmap`/`syscall.MAP_PRIVATE` напрямую, без build tag. Это
-  ломает `go build ./...` на Windows целиком (транзитивно весь бинарь,
-  т.к. `pkg/morphology.Open` зависит от mmapx). Если Windows не входит в
-  цели поддержки — стоит явно задокументировать (`//go:build
-  !windows` + понятная ошибка/альтернативная реализация, либо явно
-  зафиксировать «только Unix» в README).
+- **`internal/mmapx/mmap.go`** (the whole file) — uses
+  `syscall.Mmap`/`syscall.MAP_PRIVATE` directly, with no build tag.
+  This breaks `go build ./...` on Windows entirely (transitively, the
+  whole binary, since `pkg/morphology.Open` depends on mmapx). If
+  Windows isn't a supported target, this should be documented
+  explicitly (`//go:build !windows` + a clear error/alternative
+  implementation, or explicitly stating "Unix only" in the README).
 - **`internal/xmlscan/scanner.go:fill()` (124-145) + `readTag()`
-  (173-204)** — если один тег/значение атрибута длиннее буфера
-  (`NewBufferSize` разрешает буфер от 16 байт), `fill()` не может
-  прочитать больше данных (`io.ReadFull` на пустой остаток буфера
-  вернёт `0, nil`), и `readTag()` зацикливается навсегда. На реальном
-  `dict.xml` не воспроизводится (атрибуты короткие), но это зависание
-  без диагностики при маленьком буфере или патологическом входе.
-- **`internal/xmlscan/scanner.go:Scan()` (95-108)** — проверки
-  `hasPrefix("<?")`/`hasPrefix("<!--")`/`hasPrefix("<!")` смотрят только
-  на уже буферизованные байты, не дозапрашивая данные. Если граница
-  чтения буфера попадает ровно после `<!` (до `--`), комментарий
-  `<!-- x > y -->` по ошибке обрабатывается как `skipUntil(">")` вместо
-  `skipUntil("-->")`, что может оборвать его на первом `>` внутри текста
-  комментария. Узкий, зависящий от выравнивания буфера случай; в
-  `dict.xml` комментариев нет (не воспроизведено на реальных данных).
-- **`internal/xmlscan/attributes.go:matchEntity` (98-106)** — декодирует
-  только 5 именованных XML-сущностей (`&amp; &lt; &gt; &quot; &apos;`),
-  числовые (`&#39;`, `&#x27;`) не поддерживаются — останутся в тексте
-  как есть. В текущем `dict.xml` числовых сущностей нет (`grep -c "&#"`
-  → 0), но это ограничение для будущих источников.
-- **`pkg/morphology/internal/dawg.go:splitDAWG` (90-121)** —
-  zero-copy путь (`unsafe.Slice` поверх байтов mmap) не учитывает
-  порядок байт: данные записаны LittleEndian, alias предполагает
-  нативный порядок хоста. На big-endian платформе (Go всё ещё их
-  поддерживает, например s390x) это даст тихо неверные значения, а не
-  ошибку. Стоит явный комментарий/build-ограничение.
-- **`pkg/morphology/internal/tagset.go:Add` (16-27)** и
-  **`pkg/morphology/importers/opencorpora/import.go:127,140`**
-  (id суффикса и id парадигмы) — id присваивается как
-  `uint16(len(...))` без проверки на переполнение. При >65535 уникальных
-  тегов/суффиксов/парадигм id тихо схлопнутся (коллизия), без ошибки.
-  **Исправлено по ходу дальнейшей работы над этим отчётом** (явная
-  проверка, `TagSet.Add` теперь возвращает `error`) — и проверка тут же
-  сработала на реальном `dict.xml` для суффиксов (65835 > 65536), см.
-  критическую находку в начале файла. Оценка «сегодня с запасом» ниже была
-  ошибочной для суффиксов — не измерялась на полном `dict.xml`; для тегов
-  (3437) и парадигм (16939) запас действительно есть.
-- **`pkg/morphology/parse.go:productive` (223-233)** — проверка
-  «непродуктивная граммема» через `strings.Contains(tag, g)` на
-  склеенной через запятую строке тега, а не через разбор по `,` и
-  точное сравнение токенов. Работает для текущего набора из 8 коротких
-  кодов, но это subset-match на неразделённой строке — при добавлении
-  граммемы, чьё имя является подстрокой другой, могут быть ложные
-  срабатывания. Простой, дешёвый в починке (`strings.Split(tag, ",")` +
-  проверка множества).
+  (173-204)** — if a single tag/attribute value is longer than the
+  buffer (`NewBufferSize` allows a buffer as small as 16 bytes),
+  `fill()` can't read more data (`io.ReadFull` on an empty remaining
+  buffer returns `0, nil`), and `readTag()` loops forever. Not
+  reproducible on the real `dict.xml` (its attributes are short), but
+  it's a hang with no diagnostic for a small buffer or pathological input.
+- **`internal/xmlscan/scanner.go:Scan()` (95-108)** — the
+  `hasPrefix("<?")`/`hasPrefix("<!--")`/`hasPrefix("<!")` checks only
+  look at already-buffered bytes, without requesting more data. If a
+  buffer read boundary lands right after `<!` (before `--`), a comment
+  `<!-- x > y -->` is mistakenly handled as `skipUntil(">")` instead of
+  `skipUntil("-->")`, which can cut it off at the first `>` inside the
+  comment's text. A narrow case depending on buffer alignment; there
+  are no comments in `dict.xml` (not reproduced on real data).
+- **`internal/xmlscan/attributes.go:matchEntity` (98-106)** — only
+  decodes 5 named XML entities (`&amp; &lt; &gt; &quot; &apos;`);
+  numeric ones (`&#39;`, `&#x27;`) aren't supported — they're left in
+  the text as-is. There are no numeric entities in the current
+  `dict.xml` (`grep -c "&#"` -> 0), but this is a limitation for future sources.
+- **`pkg/morphology/internal/dawg.go:splitDAWG` (90-121)** — the
+  zero-copy path (`unsafe.Slice` over the mmap bytes) doesn't account
+  for byte order: the data is written LittleEndian, but the alias
+  assumes the host's native order. On a big-endian platform (Go still
+  supports some, e.g. s390x), this would silently produce wrong
+  values, not an error. Warrants an explicit comment/build constraint.
+- **`pkg/morphology/internal/tagset.go:Add` (16-27)** and
+  **`pkg/morphology/importers/opencorpora/import.go:127,140`** (the
+  suffix id and paradigm id) — an id is assigned as
+  `uint16(len(...))` with no overflow check. Past 65,535 unique
+  tags/suffixes/paradigms, ids silently collide, with no error.
+  **Fixed during follow-up work on this report** (an explicit check,
+  `TagSet.Add` now returns an `error`) — and the check immediately
+  triggered on the real `dict.xml` for suffixes (65,835 > 65,536), see
+  the critical finding at the top of this file. The "comfortable
+  margin today" estimate below was wrong for suffixes — it wasn't
+  measured against the full `dict.xml`; for tags (3,437) and paradigms
+  (16,939), there really is a margin.
+- **`pkg/morphology/parse.go:productive` (223-233)** — the
+  "non-productive grammeme" check uses `strings.Contains(tag, g)` on a
+  comma-joined tag string, rather than splitting on `,` and comparing
+  tokens exactly. Works for the current set of 8 short codes, but it's
+  a substring match on an unsplit string — adding a grammeme whose
+  name is a substring of another's could cause false positives.
+  Simple, cheap to fix (`strings.Split(tag, ",")` + a set membership check).
 - **`pkg/morphology/internal/format.go:SaveContainer` (142-199)** —
-  пишет сразу в целевой `path` через `os.Create`; при обрыве записи
-  (диск кончился, процесс убит) в целевом месте останется битый
-  недописанный `.dat`. `Open()` его отклонит по чек-сумме, так что
-  тихого повреждения при чтении нет, но лежащий на диске повреждённый
-  файл там, где ожидается рабочий — плохой UX. Стандартное решение —
-  писать во временный файл рядом и атомарно переименовывать
-  (`os.Rename`) на успехе.
-- **CLI `-o` после подкоманды** (уже отмечено ранее в сессии,
-  `docs/implementation/stage-17-optimize.md`) — `gomorphy_build compile
-  -o path` молча игнорирует `-o` (пакет `flag` останавливает парсинг на
-  первом нефлаговом аргументе). Показательно: **`cmd/gomorphy/main.go`
-  уже решает ровно эту проблему** для `import` (`findOutFlag`/
-  `stripOutFlag`, строки 136-161) — паттерн просто не применён
-  одинаково в обоих бинарях. Стоит либо вынести общий хелпер, либо
-  применить тот же приём в `cmd/gomorphy_build`.
+  writes directly into the target `path` via `os.Create`; if the write
+  is interrupted (disk full, process killed), a broken, half-written
+  `.dat` is left at the target location. `Open()` will reject it by
+  checksum, so there's no silent corruption on read, but a corrupted
+  file sitting where a working one is expected is bad UX. The standard
+  fix — write to a temp file alongside it and atomically rename
+  (`os.Rename`) on success.
+- **The CLI's `-o` after a subcommand** (already noted earlier in the
+  session, `docs/implementation/stage-17-optimize.md`) — `gomorphy_build
+  compile -o path` silently ignores `-o` (the `flag` package stops
+  parsing at the first non-flag argument). Notably: **`cmd/gomorphy/main.go`
+  already solves exactly this problem** for `import`
+  (`findOutFlag`/`stripOutFlag`, lines 136-161) — the pattern just
+  wasn't applied consistently across both binaries. Worth either
+  factoring out a shared helper or applying the same trick in `cmd/gomorphy_build`.
 
-### Тестовое покрытие
+### Test coverage
 
-Общее: 65.8%. По пакетам (`go test ./... -cover`):
+Overall: 65.8%. By package (`go test ./... -cover`):
 
-| Пакет | Покрытие | Комментарий |
+| Package | Coverage | Comment |
 |---|---|---|
-| `cmd/gomorphy`, `cmd/gomorphy_build` | 0% | Structural: логика вперемешку с `os.Exit`, см. ниже |
-| `internal/mmapx` | 0% | Легко тестируется (создать temp-файл, Open/Bytes/Len/Close + error-пути) — тестов просто нет |
-| `pkg/common` | 0% | `MakeDomainDataPath`/`DomainFilePath` — нет тестов |
-| `pkg/opencorpora` | 57.3% | Сетевые пути (`DownloadUpdate` 0%) не тестируются — `http.Get`/`http.Head` не инжектируются, тестировать без реальной сети негде |
-| `pkg/morphology/internal` | 79.9% | `BuildDAWGWithValuesProgress` 0% (реальный production-путь!), `BlockDAWG`/`Flatten` 0% (мёртвый код), `HasPayloadChild` 0% |
-| `pkg/morphology` | 87.9% | `parse.go`: `paradigmTag` 60%, `paradigm`/`paradigmAffix`/`productive` 66.7% — границы (не найден id, `TagSet==nil`) не покрыты |
-| `pkg/morphology/importers/opencorpora` | 91.2% | См. критическую находку — покрытие есть, но не на то, что нужно (нет проверки корректности тега) |
+| `cmd/gomorphy`, `cmd/gomorphy_build` | 0% | Structural: logic mixed with `os.Exit`, see below |
+| `internal/mmapx` | 0% | Easy to test (create a temp file, Open/Bytes/Len/Close + error paths) — there just aren't any tests |
+| `pkg/common` | 0% | `MakeDomainDataPath`/`DomainFilePath` — no tests |
+| `pkg/opencorpora` | 57.3% | Network paths (`DownloadUpdate` 0%) aren't tested — `http.Get`/`http.Head` aren't injectable, nowhere to test without a real network |
+| `pkg/morphology/internal` | 79.9% | `BuildDAWGWithValuesProgress` 0% (the real production path!), `BlockDAWG`/`Flatten` 0% (dead code), `HasPayloadChild` 0% |
+| `pkg/morphology` | 87.9% | `parse.go`: `paradigmTag` 60%, `paradigm`/`paradigmAffix`/`productive` 66.7% — edge cases (an id not found, `TagSet==nil`) aren't covered |
+| `pkg/morphology/importers/opencorpora` | 91.2% | See the critical finding — there's coverage, but not of the right thing (no check on tag correctness) |
 
-**Структурная причина нулевого покрытия CLI**: обе `main.go` вызывают
-`os.Exit` прямо из функций логики (`findDictXML`, `runImport`,
-`initLogging`, каждый `runXxx` в `cmd/gomorphy_build`), а не только из
-`main()`. Это не просто стиль — это физически не даёт написать unit-тест
-без завершения процесса теста. Рекомендация: логика возвращает `error`,
-`os.Exit` — только в `main()`/обёртках верхнего уровня.
+**The structural reason for zero CLI coverage**: both `main.go` files
+call `os.Exit` directly from logic functions (`findDictXML`,
+`runImport`, `initLogging`, every `runXxx` in `cmd/gomorphy_build`),
+not only from `main()`. This isn't just a style issue — it physically
+prevents writing a unit test without terminating the test process.
+Recommendation: logic returns an `error`, `os.Exit` only happens in
+`main()`/top-level wrappers.
 
-**`BuildDAWGWithValuesProgress` 0% отдельно от `BuildDAWG`/
-`BuildDAWGWithValues`** (которые покрыты хорошо) — важно: это ЕДИНСТВЕННЫЙ
-путь, которым реально строится DAWG в проде (вызывается из
-`importers/opencorpora`), а тестами покрыт только его непрогрессовый
-двойник. Само по себе не баг (общая логика вынесена в `dawgBuilder`), но
-если в `BuildDAWGWithValuesProgress` появится расхождение с
-`buildDAWGWithPayload`, тесты этого не заметят — см. следующий раздел.
+**`BuildDAWGWithValuesProgress` at 0%, separate from `BuildDAWG`/
+`BuildDAWGWithValues`** (which are well covered) — important: this is
+the ONLY path that actually builds a DAWG in production (called from
+`importers/opencorpora`), yet tests only cover its progress-less twin.
+Not a bug by itself (the shared logic is factored into `dawgBuilder`),
+but if `BuildDAWGWithValuesProgress` ever diverges from
+`buildDAWGWithPayload`, the tests wouldn't notice — see the next section.
 
-### Дублирование / structure (кандидаты на объединение функций)
+### Duplication / structure (candidates for merging functions)
 
 - **`pkg/morphology/internal/dawgbuild.go:buildDAWGWithPayload` (59-92)**
-  и **`dawgbuild_progress.go:BuildDAWGWithValuesProgress` (12-72)** —
-  цикл вставки ключей в `dawgBuilder` (вычисление общего префикса,
-  `closeSuffix`, `appendByte`, пометка листа) продублирован почти
-  дословно между двумя функциями; отличается только наличием
-  progress-коллбэка. Как отмечено выше, реальный (production) путь
-  тестами покрывается только через непродублированную (progress-less)
-  копию. Стоит вынести общий цикл вставки в один метод, вызываемый
-  обеими точками входа.
-- **`cmd/gomorphy/main.go:runImport` (163-201)** — ветки `"pymorphy2"` и
-  `"opencorpora"` идентичны по структуре (open/compile → error → SaveTo
-  → error → print), отличается только вызов импортёра. Можно свести к
-  общей функции `importAndSave(d *morphology.Dictionary, err error, out
-  string)`.
-- **`pkg/opencorpora/loader.go` vs `cmd/gomorphy_build/main.go`** — оба
-  явно вызывают `os.Stat`+обработку `ErrNotExist` по отдельности в
-  нескольких местах; не критично, но паттерн мог бы быть одной
-  общей хелпер-функцией в `pkg/common`.
+  and **`dawgbuild_progress.go:BuildDAWGWithValuesProgress` (12-72)** —
+  the key-insertion loop into `dawgBuilder` (computing the common
+  prefix, `closeSuffix`, `appendByte`, marking a leaf) is duplicated
+  almost verbatim between the two functions; the only difference is
+  the presence of a progress callback. As noted above, the real
+  (production) path is only covered by tests through the
+  un-duplicated (progress-less) copy. Worth factoring the shared
+  insertion loop into one method called from both entry points.
+- **`cmd/gomorphy/main.go:runImport` (163-201)** — the `"pymorphy2"`
+  and `"opencorpora"` branches are structurally identical
+  (open/compile -> error -> SaveTo -> error -> print), differing only
+  in which importer is called. Could be collapsed into a shared
+  `importAndSave(d *morphology.Dictionary, err error, out string)` function.
+- **`pkg/opencorpora/loader.go` vs. `cmd/gomorphy_build/main.go`** —
+  both explicitly call `os.Stat`+handle `ErrNotExist` separately in
+  several places; not critical, but the pattern could be one shared
+  helper function in `pkg/common`.
 
-### Крупные функции — рекомендации по дроблению
+### Large functions — recommendations for splitting them up
 
-| Функция | Строк | Рекомендация |
+| Function | Lines | Recommendation |
 |---|---|---|
-| `pkg/morphology/internal/dawgbuild.go:compileImpl` | 83 | Вынести локальное состояние (`dic`, `alloc`, `link`, счётчики прогресса) в отдельный тип с методами; сделать `dfs` его методом. Упростит тестирование размещения независимо от построения guide. |
-| `cmd/gomorphy_build/main.go:compileAndSave` | ~90 | Горутина прогресс-принтера (тикер, расчёт скорости/ETA, форматирование) — самостоятельная единица логики, тестируемая независимо от CLI. Вынести в свой тип (например, `progressPrinter` с методом `Update(processed, total)`), убрав из `main`. |
-| `pkg/morphology/internal/format.go:SaveContainer` | 61 | Естественные фазы (расчёт раскладки секций → запись файла → чек-сумма) можно разбить на 2-3 именованные функции — упростит добавление атомарной записи (см. находку выше). |
-| `pkg/morphology/parse.go:predict` | 57 | Тройной вложенный цикл (префиксы × суффиксные разбиения × items × values). Вынести тело внутреннего цикла в `predictForPrefix(...)` для независимого тестирования логики предсказания по одному префиксу. |
+| `pkg/morphology/internal/dawgbuild.go:compileImpl` | 83 | Factor the local state (`dic`, `alloc`, `link`, progress counters) into a separate type with methods; make `dfs` one of its methods. Would make it easier to test placement independently of guide building. |
+| `cmd/gomorphy_build/main.go:compileAndSave` | ~90 | The progress-printer goroutine (a ticker, rate/ETA calculation, formatting) is a self-contained piece of logic, testable independently of the CLI. Factor it into its own type (e.g. `progressPrinter` with an `Update(processed, total)` method), removing it from `main`. |
+| `pkg/morphology/internal/format.go:SaveContainer` | 61 | The natural phases (computing the section layout -> writing the file -> the checksum) could be split into 2-3 named functions — would make adding atomic writes easier (see the finding above). |
+| `pkg/morphology/parse.go:predict` | 57 | A triple-nested loop (prefixes x suffix splits x items x values). Factor the inner loop's body into `predictForPrefix(...)` for testing the per-prefix prediction logic independently. |
 
-### Производительность (не баг, но стоит знать)
+### Performance (not a bug, but worth knowing)
 
-- **`pkg/morphology/fuzzy.go:maxWordRunes` (209-240)** — полный обход
-  графа DAWG (с мемоизацией по узлам, так что не экспоненциальный, но
-  всё равно O(узлов)) выполняется заново **при каждом вызове**
-  `FuzzyTop`, а не кешируется на словаре. Для больших словарей — заметная
-  константа на каждый вызов; особенно важно с учётом планируемого в
-  Этапе 19 батч-режима (`fuzzy`/`top` на множестве слов из stdin) — там
-  это будет пересчитываться на каждое слово батча. Стоит закешировать
-  (например, `sync.Once` на `internal.Dictionary` или лениво
-  вычисляемое поле).
+- **`pkg/morphology/fuzzy.go:maxWordRunes` (209-240)** — a full
+  traversal of the DAWG graph (memoized by node, so not exponential,
+  but still O(nodes)) runs from scratch **on every call** to
+  `FuzzyTop`, instead of being cached on the dictionary. For large
+  dictionaries — a noticeable constant cost per call; especially
+  relevant given Stage 19's planned batch mode (`fuzzy`/`top` over
+  many words from stdin) — there, this would be recomputed for every
+  word in the batch. Worth caching (e.g. a `sync.Once` on
+  `internal.Dictionary`, or a lazily computed field).
 
-### Комментарии
+### Comments
 
-В основном хорошее качество там, где логика нетривиальна (`fuzzy.go`,
-`dawgbuild_freelist.go` — WHY объяснено, не только WHAT). Отмеченные
-пробелы:
+Generally good quality where the logic is non-trivial (`fuzzy.go`,
+`dawgbuild_freelist.go` — the WHY is explained, not just the WHAT).
+Gaps noted:
 
-- `pkg/morphology/internal/dawg.go:offset()` (127-129) — битовая магия
-  (`(n >> 10) << ((n & extensionBit) >> 6)`) без комментария на месте
-  определения; объяснение того же трюка есть только рядом с `encodable`
-  в другом файле (`dawgbuild.go`). Стоит короткий комментарий здесь же.
-- Многие экспортированные идентификаторы без godoc-комментариев:
-  `pkg/common` (`GetDataPath`, `DomainDataPath`, `MakeDomainDataPath`,
-  `DomainFilePath`), `internal/stringsx.Arena` и большинство его методов,
-  `pkg/opencorpora.Error`.
-- `pkg/morphology/importers/opencorpora/import.go:197` — комментарий у
-  поля `lGrams` описывает поведение (fallback-граммемы леммы для формы
-  без своих `<g>`), которое **не реализовано** (поле нигде не
-  используется) — вводит в заблуждение. Либо реализовать, либо убрать
-  поле и комментарий (тесно связано с критической находкой выше).
+- `pkg/morphology/internal/dawg.go:offset()` (127-129) — bit magic
+  (`(n >> 10) << ((n & extensionBit) >> 6)`) with no comment at its
+  definition; the explanation of the same trick only exists next to
+  `encodable` in a different file (`dawgbuild.go`). Worth a short
+  comment right here too.
+- Many exported identifiers with no godoc comments: `pkg/common`
+  (`GetDataPath`, `DomainDataPath`, `MakeDomainDataPath`,
+  `DomainFilePath`), `internal/stringsx.Arena` and most of its
+  methods, `pkg/opencorpora.Error`.
+- `pkg/morphology/importers/opencorpora/import.go:197` — the comment
+  on the `lGrams` field describes behavior (fallback lemma grammemes
+  for a form with no `<g>` of its own) that **isn't implemented** (the
+  field is never used anywhere) — misleading. Either implement it, or
+  remove the field and the comment (closely tied to the critical
+  finding above).
 
-### Прочее / процесс
+### Other / process
 
-- В репозитории нет `.golangci.yml` — установленный `golangci-lint`
-  (2.12.2, собран под go1.26) вдобавок не может запуститься на модуле с
-  `go 1.27.1` в `go.mod` (несовпадение версий тулчейна). Не смог
-  прогнать автоматический линт в рамках этого ревью — стоит либо
-  обновить бинарь линтера, либо зафиксировать конфиг с версией,
-  совместимой с тулчейном, как часть Этапа 18.
+- There's no `.golangci.yml` in the repository — the installed
+  `golangci-lint` (2.12.2, built for go1.26) also can't run on a
+  module with `go 1.27.1` in `go.mod` (a toolchain version mismatch).
+  Couldn't run the automated linter as part of this review — either
+  update the linter binary or pin a config with a toolchain-compatible
+  version, as part of Stage 18.
 - `pkg/opencorpora/const.go:RemoteURL` — `http://opencorpora.org/...`
-  (не HTTPS). Скачивание словаря без шифрования/аутентификации
-  канала — если у opencorpora.org есть HTTPS-зеркало, стоит перейти.
-- `pkg/opencorpora/errors.go:Error` — экспортированная переменная с
-  именем `Error` без godoc-комментария; расплывчатое имя для sentinel-
-  ошибки конкретного пакета (обычно `ErrXxx`).
+  (not HTTPS). Downloading the dictionary over an unencrypted,
+  unauthenticated channel — if opencorpora.org has an HTTPS mirror,
+  worth switching.
+- `pkg/opencorpora/errors.go:Error` — an exported variable named
+  `Error` with no godoc comment; a vague name for a specific package's
+  sentinel error (usually `ErrXxx`).
 
-### Документация: остаточный дрейф `pkg/dictionary` → `pkg/morphology`
+### Documentation: residual `pkg/dictionary` -> `pkg/morphology` drift
 
-`installation.md`/`cli.md`/`Makefile` уже поправлены (см. коммит
-`04a957d`) — они были активно сломаны (несуществующий путь модуля,
-несуществующий бинарь). То же семейство ссылок остаётся ещё в 6 местах,
-с разной степенью актуальности:
+`installation.md`/`cli.md`/`Makefile` have already been fixed (see
+commit `04a957d`) — they were actively broken (a nonexistent module
+path, a nonexistent binary). The same family of references remains in
+6 more places, with varying degrees of staleness:
 
-**Активно вводит в заблуждение (стоит поправить в первую очередь):**
-- `docs/library.md:6` — `import ".../pkg/dictionary"` в примере кода
-  главного гайда по использованию библиотеки — путь не существует.
-- `docs/todo.md:145` (план Этапа 19) — «`pkg/dictionary` (текущий
-  фасад...)» — для будущей реализации `import_tsv.go` называет
-  несуществующий текущий пакет; должно быть `pkg/morphology`.
-- `docs/implementation.md:108` — диаграмма состава репозитория для
-  «новой реализации» (т.е. текущего состояния) показывает
-  `cmd/opencorpora_update`, которого нет — актуально `cmd/gomorphy_build`.
+**Actively misleading (worth fixing first):**
+- `docs/library.md:6` — `import ".../pkg/dictionary"` in the code
+  example in the main library-usage guide — the path doesn't exist.
+- `docs/todo.md:145` (Stage 19's plan) — "`pkg/dictionary` (the
+  current facade...)" — for the future `import_tsv.go` implementation,
+  names a current package that doesn't exist; should be `pkg/morphology`.
+- `docs/implementation.md:108` — the repository-layout diagram for the
+  "new implementation" (i.e. the current state) shows
+  `cmd/opencorpora_update`, which doesn't exist — the actual name is
+  `cmd/gomorphy_build`.
 
-**Низкий приоритет (корректно историческое повествование или решение,
-где сам пример вторичен относительно аргумента):**
-- `docs/mcp.md:12,83` — иллюстрация решения «почему нет MCP», аргумент не
-  зависит от точного имени пакета.
-- `docs/unimorph.md:201` — ссылка на Builder API в анализе будущего
-  источника (Этап 16), не блокирует чтение.
-- `docs/requirements.md:166,169` — документ намеренно описывает
-  состояние **до** редизайна и план перехода («Заменяется») — исторически
-  корректен как есть.
-- `docs/implementation.md:18,44,52` — секция «текущая реализация (этапы
-  0-10)» корректно историческая; `docs/todo.md:34` — аналогично, стаб
-  таблицы про исходную реализацию.
+**Low priority (correctly historical narrative, or a case where the
+example itself is secondary to the argument):**
+- `docs/mcp.md:12,83` — illustrating the "why no MCP" decision, the
+  argument doesn't depend on the exact package name.
+- `docs/unimorph.md:201` — a reference to the Builder API in the
+  analysis of a future source (Stage 16), doesn't block reading it.
+- `docs/requirements.md:166,169` — the document deliberately describes
+  the state **before** the redesign and the migration plan
+  ("Replaced") — historically correct as-is.
+- `docs/implementation.md:18,44,52` — the "current implementation
+  (stages 0-10)" section is correctly historical; `docs/todo.md:34` —
+  likewise, a table stub about the original implementation.
 
-Не правил — отдельная задача, per предыдущему решению пользователя.
+Not fixed — a separate task, per the user's earlier decision.
 
-## Что дальше
+## What's next
 
-Как договаривались: это отчёт, решения по каждой находке — отдельно.
-Единственное, что стоит явно выделить — критическая находка про теги
-OpenCorpora: она затрагивает корректность данных, а не только качество
-кода, и по хорошему должна быть закрыта до релиза 1.0.0 (или релиз явно
-задокументирован как содержащий эту известную проблему).
+As agreed: this is a report, decisions on each finding are separate.
+The one thing worth explicitly calling out is the critical OpenCorpora
+tags finding: it affects data correctness, not just code quality, and
+ideally should be closed before the 1.0.0 release (or the release
+should be explicitly documented as shipping with this known issue).

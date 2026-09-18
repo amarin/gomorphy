@@ -1,93 +1,95 @@
-# Универсальный маппинг тегов между словарями (`pkg/morphology/tagmap`)
+# Universal tag mapping between dictionaries (`pkg/morphology/tagmap`)
 
-Реализовано 2026-09-17 (native → universal направление). Полная
-архитектура и обоснование решений — в спеке:
+Implemented 2026-09-17 (the native -> universal direction). The full
+architecture and decision rationale is in the spec:
 [2026-09-17-tag-mapping-design.md](../superpowers/specs/2026-09-17-tag-mapping-design.md).
-Оценка реализуемости экспорта, которая привела к этой задаче:
+The export feasibility assessment that led to this task:
 [docs/research/0008-dictionary-export-feasibility.md](../research/0008-dictionary-export-feasibility.md).
-План реализации (6 задач, subagent-driven-development, 1 fix-раунд на
-уровне задачи + 1 fix-волна финального ревью):
+Implementation plan (6 tasks, subagent-driven-development, 1 task-level
+fix round + 1 final-review fix wave):
 [2026-09-17-tag-mapping.md](../superpowers/plans/2026-09-17-tag-mapping.md).
 
-## Контекст
+## Context
 
-Поднято 2026-09-16 при проектировании multi-dict (см.
-[multi-dict.md](multi-dict.md)): разные словари уже описывают
-граммемы по-разному, хотя формально это один и тот же набор. Пример:
-pymorphy2 (`gramtab-opencorpora-int.json`) использует
-`"NOUN,anim,masc sing,nomn"` (пробел перед формообразующей частью), а
-OpenCorpora-импортёр всегда собирает тег через запятую без пробелов —
-тот же смысл, разные строки. `TagSet.Name` (`"opencorpora"` vs
-`"opencorpora-int"`) фиксировал эту разницу конвенций как метаданные,
-но не устранял её.
+Raised on 2026-09-16 while designing multi-dict (see
+[multi-dict.md](multi-dict.md)): different dictionaries already
+describe grammemes differently, even though it's formally the same
+set. Example: pymorphy2 (`gramtab-opencorpora-int.json`) uses
+`"NOUN,anim,masc sing,nomn"` (a space before the inflecting part),
+while the OpenCorpora importer always joins a tag with commas and no
+spaces — the same meaning, different strings. `TagSet.Name`
+(`"opencorpora"` vs. `"opencorpora-int"`) recorded this difference in
+convention as metadata, but did nothing to eliminate it.
 
-## Принятые решения
+## Decisions made
 
-1. Таблица соответствий — отдельный пакет `pkg/morphology/tagmap`, не
-   часть `TagSet` и не внешняя конфигурация: `TagSet` остаётся общим
-   интернером строк, не знающим о синтаксисе и семантике тегов.
-2. Universal-тег — независимый набор признаков **UniMorph** (не
-   привязан к OpenCorpora или к какому-либо другому существующему
-   набору), в каноническом порядке измерений (`tagmap.Dimension`), не
-   зависящем от порядка токенов в исходном теге — это то, что делает
-   `Bundle.Features` из двух разных источников сравнимыми через
-   `slices.Equal`.
-3. Opaque-теги и непокрытые граммемы — единое правило: как есть, в
-   `Bundle.Unmapped`, без ошибки. `tagmap.Map` возвращает `ok=false`
-   только для незарегистрированного `dictName` целиком (структурная
-   ошибка вызывающего кода), не за содержимое тега.
-4. Две **независимые** таблицы (`opencorpora`, `opencorpora-int`), не
-   одна общая — сознательно, чтобы не полагаться на непроверенное
-   допущение, что токены двух источников совпадают по написанию
-   (реально совпадают на данный момент, но проверено отдельно для
-   каждого источника, не выведено логически).
-5. Направление — только `native → universal` в этом инкременте.
-   `Unmap` (universal → native, нужен для экспорта) — явно вне охвата,
-   отдельная будущая задача, см. «Осталось» ниже.
-6. `MultiDictionary`/`Reading`/`LemmaRef` не изменены. Вызывающий код
-   сам вызывает `tagmap.Map(dictName, reading.Tag)`, когда нужен
-   universal-тег.
+1. The mapping table is a separate package, `pkg/morphology/tagmap`,
+   not part of `TagSet` and not external configuration: `TagSet` stays
+   a generic string interner, with no knowledge of tag syntax or semantics.
+2. A universal tag is an independent **UniMorph** feature set (not
+   tied to OpenCorpora or any other existing set), in a canonical
+   dimension order (`tagmap.Dimension`) independent of the source
+   tag's token order — this is what makes `Bundle.Features` from two
+   different sources comparable via `slices.Equal`.
+3. Opaque tags and uncovered grammemes — a single rule: kept as-is, in
+   `Bundle.Unmapped`, no error. `tagmap.Map` returns `ok=false` only
+   for an entirely unregistered `dictName` (a structural error in the
+   calling code), never for a tag's content.
+4. Two **independent** tables (`opencorpora`, `opencorpora-int`), not
+   one shared table — deliberately, so as not to rely on the unverified
+   assumption that the two sources' tokens are spelled identically
+   (they actually do coincide right now, but this is checked
+   separately for each source, not derived logically).
+5. Direction — only `native -> universal` in this increment. `Unmap`
+   (universal -> native, needed for export) is explicitly out of
+   scope, a separate future task, see "What's left" below.
+6. `MultiDictionary`/`Reading`/`LemmaRef` are unchanged. The calling
+   code calls `tagmap.Map(dictName, reading.Tag)` itself whenever it
+   needs a universal tag.
 
-## Что реализовано
+## What's implemented
 
-- `tagmap.Bundle`/`tagmap.Feature`/`tagmap.Dimension` — модель данных.
+- `tagmap.Bundle`/`tagmap.Feature`/`tagmap.Dimension` — the data model.
 - `tokenizeOpenCorpora`/`openCorporaTable`,
-  `tokenizeOpenCorporaInt`/`openCorporaIntTable` — токенизаторы и
-  таблицы соответствий для двух источников; представительное
-  подмножество граммем (часть речи, одушевлённость, падеж, число, род,
-  время, вид, наклонение, залог, лицо) — не исчерпывающее покрытие,
-  расширяется по мере находок непокрытых токенов.
-- `tagmap.Map(dictName, tag string) (Bundle, bool)` — единственная
-  публичная точка входа.
-- Интеграционный тест на реальных словарях (OpenCorpora `dict.xml` +
-  реальный pymorphy2-словарь): слово «кот» (NOUN, им.п., ед.ч.)
-  нормализуется в идентичный `Bundle.Features` из обеих таблиц, без
-  непокрытых токенов.
+  `tokenizeOpenCorporaInt`/`openCorporaIntTable` — tokenizers and
+  mapping tables for the two sources; a representative subset of
+  grammemes (part of speech, animacy, case, number, gender, tense,
+  aspect, mood, voice, person) — not exhaustive coverage, growing as
+  uncovered tokens are found.
+- `tagmap.Map(dictName, tag string) (Bundle, bool)` — the sole public
+  entry point.
+- An integration test against real dictionaries (OpenCorpora `dict.xml`
+  + a real pymorphy2 dictionary): the word "кот" (NOUN, nominative,
+  singular) normalizes to an identical `Bundle.Features` from both
+  tables, with no uncovered tokens.
 
-## Известный, сознательно не закрытый gap (найден финальным ревью)
+## A known, deliberately unclosed gap (found by the final review)
 
-`dictName` (`TagSet.Name`) сейчас **не достижим из публичного API**
-`pkg/morphology`: `Dictionary` не экспортирует ни `TagSet`, ни его имя,
-а `BuildInfo.Source` — не заменитель (для pymorphy2 `Source ==
-"pymorphy2"`, но `TagSet.Name == "opencorpora-int"`). Реальный внешний
-потребитель `tagmap.Map`, держащий `*morphology.Dictionary` (особенно
-открытый через `Open(path)`, где неизвестно, каким импортёром он был
-собран), не может получить правильный `dictName` без внекодового
-знания. Не блокирует эту задачу (пакет пока нигде в репозитории не
-используется — чистый leaf), но это первый пункт следующего
-инкремента, если появится реальный потребитель (см. `todo.md`).
+`dictName` (`TagSet.Name`) is currently **unreachable from
+`pkg/morphology`'s public API**: `Dictionary` doesn't export `TagSet`
+or its name, and `BuildInfo.Source` isn't a substitute (for pymorphy2,
+`Source == "pymorphy2"`, but `TagSet.Name == "opencorpora-int"`). A
+real external consumer of `tagmap.Map` holding a
+`*morphology.Dictionary` (especially one opened via `Open(path)`,
+where it's unknown which importer built it) can't get the right
+`dictName` without out-of-band knowledge. Doesn't block this task
+(nothing in the repository uses the package yet — it's a clean leaf),
+but it's the first item for the next increment once a real consumer
+shows up (see `todo.md`).
 
-## Осталось (отдельные будущие задачи, не в этом инкременте)
+## What's left (separate future tasks, not part of this increment)
 
-1. **`Unmap` (universal → native)** — нужен для экспорта словарей
-   обратно в pymorphy2/OpenCorpora-совместимые форматы (см.
-   `0008-dictionary-export-feasibility.md`). Неоднозначен по
-   конструкции (один universal-тег может соответствовать нескольким
-   вариантам native-тега) — решение по разрешению неоднозначности
-   нужно принимать под конкретного потребителя (экспортёр), не заранее.
-2. **Экспортёр в публичный API** — доступ к `TagSet.Name`, см. gap выше.
-3. **Таблица для UniMorph-импортёра (Этап 16)** — тривиальна (bundle
-   уже в целевой схеме), но не написана, пока самого импортёра нет.
-4. **`Dimension.String()`** — для читаемых диагностических сообщений
-   при расхождении тегов между словарями (сейчас `Dimension` печатается
-   как `uint8`).
+1. **`Unmap` (universal -> native)** — needed to export dictionaries
+   back into pymorphy2/OpenCorpora-compatible formats (see
+   `0008-dictionary-export-feasibility.md`). Ambiguous by construction
+   (one universal tag can correspond to several native-tag variants) —
+   resolving the ambiguity needs to be decided against a concrete
+   consumer (an exporter), not ahead of time.
+2. **An exporter in the public API** — access to `TagSet.Name`, see the
+   gap above.
+3. **A table for the UniMorph importer (Stage 16)** — trivial (its
+   bundle is already in the target schema), but not written since the
+   importer itself doesn't exist yet.
+4. **`Dimension.String()`** — for readable diagnostic messages when
+   tags diverge between dictionaries (`Dimension` currently prints as
+   a `uint8`).

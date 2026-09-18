@@ -9,24 +9,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// makeHomonymFixtureDir — как makeFixtureDir (import_test.go), но "кот"
-// несёт 2 разных payload-значения (омоним), а не 1. Локальная копия, а не
-// расширение makeFixtureDir: другие тесты в import_test.go (например,
-// TestImportFromDir) утверждают len(items[0].Values) == 1 для "кот", так
-// что менять её payload задним числом сломало бы их сборку.
+// makeHomonymFixtureDir is like makeFixtureDir (import_test.go), but
+// "кот" carries 2 distinct payload values (a homonym) instead of 1. A
+// local copy, not an extension of makeFixtureDir: other tests in
+// import_test.go (e.g. TestImportFromDir) assert
+// len(items[0].Values) == 1 for "кот", so changing its payload after
+// the fact would break their build.
 //
-// Нужна для проверки fan-out цикла `for _, v := range vals` в
-// RecompileDense.reading — с одним значением на слово (makeFixtureDir)
-// цикл всегда делает одну итерацию, и композиция Walk + цикл +
-// BuildDAWGWithValues, теряющая лишние значения омонима, осталась бы
-// незамеченной. См. TestDAWGWalk (pkg/morphology/internal/dawg_test.go)
-// для того же приёма на уровне DAWG.Walk напрямую.
+// Needed to exercise the fan-out loop `for _, v := range vals` in
+// RecompileDense.reading — with one value per word (makeFixtureDir) the
+// loop always runs exactly one iteration, so the composition of Walk +
+// loop + BuildDAWGWithValues dropping a homonym's extra values would go
+// unnoticed. See TestDAWGWalk (pkg/morphology/internal/dawg_test.go) for
+// the same technique applied directly at the DAWG.Walk level.
 func makeHomonymFixtureDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 
 	writeParadigms(t, dir, [][]uint16{
-		{10, 20, 0, 1, 0, 0}, // 2 формы: суффиксы[10,20], теги[0,1], префиксы[0,0]
+		{10, 20, 0, 1, 0, 0}, // 2 forms: suffixes[10,20], tags[0,1], prefixes[0,0]
 	})
 
 	writeFile(t, dir, "suffixes.json", []byte(`["","кот","кота","x"]`))
@@ -72,12 +73,12 @@ func TestRecompileDense(t *testing.T) {
 	assert.Equal(t, raw.TagSet, dense.TagSet)
 }
 
-// TestRecompileDense_Homonym проверяет, что RecompileDense не теряет
-// значения для слова с несколькими payload-значениями (омонима). Отдельно
-// от TestRecompileDense, чья фикстура (makeFixtureDir) даёт каждому слову
-// ровно одно значение и потому не задействует fan-out `for _, v := range
-// vals` в RecompileDense по-настоящему (цикл на 1 итерации неотличим от
-// его отсутствия).
+// TestRecompileDense_Homonym checks that RecompileDense doesn't drop
+// values for a word with several payload values (a homonym). Separate
+// from TestRecompileDense, whose fixture (makeFixtureDir) gives every
+// word exactly one value and therefore doesn't really exercise the
+// fan-out `for _, v := range vals` loop in RecompileDense (a loop with 1
+// iteration is indistinguishable from having no loop at all).
 func TestRecompileDense_Homonym(t *testing.T) {
 	dir := makeHomonymFixtureDir(t)
 
