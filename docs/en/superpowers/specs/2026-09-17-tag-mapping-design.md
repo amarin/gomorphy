@@ -2,7 +2,7 @@
 
 ## Context
 
-`docs/todo.md`'s "Универсальный маппинг тегов между словарями" section
+`docs/en/todo.md`'s "Universal tag mapping between dictionaries" section
 (raised 2026-09-16 during the multi-dict design, left unresolved) flagged
 that different dictionary sources already describe the same grammatical
 meaning with different tag syntax, even though it's formally the same

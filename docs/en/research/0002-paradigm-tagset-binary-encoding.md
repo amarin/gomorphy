@@ -1,230 +1,235 @@
-# Бинарное кодирование парадигм и словаря тег-сочетаний вместо текста
+# Binary encoding of paradigms and the tag-combination dictionary instead of text
 
-**Дата:** 2026-09-15
-**Статус:** гипотеза опровергнута для парадигм (уже реализовано); для
-словаря тег-сочетаний — **подтверждена со значимым эффектом**
-(исправлено по ходу ревью пользователя — см. «Уточнение» ниже)
-**Проверял(а):** Aleksey Marin (asmadews@gmail.com)
-**Связанные документы:** [0001-dawg-alphabet-density.md](0001-dawg-alphabet-density.md), [implementation/stage-17-optimize.md](../implementation/stage-17-optimize.md)
+**Date:** 2026-09-15
+**Status:** the hypothesis is disproven for paradigms (already implemented); for
+the tag-combination dictionary — **confirmed, with a significant effect**
+(corrected mid-review at the user's request — see "Correction" below)
+**Verified by:** Aleksey Marin (asmadews@gmail.com)
+**Related documents:** [0001-dawg-alphabet-density.md](0001-dawg-alphabet-density.md), [implementation/stage-17-optimize.md](../implementation/stage-17-optimize.md)
 
-## Контекст
+## Context
 
-Скомпилированный словарь GMOR (`pkg/morphology/internal/format.go`,
-`pkg/morphology/save.go`) — контейнер именованных секций. На реальном
-полном OpenCorpora (`.data/opencorpora/opencorpora.dat`, пересобран
-15.09.2026 после фиксов тегов/дедупликации этой сессии, 2 шарда,
-15.3 МБ) секции распределены так:
+The compiled GMOR dictionary (`pkg/morphology/internal/format.go`,
+`pkg/morphology/save.go`) is a container of named sections. On the real,
+full OpenCorpora dictionary (`.data/opencorpora/opencorpora.dat`, rebuilt
+2026-09-15 after this session's tag/deduplication fixes, 2 shards,
+15.3 MB), the sections break down as:
 
-| Секция | Размер | Доля от файла |
+| Section | Size | Share of file |
 |---|---|---|
-| `words.dawg-0` + `words.dawg-1` | 13 711 276 байт | ~85.2% |
-| `suffixes-0` + `suffixes-1` | 1 457 339 байт | ~9.1% |
-| `paradigms-0` + `paradigms-1` | 694 980 байт | ~4.3% |
-| `tagset` | 223 692 байта | ~1.4% |
+| `words.dawg-0` + `words.dawg-1` | 13,711,276 bytes | ~85.2% |
+| `suffixes-0` + `suffixes-1` | 1,457,339 bytes | ~9.1% |
+| `paradigms-0` + `paradigms-1` | 694,980 bytes | ~4.3% |
+| `tagset` | 223,692 bytes | ~1.4% |
 
-Кодирование парадигм — `pkg/morphology/internal/paradigm.go` (`Paradigm`,
-`NewParadigm`) и `format.go` (`EncodeParadigms`, `format.go:468-483`):
-каждая парадигма — плоский `[]uint16` вида `[suffix_0..N | tag_0..N |
-prefix_0..N]` (числовые ID, не текст), сериализуется как `[count
-uint32][для каждой: len uint32, len×uint16]`.
+Paradigm encoding — `pkg/morphology/internal/paradigm.go` (`Paradigm`,
+`NewParadigm`) and `format.go` (`EncodeParadigms`, `format.go:468-483`):
+each paradigm is a flat `[]uint16` of the form `[suffix_0..N | tag_0..N |
+prefix_0..N]` (numeric ids, not text), serialized as `[count
+uint32][for each: len uint32, len×uint16]`.
 
-Кодирование `tagset` — `EncodeTagSet`/`DecodeTagSet` (`format.go:439-
-459`): `json.Marshal({name, tags: []string})`. Важно точно, что здесь
-"tags" — это **`TagSet.Tags`, массив уникальных СОЧЕТАНИЙ граммем**
-(полных морфологических тегов вида `"NOUN,anim,masc,sing,nomn"`,
-зарегистрированных через `tagSet.Add(frm.gramm)` при импорте), а не
-массив отдельных граммем ("NOUN", "anim" и т.п. по одной). Каждое такое
-сочетание — уже само по себе строка с внутренними запятыми-разделителями
-между входящими в него граммемами.
+`tagset` encoding — `EncodeTagSet`/`DecodeTagSet` (`format.go:439-
+459`): `json.Marshal({name, tags: []string})`. It's important to be
+precise here: "tags" is **`TagSet.Tags`, an array of unique grammeme
+COMBINATIONS** (full morphological tags like
+`"NOUN,anim,masc,sing,nomn"`, registered via `tagSet.Add(frm.gramm)`
+during import), not an array of individual grammemes ("NOUN", "anim",
+etc. one at a time). Each such combination is itself already a string
+with internal comma separators between the grammemes it contains.
 
-## Уточнение (пользователь поправил первую версию этого документа)
+## Correction (the user corrected the first version of this document)
 
-Первая версия документа называла содержимое секции `tagset` «списком
-уникальных тегов» и сравнивала только два способа упаковки **одного и
-того же** плоского текста (JSON против компактного `EncodeStrings`) —
-эффект получился маленьким (5.4% от секции). Пользователь указал на
-две неточности:
+The first version of this document called the `tagset` section's
+contents a "list of unique tags" and compared only two ways of packing
+**the same** flat text (JSON vs. the compact `EncodeStrings`) — the
+effect turned out small (5.4% of the section). The user pointed out two
+inaccuracies:
 
-1. Терминологическая: это не «уникальные теги», а **уникальные
-   сочетания тегов** — каждый элемент `TagSet.Tags` сам состоит из
-   нескольких граммем через запятую.
-2. По существу: реальная избыточность — не в синтаксисе JSON
-   (кавычки/запятые массива), а в том, что **одни и те же отдельные
-   граммемы повторяются внутри многих разных сочетаний** (например,
-   "NOUN,anim,masc,sing,nomn" и "NOUN,anim,masc,sing,gent" совпадают
-   на 4 из 5 граммем) — а первая версия эксперимента эту избыточность
-   не проверяла вообще, сравнивая лишь обёртку вокруг одного и того же
-   несжатого текста.
+1. Terminological: this isn't "unique tags" but **unique tag
+   combinations** — each element of `TagSet.Tags` itself consists of
+   several grammemes joined by commas.
+2. Substantive: the real redundancy isn't in JSON's syntax (the array's
+   quotes/commas) but in the fact that **the same individual grammemes
+   repeat across many different combinations** (e.g.
+   "NOUN,anim,masc,sing,nomn" and "NOUN,anim,masc,sing,gent" share 4 of
+   5 grammemes) — and the first version of the experiment didn't check
+   this redundancy at all, comparing only the wrapper around the same
+   uncompressed text.
 
-Раздел «Эксперимент» ниже расширен вторым, более глубоким прогоном,
-который прямо проверяет эту избыточность.
+The "Experiment" section below is expanded with a second, deeper run
+that directly checks this redundancy.
 
-## Гипотеза
+## Hypothesis
 
-Пользователь, разглядывая `.data/opencorpora/opencorpora.dat` в
-текстовом/hex-просмотрщике, увидел читаемый текст по смещению `0x1ee`
-(494) и принял его за список парадигм в текстовом виде. Гипотеза: если
-завести словарь отдельных граммем (граммема → числовой код) и хранить
-и парадигмы, и сочетания тегов как бинарные структуры `[длина,
-код, код, ...]` вместо текста — размер финального словаря должен
-заметно сократиться, а скорость записи/чтения этого блока — вырасти.
+While looking at `.data/opencorpora/opencorpora.dat` in a text/hex
+viewer, the user saw readable text at offset `0x1ee` (494) and took it
+for a text-form list of paradigms. Hypothesis: if a dictionary of
+individual grammemes (grammeme -> numeric code) were built, and both
+paradigms and tag combinations were stored as binary `[length,
+code, code, ...]` structures instead of text — the final dictionary's
+size should shrink noticeably, and this block's read/write speed
+should improve.
 
-## Эксперимент
+## Experiment
 
-**Данные:** реально собранный `.data/opencorpora/opencorpora.dat`
-(тот же файл, что просматривал пользователь), 2 шарда, 6028 уникальных
-сочетаний тегов после фикса `paradigmKeyHash`/дедупликации этой сессии
-(сборка — `./deploy/gomorphy_build compile`).
+**Data:** the actually-built `.data/opencorpora/opencorpora.dat` (the
+same file the user was viewing), 2 shards, 6028 unique tag combinations
+after this session's `paradigmKeyHash`/deduplication fix (built via
+`./deploy/gomorphy_build compile`).
 
-**Инструменты:** временный `_test.go` в `pkg/morphology/internal`
-(файл не сохранён в репозитории), вызывающий уже существующие
-экспортируемые функции пакета (`OpenContainer`, `Container.Section`,
-`DecodeTagSet`, `EncodeStrings`) — не выдуманный инструмент.
+**Tools:** a temporary `_test.go` in `pkg/morphology/internal` (the
+file isn't kept in the repository), calling the package's existing
+exported functions (`OpenContainer`, `Container.Section`,
+`DecodeTagSet`, `EncodeStrings`) — not an invented tool.
 
-**Метод измерения (два прогона):**
+**Measurement method (two runs):**
 
-1. *Первый прогон* (см. «Уточнение» выше): сравнить размер секции
-   `tagset` при текущем кодировании (`EncodeTagSet`, JSON) против
-   кодирования тем же `EncodeStrings`, что уже используется для
-   `suffixes`/`prefixes`, — но **без** разбора сочетаний на отдельные
-   граммемы.
-2. *Второй прогон* (по итогам разговора с пользователем): разбить
-   каждое из 6028 сочетаний по запятой на отдельные граммемы, собрать
-   словарь уникальных граммем, и посчитать размер гипотетического
-   кодирования «словарь граммем (`EncodeStrings`) + на каждое
-   сочетание: 1 байт длины + N байт-индексов в словарь» — то есть
-   именно то бинарное `[длина, код, код, ...]`, что предложил
-   пользователь, но применительно к словарю тег-сочетаний, а не
-   парадигм.
+1. *First run* (see "Correction" above): compare the `tagset`
+   section's size under the current encoding (`EncodeTagSet`, JSON)
+   against the same `EncodeStrings` encoding already used for
+   `suffixes`/`prefixes` — but **without** splitting combinations into
+   individual grammemes.
+2. *Second run* (following the discussion with the user): split each
+   of the 6028 combinations by comma into individual grammemes, build a
+   dictionary of unique grammemes, and compute the size of the
+   hypothetical encoding "grammeme dictionary (`EncodeStrings`) + per
+   combination: 1 length byte + N index bytes into the dictionary" —
+   i.e. exactly the binary `[length, code, code, ...]` the user
+   proposed, but applied to the tag-combination dictionary rather than
+   to paradigms.
 
-Дополнительно (для оценки трудозатрат на чтение при таком кодировании)
-прочитан код `TagSet.TagName` и `pkg/morphology/open.go`, чтобы
-установить, в какой момент жизненного цикла словаря декодируется
-`tagset` и насколько «горяч» этот путь.
+Additionally (to estimate the read-time cost of such an encoding), the
+`TagSet.TagName` code and `pkg/morphology/open.go` were read, to
+establish at what point in the dictionary's lifecycle `tagset` gets
+decoded and how "hot" that path is.
 
-**Шаги воспроизведения:**
+**Reproduction steps:**
 ```bash
 ./deploy/gomorphy_build compile
-# далее — временный _test.go в pkg/morphology/internal:
+# then — a temporary _test.go in pkg/morphology/internal:
 # OpenContainer(data).Section("tagset") -> DecodeTagSet -> ts.Tags;
-# для каждого элемента ts.Tags: strings.Split(combo, ",") -> граммемы;
-# собрать словарь уникальных граммем, посчитать байты гипотетического
-# кодирования и сравнить с len(EncodeTagSet(ts)) / len(EncodeStrings(ts.Tags))
+# for each element of ts.Tags: strings.Split(combo, ",") -> grammemes;
+# build a dictionary of unique grammemes, compute the bytes for the
+# hypothetical encoding, and compare against
+# len(EncodeTagSet(ts)) / len(EncodeStrings(ts.Tags))
 ```
 
-## Результаты
+## Results
 
-**Что реально лежит по смещению `0x1ee`.** Каталог секций показывает:
-`tagset` занимает диапазон `0x1d0`–`0x36ba0` (464–224 156 байт, что
-согласуется с указанным пользователем `0x036b9a` — конец секции);
-`paradigms-0` начинается лишь на `0x19a860` (1 681 504) — на полтора
-мегабайта дальше. Байты по `0x1ee` — `"NOUN,anim,masc,sing,nomn",
-"NOUN,anim,masc,sing,gent","NOUN,anim...` — JSON-массив сочетаний
-тегов (`tagset`), не парадигмы.
+**What's actually at offset `0x1ee`.** The section catalog shows:
+`tagset` occupies the range `0x1d0`–`0x36ba0` (464–224,156 bytes, which
+matches the user-cited `0x036b9a` as the section's end); `paradigms-0`
+starts only at `0x19a860` (1,681,504) — a megabyte and a half later.
+The bytes at `0x1ee` are `"NOUN,anim,masc,sing,nomn",
+"NOUN,anim,masc,sing,gent","NOUN,anim...` — a JSON array of tag
+combinations (`tagset`), not paradigms.
 
-**Парадигмы.** `Paradigm.Data()` и `EncodeParadigms` подтверждают: это
-уже плоский массив `uint16`-кодов, без единого байта текста — гипотеза
-пользователя для этой секции **уже реализована**, дополнительных
-действий не требует.
+**Paradigms.** `Paradigm.Data()` and `EncodeParadigms` confirm: this is
+already a flat array of `uint16` codes, without a single byte of text —
+the user's hypothesis for this section is **already implemented**, no
+further action needed.
 
-**Словарь тег-сочетаний (`tagset`) — первый прогон** (обёртка, без
-разбора на граммемы):
+**Tag-combination dictionary (`tagset`) — first run** (wrapper only, no
+splitting into grammemes):
 
-| Кодирование | Размер | Δ к JSON |
+| Encoding | Size | Δ vs. JSON |
 |---|---|---|
-| Текущее (JSON, `EncodeTagSet`) | 223 692 байта | — |
-| `EncodeStrings(ts.Tags)` (та же обёртка, компактнее) | 211 605 байт | −5.4% |
+| Current (JSON, `EncodeTagSet`) | 223,692 bytes | — |
+| `EncodeStrings(ts.Tags)` (same wrapper, more compact) | 211,605 bytes | −5.4% |
 
-**Словарь тег-сочетаний — второй прогон** (словарь граммем + индексы):
+**Tag-combination dictionary — second run** (grammeme dictionary +
+indices):
 
-- Сочетаний (`TagSet.Tags`): **6028**.
-- Уникальных отдельных граммем во всех сочетаниях: **100** (влезает в
-  1-байтовый индекс).
-- Всего вхождений граммем по всем сочетаниям: **42 321** (в среднем
-  **7.02** граммемы на сочетание).
+- Combinations (`TagSet.Tags`): **6028**.
+- Unique individual grammemes across all combinations: **100** (fits in
+  a 1-byte index).
+- Total grammeme occurrences across all combinations: **42,321**
+  (**7.02** grammemes per combination on average).
 
-| Кодирование | Размер | Δ к JSON | Δ к `EncodeStrings` |
+| Encoding | Size | Δ vs. JSON | Δ vs. `EncodeStrings` |
 |---|---|---|---|
-| Текущее (JSON) | 223 692 байта | — | — |
-| `EncodeStrings(ts.Tags)` | 211 605 байт | −5.4% | — |
-| Словарь граммем (500 байт) + индексы (48 349 байт) = **48 849 байт** | **48 849 байт** | **−78.2%** | **−76.9%** |
+| Current (JSON) | 223,692 bytes | — | — |
+| `EncodeStrings(ts.Tags)` | 211,605 bytes | −5.4% | — |
+| Grammeme dictionary (500 bytes) + indices (48,349 bytes) = **48,849 bytes** | **48,849 bytes** | **−78.2%** | **−76.9%** |
 
-Roundtrip словаря граммем через `EncodeStrings`/`DecodeStrings` —
-без потерь.
+Round-tripping the grammeme dictionary through
+`EncodeStrings`/`DecodeStrings` is lossless.
 
-В пересчёте на весь файл (16 087 391 байт по сумме секций): экономия
-174 843 байта — **≈1.09% от общего размера словаря** (было бы 0.075%
-по первому, неполному прогону).
+Scaled to the whole file (16,087,391 bytes by section total): a saving
+of 174,843 bytes — **≈1.09% of the dictionary's total size** (it would
+have been 0.075% by the first, incomplete run).
 
-**Стоимость декодирования при чтении.** `pkg/morphology/open.go:95`
-вызывает `DecodeTagSet` один раз, при открытии файла (`Open`);
-результат — полностью материализованный `TagSet.Tags []string` в
-памяти. `TagName(id)` (`tagset.go:46`) после этого — просто
-`t.Tags[id]`, O(1), без какого-либо декодирования на путь `Parse()`
-(горячий путь). Значит при переходе на кодирование «словарь граммем +
-индексы» единственная дополнительная работа — **один раз при `Open()`**
-восстановить 6028 строк `strings.Join` из в среднем 7 индексов каждая
-(42 321 join-операция суммарно) — на практике микросекунды, не
-измеримо на фоне чтения/mmap `words.dawg` (13.7 МБ). Путь `Parse()`/
-`TagName()` не меняется совсем.
+**Decoding cost on read.** `pkg/morphology/open.go:95` calls
+`DecodeTagSet` once, when the file is opened (`Open`); the result is a
+fully materialized `TagSet.Tags []string` in memory. `TagName(id)`
+(`tagset.go:46`) after that is just `t.Tags[id]`, O(1), with no
+decoding at all on the `Parse()` path (the hot path). So switching to
+the "grammeme dictionary + indices" encoding adds exactly one extra bit
+of work — **once, during `Open()`** — to reconstruct 6028 strings via
+`strings.Join` from an average of 7 indices each (42,321 join
+operations total) — in practice microseconds, immeasurable next to
+reading/mmap-ing `words.dawg` (13.7 MB). The `Parse()`/`TagName()` path
+doesn't change at all.
 
-## Выводы
+## Conclusions
 
-1. **Парадигмы уже бинарные** — раздел не про них, идею пользователя
-   для них реализовывать не нужно (совпадает с идеей, но код уже
-   такой).
-2. **Первая версия этого документа занижала эффект на порядок**,
-   сравнивая только обёртку (JSON против компактных строк) и не
-   измеряя реальную избыточность повторяющихся граммем внутри
-   сочетаний, на что справедливо указал пользователь. С учётом
-   разбора на граммемы эффект — **не 5.4% от секции / 0.075% от
-   файла, а 78.2% от секции / ≈1.09% от файла**.
-3. **Стоимость чтения после такого кодирования не растёт на горячем
-   пути**: `tagset` уже материализуется в `[]string` один раз при
-   `Open()`, `TagName` — O(1)-доступ к готовому массиву что до, что
-   после смены дискового формата. Контраргумент пользователя
-   («хранение индексов дороже при извлечении») справедлив в общем
-   виде для схем, где декодирование происходит на каждый запрос, но
-   не применим здесь конкретно: единственное место декодирования —
-   разовая загрузка файла, а не путь поиска слова. Единственный
-   реальный сценарий, где это могло бы иметь значение, — очень
-   короткоживущий процесс, открывающий словарь заново на каждый
-   вызов (например, `gomorphy lookup` как разовая CLI-команда без
-   персистентного процесса); даже тогда цена — десятки тысяч join
-   мелких строк, то есть заведомо меньше времени открытия/чтения
-   файла с диска.
-4. **Реальный вес словаря всё равно определяет `words.dawg`**
-   (~85.2% файла) — рычаг там на порядок больше
+1. **Paradigms are already binary** — this section isn't about them;
+   there's no need to implement the user's idea for them (it matches
+   the idea, but the code is already like that).
+2. **The first version of this document underestimated the effect by an
+   order of magnitude**, comparing only the wrapper (JSON vs. compact
+   strings) and not measuring the real redundancy of repeated grammemes
+   within combinations, as the user rightly pointed out. Accounting for
+   splitting into grammemes, the effect is **not 5.4% of the section /
+   0.075% of the file, but 78.2% of the section / ≈1.09% of the file**.
+3. **The read cost after such an encoding doesn't grow on the hot
+   path**: `tagset` is already materialized into `[]string` once at
+   `Open()`; `TagName` is an O(1) access into the ready-made array both
+   before and after the on-disk format change. The user's
+   counter-argument ("storing indices is more expensive to extract") is
+   valid in general for schemes where decoding happens on every
+   request, but doesn't apply here specifically: the only decoding site
+   is a one-time file load, not the word-lookup path. The one real
+   scenario where this could matter is a very short-lived process that
+   reopens the dictionary on every call (e.g. `gomorphy lookup` as a
+   one-off CLI command with no persistent process); even then the cost
+   is tens of thousands of small-string joins, i.e. reliably smaller
+   than the time to open/read the file from disk.
+4. **The real weight of the dictionary is still set by `words.dawg`**
+   (~85.2% of the file) — the lever there is an order of magnitude
+   bigger
    ([0001-dawg-alphabet-density.md](0001-dawg-alphabet-density.md),
-   ~36.5% на тестовых данных). Но находка по `tagset` (−174.8 КБ,
-   ~1.09% файла) больше не выглядит пренебрежимо малой сама по себе —
-   это тот же порядок, что и «сужение типов ID» из Этапа 17
-   (~40% экономии на секции paradigms, тоже не единственный рычаг, но
-   уже сделанный и учтённый).
+   ~36.5% on the test data). But the `tagset` finding (−174.8 KB,
+   ~1.09% of the file) no longer looks negligible on its own — it's the
+   same order of magnitude as the "narrowing ID types" from Stage 17
+   (~40% savings on the paradigms section, also not the only lever, but
+   already done and accounted for).
 
-**По версионированию** (вопрос был явно задан): проект до 1.0.0, ни
-один `.dat`-файл не выпущен пользователям (уже зафиксировано в
+**On versioning** (a question that was explicitly asked): the project
+is pre-1.0.0, no `.dat` file has shipped to users (already recorded in
 [2026-09-14-suffix-sharding-design.md](../superpowers/specs/2026-09-14-suffix-sharding-design.md))
-— смена байтового layout `tagset` **ничего не стоит с точки зрения
-совместимости прямо сейчас**, вне зависимости от того, сделать её до
-или после релиза. Если бы менять пришлось **после** 1.0.0, потребовался
-бы маркер версии кодировки секции — по прецеденту уже сделанного в этом
-проекте `CompressionNone`/`CompressionZstd` id в флагах секции
-(`format.go`, Этап 17): `Container.Section` должен явно отличать
-«старый JSON» от «новый словарь+индексы» и не молча портить данные при
-чтении файла старого формата.
+— changing `tagset`'s byte layout **costs nothing compatibility-wise
+right now**, regardless of whether it's done before or after the
+release. If the change had to happen **after** 1.0.0, a section-encoding
+version marker would be needed — following the precedent already set in
+this project by the `CompressionNone`/`CompressionZstd` id in section
+flags (`format.go`, Stage 17): `Container.Section` would need to
+explicitly distinguish "old JSON" from "new dictionary+indices" and not
+silently corrupt data when reading a file in the old format.
 
-**Пересмотренная рекомендация:** в отличие от первой версии этого
-документа — эффект (−174.8 КБ, 78.2% секции) достаточен, чтобы
-рассматривать это как полноценный кандидат в бэклог Этапа 17, рядом
-с плотным алфавитом DAWG и zstd-сжатием холодных секций, а не как
-«не стоит отдельной задачи». Приоритет ниже, чем у плотного алфавита
-DAWG (эффект на порядок меньше и там, и там нет payload-неопределён-
-ности, которая есть у DAWG-находки), но реализация сопоставимо простая
-и низкорискованная: новый формат для одной секции, декодирование —
-чистая функция без побочных эффектов на путь чтения.
+**Revised recommendation:** unlike the first version of this document —
+the effect (−174.8 KB, 78.2% of the section) is significant enough to
+treat this as a full-fledged backlog candidate for Stage 17, alongside
+the DAWG dense alphabet and zstd compression of cold sections, rather
+than "not worth a separate task." Lower priority than the DAWG dense
+alphabet (the effect there is an order of magnitude bigger, and there's
+no payload uncertainty there like the one the DAWG finding has), but
+the implementation is comparably simple and low-risk: a new format for
+a single section, decoding is a pure function with no side effects on
+the read path.
 
-## Источники
+## Sources
 
-<сторонние источники не привлекались; все ссылки в тексте — на файлы
-и документы этого репозитория, проверены чтением в этой сессии>
+<No third-party sources were used; every reference in the text is to
+files and documents in this repository, verified by reading them in
+this session>

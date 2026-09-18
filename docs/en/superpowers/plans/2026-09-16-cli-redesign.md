@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go (stdlib `os`/`path/filepath`/`strconv`), `github.com/spf13/cobra` (pulls in `github.com/spf13/pflag` as an indirect dependency — no direct `pflag` import needed anywhere in this plan's code), `golang.org/x/term` (TTY detection), `github.com/stretchr/testify`.
 
-**Spec:** [docs/superpowers/specs/2026-09-16-cli-redesign-design.md](../specs/2026-09-16-cli-redesign-design.md)
+**Spec:** [docs/en/superpowers/specs/2026-09-16-cli-redesign-design.md](../specs/2026-09-16-cli-redesign-design.md)
 
 ## Global Constraints
 
@@ -1805,7 +1805,7 @@ import (
 func main() {
 	root := &cobra.Command{
 		Use:   "gomorphy",
-		Short: "gomorphy — морфологический анализ слов по словарям в едином формате (GMOR)",
+		Short: "gomorphy - morphological analysis over dictionaries in a unified format (GMOR)",
 	}
 
 	registerGlobalFlags(root)
@@ -1867,7 +1867,7 @@ func TestCLIEndToEnd(t *testing.T) {
 	require.NoError(t, err, "build: %s", build)
 	require.Contains(t, string(build), "saved")
 	_, err = os.Stat(out)
-	require.NoError(t, err, ".dat файл создан")
+	require.NoError(t, err, ".dat file was created")
 
 	// кот has two paradigms in stdWords (NOUN and VERB, a homonym) - both
 	// must surface in one lookup, same as before this redesign.

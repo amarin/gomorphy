@@ -2,7 +2,7 @@
 
 ## Context
 
-`docs/todo.md`'s "Multi-dict: известный контекст и открытые вопросы" section
+`docs/en/todo.md`'s "Multi-dict: known context and open questions" section
 (raised 2026-09-15, resolved into this spec 2026-09-16) established: the
 library has no registry or aggregation across multiple open dictionaries.
 `pkg/morphology/open.go`'s `Open`/`OpenPyMorphy`/`OpenPyMorphyDense`/
@@ -10,9 +10,9 @@ library has no registry or aggregation across multiple open dictionaries.
 lifecycle; nothing connects several of them, and `Reading`
 (`pkg/morphology/parse.go:14-22`) / `LemmaRef` (`pkg/morphology/lemma.go:4-9`)
 carry only `Shard int` — an index *within* one dictionary, not a
-dictionary/language identifier. `docs/todo.md` also flagged that `Shard`'s
+dictionary/language identifier. `docs/en/todo.md` also flagged that `Shard`'s
 own design (deliberately left extensible for future multi-dict use, see
-`docs/superpowers/specs/2026-09-14-suffix-sharding-design.md`) establishes
+`docs/en/superpowers/specs/2026-09-14-suffix-sharding-design.md`) establishes
 the *pattern* to follow — a small int field, not a design to literally
 reuse, since `Shard` already means something else (the shard within one
 dictionary's own sharded suffix table) and a single `Reading` needs both
@@ -21,8 +21,8 @@ pieces of information at once when it comes from a multi-dict lookup.
 The originally-cited motivating scenario was per-language dictionaries
 (one dictionary per language, each with its own dense alphabet, instead of
 one dictionary with a wide 2-byte alphabet over a combined corpus — see
-`docs/research/0004-dawg-dense-alphabet-with-payload.md` and the "Плотный
-алфавит в проде" thesis in `todo.md`). The brainstorming session that
+`docs/en/research/0004-dawg-dense-alphabet-with-payload.md` and the "Dense
+alphabet in production" thesis in `todo.md`). The brainstorming session that
 produced this spec confirmed the actual scope is wider: any combination of
 N dictionaries the caller wants opened together — including two
 dictionaries of the *same* language (a main dictionary plus a custom/
@@ -31,7 +31,7 @@ using language code as the sole identifier.
 
 A prerequisite gap was found and closed in the same session: `BuildInfo`
 (`pkg/morphology/buildinfo.go`) has had a `SourceVersion` field since it was
-introduced, documented as "версия/ревизия исходных данных," but **no
+introduced, documented as "the source data's version/revision," but **no
 importer ever populated it** — `Source` was always set
 (`"pymorphy2"`/`"opencorpora"`), `SourceVersion` was always empty. Fixed in
 two prep commits on `master` before this spec: `internal/xmlscan` gained
@@ -84,7 +84,7 @@ breaking this contract, since nothing is lost by returning everything now.
 
 **Go-API only, no CLI wiring in this increment.** `cmd/gomorphy` keeps its
 single `-dict` flag. Same scoping decision already made for the pymorphy2
-dense-alphabet work (`docs/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md`) — matching precedent, not re-litigated here.
+dense-alphabet work (`docs/en/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md`) — matching precedent, not re-litigated here.
 
 ## Design
 
@@ -133,29 +133,29 @@ import (
 	"sync"
 )
 
-// MultiDictionary — набор независимо открытых словарей, опрашиваемых как
-// единое целое. Каждый *Dictionary в наборе сохраняет свой собственный
-// жизненный цикл (mmap и т.п.) — MultiDictionary не открывает и не
-// импортирует ничего сама, только агрегирует Parse/Lemma и владеет
-// закрытием всего набора разом.
+// MultiDictionary — a set of independently opened dictionaries, queried as
+// a single whole. Each *Dictionary in the set retains its own lifecycle
+// (mmap etc.) — MultiDictionary itself opens or imports nothing, it only
+// aggregates Parse/Lemma and owns closing the whole set at once.
 type MultiDictionary struct {
 	dicts []*Dictionary
 }
 
-// NewMultiDictionary оборачивает уже открытые словари в единый набор.
-// Порядок dicts фиксирует индексацию Reading.Dict/LemmaRef.Dict и порядок
-// склейки результатов Parse/Lemma — оба всегда в порядке регистрации, не
-// пересортировываются.
+// NewMultiDictionary wraps already-open dictionaries into a single set.
+// The order of dicts fixes the indexing of Reading.Dict/LemmaRef.Dict and
+// the order in which Parse/Lemma results are concatenated — both always
+// follow registration order and are never re-sorted.
 func NewMultiDictionary(dicts ...*Dictionary) *MultiDictionary {
 	return &MultiDictionary{dicts: dicts}
 }
 
-// Len возвращает число словарей в наборе.
+// Len returns the number of dictionaries in the set.
 func (m *MultiDictionary) Len() int { return len(m.dicts) }
 
-// DictInfo возвращает диагностические метаданные словаря с индексом i (тот
-// же индекс, что несёт Reading.Dict/LemmaRef.Dict), или nil — если индекс
-// вне диапазона, или у этого словаря нет секции info (см. Dictionary.Info).
+// DictInfo returns the diagnostic metadata of the dictionary at index i
+// (the same index carried by Reading.Dict/LemmaRef.Dict), or nil if the
+// index is out of range, or that dictionary has no info section (see
+// Dictionary.Info).
 func (m *MultiDictionary) DictInfo(i int) *BuildInfo {
 	if i < 0 || i >= len(m.dicts) {
 		return nil
@@ -163,13 +163,13 @@ func (m *MultiDictionary) DictInfo(i int) *BuildInfo {
 	return m.dicts[i].Info()
 }
 
-// Parse разбирает word во всех словарях набора параллельно (по горутине на
-// словарь — тот же паттерн, что Dictionary.exact уже использует для
-// шардов внутри одного словаря). Результат — конкатенация Parse каждого
-// словаря в порядке регистрации набора, с проставленным Reading.Dict; без
-// какой-либо сортировки или дедупликации между словарями сверх того, что
-// каждый Dictionary.Parse уже делает сам внутри себя. nil, если ни один
-// словарь не дал чтений.
+// Parse parses word across all dictionaries in the set in parallel (one
+// goroutine per dictionary — the same pattern Dictionary.exact already
+// uses for shards within a single dictionary). The result is the
+// concatenation of each dictionary's Parse in the set's registration
+// order, with Reading.Dict set; there is no sorting or deduplication
+// across dictionaries beyond what each Dictionary.Parse already does
+// internally. Returns nil if no dictionary produced any readings.
 func (m *MultiDictionary) Parse(word string) []Reading {
 	results := make([][]Reading, len(m.dicts))
 
@@ -194,8 +194,8 @@ func (m *MultiDictionary) Parse(word string) []Reading {
 	return out
 }
 
-// Lemma разбирает word во всех словарях набора и возвращает начальные
-// формы. Та же конкатенация-в-порядке-регистрации семантика, что и Parse.
+// Lemma parses word across all dictionaries in the set and returns their
+// base forms. Same registration-order-concatenation semantics as Parse.
 func (m *MultiDictionary) Lemma(word string) []LemmaRef {
 	results := make([][]LemmaRef, len(m.dicts))
 
@@ -220,9 +220,9 @@ func (m *MultiDictionary) Lemma(word string) []LemmaRef {
 	return out
 }
 
-// Close закрывает каждый словарь набора (Dictionary.Close — no-op для
-// словарей, открытых не через Open), агрегируя все ошибки через
-// errors.Join. После Close набор использовать нельзя, как и его словари.
+// Close closes every dictionary in the set (Dictionary.Close is a no-op
+// for dictionaries not opened via Open), aggregating all errors via
+// errors.Join. After Close the set must not be used, nor its dictionaries.
 func (m *MultiDictionary) Close() error {
 	var errs []error
 	for _, d := range m.dicts {

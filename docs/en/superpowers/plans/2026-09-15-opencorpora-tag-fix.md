@@ -8,15 +8,15 @@
 
 **Tech Stack:** Go 1.27, `github.com/stretchr/testify` (assert/require, already a dependency).
 
-**Spec:** [docs/superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md](../specs/2026-09-15-opencorpora-tag-fix-design.md)
+**Spec:** [docs/en/superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md](../specs/2026-09-15-opencorpora-tag-fix-design.md)
 
 ## Global Constraints
 
-- `go build ./...` must succeed after every task (no task may leave the repo non-compiling), matching this project's existing convention (`docs/todo.md`, "Требования к оформлению").
+- `go build ./...` must succeed after every task (no task may leave the repo non-compiling), matching this project's existing convention (`docs/en/todo.md`, "Formatting requirements").
 - `go test ./... -race` must be green after every task.
 - No change to `xmlscan.Handler`'s method set beyond the `OnLemmaEnd`→`OnLemmaHeadEnd` rename — no new event, no signature change (per spec's "Non-goals").
 - Grammeme merge order is lemma grammemes first, then the form's own, in plain XML declaration order — no sorting, no dedup, no source tracking (per spec's "Decision").
-- Out of scope: the separately-tracked "possible loss of lemmas from OpenCorpora" investigation (`docs/todo.md`) — do not touch it in this work.
+- Out of scope: the separately-tracked "possible loss of lemmas from OpenCorpora" investigation (`docs/en/todo.md`) — do not touch it in this work.
 
 ---
 
@@ -190,7 +190,7 @@ clear everything," which is the root cause of the tag-corruption bug
 fixed in the next commit. Pure rename here: every implementer's
 method body is unchanged, existing tests are unaffected.
 
-See docs/superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md.
+See docs/en/superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md.
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 EOF
@@ -315,7 +315,7 @@ Add to `pkg/morphology/importers/opencorpora/import_test.go` (e.g. after `TestIm
 ```go
 // TestImportFromXMLFormTagsCombineLemmaAndOwnGrammemes guards against the
 // tag-corruption bug documented in docs/code-review-pre-1.0.md and fixed
-// per docs/superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md:
+// per docs/en/superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md:
 // each form's tag must be its lemma's own grammemes plus its own — not
 // empty, not a previous form's, not an accumulating mixture.
 func TestImportFromXMLFormTagsCombineLemmaAndOwnGrammemes(t *testing.T) {
@@ -324,11 +324,11 @@ func TestImportFromXMLFormTagsCombineLemmaAndOwnGrammemes(t *testing.T) {
 	require.NotNil(t, d.TagSet)
 
 	want := []string{
-		"NOUN,anim,masc,sing,nomn", // лемма "кот" (сущ.), форма "кот"
-		"NOUN,anim,masc,sing,gent", // лемма "кот" (сущ.), форма "кота"
-		"VERB,impf,trans",          // лемма "кот" (гл.), форма "кот" (своих граммем нет)
-		"NOUN,fem,sing,anim,nomn",  // лемма "мышь", форма "мышь"
-		"NOUN,fem,sing,anim,gent",  // лемма "мышь", форма "мыши"
+		"NOUN,anim,masc,sing,nomn", // lemma "кот" (noun), form "кот"
+		"NOUN,anim,masc,sing,gent", // lemma "кот" (noun), form "кота"
+		"VERB,impf,trans",          // lemma "кот" (verb), form "кот" (no own grammemes)
+		"NOUN,fem,sing,anim,nomn",  // lemma "мышь", form "мышь"
+		"NOUN,fem,sing,anim,gent",  // lemma "мышь", form "мыши"
 	}
 	for _, tag := range want {
 		assert.Contains(t, d.TagSet.Tags, tag, "tag %q must be registered", tag)
@@ -418,7 +418,7 @@ with:
 // they arrive interleaved across many XML events; a form's own <g>
 // children are only fully known once </f> closes, so its final tag is
 // assembled on OnFormEnd, not on OnForm. See
-// docs/superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md.
+// docs/en/superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md.
 type xmlHandler struct {
 	tagSet *internal.TagSet
 	lemmas *[]lemmaEntry
@@ -552,7 +552,7 @@ grammemes as nested <g> elements, not an attribute) — the old
 attribute-based fixture never exercised the real lemma-grammeme code
 path at all.
 
-See docs/superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md.
+See docs/en/superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md.
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 EOF
@@ -561,10 +561,10 @@ EOF
 
 ---
 
-### Task 3: Full-suite verification and `docs/todo.md` status update
+### Task 3: Full-suite verification and `docs/en/todo.md` status update
 
 **Files:**
-- Modify: `docs/todo.md` (mark the bug entry resolved)
+- Modify: `docs/en/todo.md` (mark the bug entry resolved)
 
 **Interfaces:**
 - Consumes: nothing new — this task only verifies and documents.
@@ -582,7 +582,7 @@ Expected: no output, exit 0.
 - [ ] **Step 3 (manual, optional): replay the documented real-world repro**
 
 If a full rebuilt `.data/opencorpora/opencorpora.dat` is available (per
-`docs/todo.md`'s existing build instructions), manually re-run the exact
+`docs/en/todo.md`'s existing build instructions), manually re-run the exact
 repro from the critical-bug finding:
 
 ```bash
@@ -596,55 +596,56 @@ automated test suite — skip it if the full dictionary isn't built in this
 environment; Task 2's unit-level regression test already covers the
 mechanism directly.
 
-- [ ] **Step 4: Update `docs/todo.md`**
+- [ ] **Step 4: Update `docs/en/todo.md`**
 
-In `docs/todo.md`, find the section starting with:
+In `docs/en/todo.md`, find the section starting with:
 
 ```markdown
-### Критический баг: искажённые теги OpenCorpora-словоформ — ЗАПЛАНИРОВАНО (release-blocking)
+### Critical bug: corrupted OpenCorpora wordform tags — PLANNED (release-blocking)
 ```
 
 Change the heading to:
 
 ```markdown
-### Критический баг: искажённые теги OpenCorpora-словоформ — ИСПРАВЛЕНО
+### Critical bug: corrupted OpenCorpora wordform tags — FIXED
 ```
 
-At the end of that section (after the existing "Не исследовано, но
-упомянуто пользователем" paragraph), add:
+At the end of that section (after the existing "Not investigated, but
+mentioned by the user" paragraph), add:
 
 ```markdown
-**Фикс**: см. [superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md](superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md)
-и [superpowers/plans/2026-09-15-opencorpora-tag-fix.md](superpowers/plans/2026-09-15-opencorpora-tag-fix.md).
-Корень бага — `</l>` (закрытие заголовка леммы) по ошибке вызывал
-событие, трактовавшееся как «конец леммы» и стиравшее собранные
-граммемы леммы до разбора хоть одной формы; событие переименовано
-(`OnLemmaHeadEnd`), сборка тега формы перенесена на `OnFormEnd`.
-Обе критические находки код-ревью перед 1.0.0 закрыты — остаётся
-только груминг CLI перед Этапом 18.
+**Fix**: see [superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md](superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md)
+and [superpowers/plans/2026-09-15-opencorpora-tag-fix.md](superpowers/plans/2026-09-15-opencorpora-tag-fix.md).
+The bug's root cause — `</l>` (the lemma headword's closing tag) mistakenly
+fired an event that was treated as "end of lemma" and wiped the lemma's
+already-collected grammemes before a single form had been parsed; the
+event was renamed (`OnLemmaHeadEnd`), and building the form's tag was
+moved to `OnFormEnd`.
+Both critical pre-1.0.0 code-review findings are now closed — all that's
+left is CLI grooming before Stage 18.
 ```
 
-Also update the row for this item in the "Путь к версии 1.0.0" section
+Also update the row for this item in the "Path to version 1.0.0" section
 (item 2) — change:
 
 ```markdown
-   ~~Суффиксы больше, чем вмещает uint16~~ — ВЫПОЛНЕНО (шардирование),
-   см. ниже. **Остался один критический баг — искажённые теги
-   OpenCorpora-словоформ, решение нужно принять до релиза.**
+   ~~Suffixes exceeding uint16's capacity~~ — DONE (sharding),
+   see below. **One critical bug remains — corrupted OpenCorpora
+   wordform tags; a decision is needed before release.**
 ```
 
 to:
 
 ```markdown
-   ~~Суффиксы больше, чем вмещает uint16~~ — ВЫПОЛНЕНО (шардирование);
-   ~~искажённые теги OpenCorpora-словоформ~~ — ВЫПОЛНЕНО. Обе
-   критические находки код-ревью закрыты.
+   ~~Suffixes exceeding uint16's capacity~~ — DONE (sharding);
+   ~~corrupted OpenCorpora wordform tags~~ — DONE. Both
+   critical code-review findings are closed.
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/todo.md
+git add docs/en/todo.md
 git commit -m "$(cat <<'EOF'
 docs: mark OpenCorpora tag-corruption bug fixed
 

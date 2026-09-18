@@ -7,8 +7,8 @@ word-form tag produced by the OpenCorpora importer is wrong: instead of its
 own grammemes, a form gets an accumulated mixture of grammemes from
 preceding forms of the same lemma (and the lemma's own grammemes never
 reach any form at all). This is the one remaining critical,
-release-blocking finding tracked in `docs/todo.md` under "Критический
-баг: искажённые теги OpenCorpora-словоформ". Confirmed twice
+release-blocking finding tracked in `docs/en/todo.md` under "Critical
+bug: corrupted OpenCorpora wordform tags". Confirmed twice
 independently: a crafted repro against a real-schema fragment (ёж/ежа/ежу)
 and a manual lookup against a fully rebuilt `.data/opencorpora/opencorpora.dat`
 (`занудами` → an 11-form grammeme concatenation instead of `plur,ablt`).
@@ -38,7 +38,7 @@ lemma, as implemented before this fix:
    mixture, and the lemma's own grammemes are gone for good.
 
 One mechanism explains all three symptoms already recorded in
-`docs/todo.md`: the first form's empty tag, the lemma-level grammemes
+`docs/en/todo.md`: the first form's empty tag, the lemma-level grammemes
 never appearing anywhere, and the accumulating mixture in later forms.
 
 ## Decision: fix inside `xmlHandler` only, rename the misleading event
@@ -139,8 +139,8 @@ the real nested-element form as part of this fix.
 
 - The separately-mentioned "possible loss of lemmas from OpenCorpora" —
   raised again by the user in this session and explicitly confirmed as
-  out of scope: "это отдельная история, здесь мы разбираемся только с
-  граммемами". Not investigated here; stays a pointer in `docs/todo.md`
+  out of scope: "that's a separate story, here we're only dealing with
+  grammemes". Not investigated here; stays a pointer in `docs/en/todo.md`
   for its own future investigation, same status as before this spec.
 - Splitting a real `</lemma>`-close event out of `OnLemma`/next-lemma
   reset (the extra part of Approach B beyond the rename) — no current
@@ -181,5 +181,5 @@ the real nested-element form as part of this fix.
   whatever a hypothetical downstream consumer may have already keyed off
   of) — acceptable pre-1.0 (no compatibility to preserve), but worth
   flagging since it's the same file space this session's DAWG-density
-  research (`docs/research/0001-dawg-alphabet-density.md`) also touches
+  research (`docs/en/research/0001-dawg-alphabet-density.md`) also touches
   conceptually (tag strings feed `BuildDAWG` keys downstream).

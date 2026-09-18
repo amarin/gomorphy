@@ -2,7 +2,7 @@
 
 ## Context
 
-`docs/research/0003-comparative-paradigms-not-merging.md` investigated why
+`docs/en/research/0003-comparative-paradigms-not-merging.md` investigated why
 paradigms for comparative-degree adjectives (`яснее`/`ясней`/`пояснее`/
 `поясней`-style, 4 forms: `COMP[,Qual]` / `[...],V-ej` / `[...],Cmp2` /
 `[...],Cmp2,V-ej`) never merge despite sharing identical tag sequences.
@@ -164,7 +164,7 @@ all three arrays. This is not optional: once `prefixID` actually varies
 (0 vs 1) instead of always being 0, two paradigms with identical
 suffix+tag sequences but different prefix sequences must **not**
 collapse — this is the same failure mode as the already-fixed
-`paradigmKeyHash` bug in `docs/todo.md` ("баг 2": `n = copy(...)` instead
+`paradigmKeyHash` bug in `docs/en/todo.md` ("bug 2": `n = copy(...)` instead
 of `n += copy(...)` silently dropping tag bytes from the dedup key).
 
 ### Read path — unchanged
@@ -185,11 +185,11 @@ anything is *read*.
 - Handling `Supr` (superlative) specially — verified or that grammeme
   always marks a fully independent lemma in `dict.xml`, not a
   `Cmp2`-style prefixed variant; no change needed there.
-- The separate H2 tag-hoisting idea from `docs/research/0003-...md`
-  ("Дополнение 1") — investigated and explicitly deprioritized in that
+- The separate H2 tag-hoisting idea from `docs/en/research/0003-...md`
+  ("Addendum 1") — investigated and explicitly deprioritized in that
   document (small effect, unrelated axis); not part of this plan.
 - Any change to `words.dawg` construction, DAWG minimization, or the
-  DAWG-alphabet-density backlog item (`docs/research/0001-...md`) — this
+  DAWG-alphabet-density backlog item (`docs/en/research/0001-...md`) — this
   plan only changes the `suffixes-N`/`paradigms-N`/`prefixes` sections
   and the importer logic that produces them.
 - zstd compression, tagset atomic-grammeme encoding, or any other Stage
@@ -222,8 +222,8 @@ anything is *read*.
   `.data/opencorpora/dict.xml`): anomaly counter is exactly 0; record the
   actual post-fix paradigm/suffix counts for shard 0/1 (closing the
   "not recomputed" caveat left open in
-  `docs/research/0003-comparative-paradigms-not-merging.md`,
-  "Дополнение 2") — update that document with the real numbers once
+  `docs/en/research/0003-comparative-paradigms-not-merging.md`,
+  "Addendum 2") — update that document with the real numbers once
   known.
 - `go test ./... -race` green.
 

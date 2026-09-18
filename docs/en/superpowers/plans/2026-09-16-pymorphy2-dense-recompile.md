@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go (stdlib `encoding/binary`, `unicode/utf8`), `github.com/stretchr/testify` (assert/require, matching existing test style), `gofmt -r` for one mechanical signature-migration step.
 
-**Spec:** [docs/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md](../specs/2026-09-16-pymorphy2-dense-recompile-design.md)
+**Spec:** [docs/en/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md](../specs/2026-09-16-pymorphy2-dense-recompile-design.md)
 
 ## Global Constraints
 
@@ -83,7 +83,7 @@ In `pkg/morphology/internal/dawg.go`, insert after `HasPayloadChild` (currently 
 // enumeration under a PayloadSeparator edge) — the same primitives
 // SimilarItems and ValuesForIndex already use for single-key lookups, just
 // exhaustively instead of following a caller-given key. See
-// docs/research/0005-pymorphy2-full-dawg-walk-cost.md for the validated
+// docs/en/research/0005-pymorphy2-full-dawg-walk-cost.md for the validated
 // approach and real-corpus timing (3,064,708 keys, 570ms).
 func (d *DAWG) Walk(fn func(key string, values [][]byte)) {
 	var walk func(index uint32, prefix []byte)
@@ -188,7 +188,7 @@ func TestSimilarItemsWithDenseAlphabet(t *testing.T) {
 	assert.Equal(t, "кота", items[0].Key)
 
 	items = d.SimilarItems("мышь", NewCharPolicy(), alphabet)
-	assert.Empty(t, items, "мышь не было закодировано в этот DAWG")
+	assert.Empty(t, items, "мышь was not encoded into this DAWG")
 }
 
 func TestSimilarItemsWithDenseAlphabetAndCharPolicy(t *testing.T) {
@@ -207,8 +207,8 @@ func TestSimilarItemsWithDenseAlphabetAndCharPolicy(t *testing.T) {
 	})
 	d := NewDAWG(dict, guide)
 
-	// "ежик" не в DAWG буквально; подмена е→ё в CharPolicy, применённая
-	// через alphabet.Encode, должна найти "ёжик".
+	// "ежик" is not literally in the DAWG; the е→ё substitution in
+	// CharPolicy, applied through alphabet.Encode, should find "ёжик".
 	items := d.SimilarItems("ежик", RussianCharPolicy(), alphabet)
 	require.Len(t, items, 1)
 	assert.Equal(t, "ёжик", items[0].Key)
@@ -253,27 +253,27 @@ package internal
 
 import "unicode/utf8"
 
-// Item — результат поиска: найденный ключ и его payload-значения.
+// Item is a search result: the found key and its payload values.
 type Item struct {
 	Key    string
 	Values [][]byte
 }
 
-// SimilarItems ищет ключ с учётом подмен символов CharPolicy. Для 'е→ё'
-// находит словоформы, различающиеся е/ё, например "ежик" и "ёжик".
-// alphabet кодирует каждую руну перед переходом по DAWG (nil — сырой
-// UTF-8, поведение не отличается от предыдущей версии); возвращаемый
-// Item.Key — всегда исходный человекочитаемый текст и не требует
-// декодирования независимо от alphabet.
+// SimilarItems looks up a key while accounting for CharPolicy character
+// substitutions. For 'е→ё', it finds wordforms differing only in е/ё,
+// e.g. "ежик" and "ёжик". alphabet encodes each rune before following an
+// edge in the DAWG (nil = raw UTF-8, same behavior as the previous
+// version); the returned Item.Key is always the original human-readable
+// text and never needs decoding regardless of alphabet.
 func (d *DAWG) SimilarItems(key string, pol *CharPolicy, alphabet Alphabet) []Item {
 	return d.similarItemsRecursive("", []rune(key), 0, pol, alphabet)
 }
 
-// followRuneVia переходит по одной руне r из index, кодируя её через
-// alphabet. alphabet == nil сохраняет старое поведение (FollowRune, сырой
-// UTF-8). Возвращает 0, если alphabet не может закодировать r (руна вне
-// корпуса, на котором был построен алфавит) — тот же контракт "нет
-// перехода", что и у FollowByte/FollowRune.
+// followRuneVia follows one rune r from index, encoding it via alphabet.
+// alphabet == nil preserves the old behavior (FollowRune, raw UTF-8).
+// Returns 0 if alphabet cannot encode r (a rune outside the corpus the
+// alphabet was built from) — the same "no edge" contract as
+// FollowByte/FollowRune.
 func (d *DAWG) followRuneVia(alphabet Alphabet, r rune, index uint32) uint32 {
 	if alphabet == nil {
 		return d.FollowRune(r, index)
@@ -387,9 +387,9 @@ This step has no *new* failing assertion by itself (existing dictionaries all ha
 In `pkg/morphology/parse.go`, `exactInShard` (find the line `items := dawg.SimilarItems(word, x.d.CharPolicy, nil)` inside `func (x *Dictionary) exactInShard`):
 
 ```go
-// exactInShard собирает чтения слова из одного шарда. Вызывается
-// параллельно с другими шардами из exact — только чтение, общего
-// изменяемого состояния между горутинами нет.
+// exactInShard collects a word's readings from a single shard. It is
+// called in parallel with other shards from exact — read-only, no mutable
+// state shared between goroutines.
 func (x *Dictionary) exactInShard(shard int, dawg *internal.DAWG, word string) shardExactResult {
 	items := dawg.SimilarItems(word, x.d.CharPolicy, x.d.Alphabet)
 	if len(items) == 0 {
@@ -403,7 +403,7 @@ In `predictForPrefix` (find the line `for _, it := range x.d.Prediction[id].Simi
 	for i := len(splits) - 1; i >= 0; i-- {
 		wordStart, wordEnd := splits[i][0], splits[i][1]
 		// Prediction DAWGs are never recompiled under Dictionary.Alphabet
-		// (out of scope — see docs/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md's
+		// (out of scope — see docs/en/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md's
 		// non-goals): always nil here, even for a dictionary whose Words
 		// DAWG uses a dense alphabet.
 		for _, it := range x.d.Prediction[id].SimilarItems(wordEnd, x.d.CharPolicy, nil) {
@@ -506,7 +506,7 @@ Create `pkg/morphology/importers/pymorphy2/recompile.go`:
 ```go
 // Package pymorphy2's RecompileDense rebuilds an imported dictionary's
 // words.dawg under a dense 1-byte alphabet. See
-// docs/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md.
+// docs/en/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md.
 package pymorphy2
 
 import (
@@ -603,17 +603,18 @@ git commit -m "feat(pymorphy2): add RecompileDense, rebuilds words.dawg under a 
 In `pkg/morphology/fixture_test.go`, replace the `buildFixture` function with:
 
 ```go
-// buildFixtureDir собирает директорию pymorphy2 в t.TempDir(), не открывая
-// её. words — ключи words.dawg; prediction — prediction-suffixes-0; prob —
-// p_t_given_w.intdawg (nil — файл не пишется).
+// buildFixtureDir assembles a pymorphy2 directory in t.TempDir() without
+// opening it. words are the words.dawg keys; prediction is
+// prediction-suffixes-0; prob is p_t_given_w.intdawg (nil means the file is
+// not written).
 func buildFixtureDir(t *testing.T, words, prediction, prob map[string]uint32) string {
 	t.Helper()
 	dir := t.TempDir()
 
 	writeParadigms(t, dir, [][]uint16{
-		{0, 1, 0, 1, 0, 0}, // п.0: кот NOUN — ""(nomn) / "а"(gent)
-		{0, 2, 0},          // п.1: кот VERB — ""(VERB)
-		{0, 1, 0, 1, 0, 0}, // п.2: мышь NOUN
+		{0, 1, 0, 1, 0, 0}, // paradigm 0: кот NOUN — ""(nomn) / "а"(gent)
+		{0, 2, 0},          // paradigm 1: кот VERB — ""(VERB)
+		{0, 1, 0, 1, 0, 0}, // paradigm 2: мышь NOUN
 	})
 	writeFile(t, dir, "suffixes.json", []byte(`["","а"]`))
 	writeFile(t, dir, "paradigm-prefixes.json", []byte(`["","по","наи"]`))
@@ -636,8 +637,8 @@ func buildFixtureDir(t *testing.T, words, prediction, prob map[string]uint32) st
 	return dir
 }
 
-// buildFixture собирает директорию pymorphy2 через buildFixtureDir и
-// открывает её через OpenPyMorphy.
+// buildFixture assembles a pymorphy2 directory via buildFixtureDir and
+// opens it via OpenPyMorphy.
 func buildFixture(t *testing.T, words, prediction, prob map[string]uint32) *morphology.Dictionary {
 	t.Helper()
 	dir := buildFixtureDir(t, words, prediction, prob)
@@ -718,10 +719,10 @@ Expected: FAIL with "undefined: morphology.OpenPyMorphyDense" (compile error).
 In `pkg/morphology/open.go`, immediately after `OpenPyMorphy`:
 
 ```go
-// OpenPyMorphyDense — как OpenPyMorphy, но пересобирает words.dawg под
-// плотный 1-байтовый алфавит перед тем, как завернуть словарь в
-// Dictionary (см. pymorphy2.RecompileDense и
-// docs/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md).
+// OpenPyMorphyDense is like OpenPyMorphy, but recompiles words.dawg to a
+// dense 1-byte alphabet before wrapping the dictionary into a Dictionary
+// (see pymorphy2.RecompileDense and
+// docs/en/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md).
 func OpenPyMorphyDense(dir string) (*Dictionary, error) {
 	d, err := pymorphy2.RecompileDense(dir)
 	if err != nil {
@@ -759,7 +760,7 @@ git commit -m "feat(morphology): add OpenPyMorphyDense; Parse() matches OpenPyMo
 **Interfaces:**
 - Consumes: `morphology.OpenPyMorphy`, `morphology.OpenPyMorphyDense` (Task 5).
 
-This test is slow by nature — `RecompileDense` rebuilds `words.dawg` from scratch at real corpus scale (~3M keys), already documented elsewhere as a minutes-order operation (`docs/superpowers/specs/2026-09-15-dawg-alphabet-harness-design.md`). It is gated behind `//go:build integration` and an env var, matching `pkg/morphology/importers/pymorphy2/full_dict_integration_test.go`'s existing convention, so it never runs as part of a routine `go test ./...`.
+This test is slow by nature — `RecompileDense` rebuilds `words.dawg` from scratch at real corpus scale (~3M keys), already documented elsewhere as a minutes-order operation (`docs/en/superpowers/specs/2026-09-15-dawg-alphabet-harness-design.md`). It is gated behind `//go:build integration` and an env var, matching `pkg/morphology/importers/pymorphy2/full_dict_integration_test.go`'s existing convention, so it never runs as part of a routine `go test ./...`.
 
 - [ ] **Step 1: Write the test**
 

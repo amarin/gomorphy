@@ -3,12 +3,12 @@
 ## Context
 
 The dense-1-byte DAWG alphabet (`pkg/morphology/internal/alphabet.go`,
-harness: `docs/superpowers/specs/2026-09-15-dawg-alphabet-harness-design.md`,
-numbers: `docs/research/0004-dawg-dense-alphabet-with-payload.md`) shrinks
+harness: `docs/en/superpowers/specs/2026-09-15-dawg-alphabet-harness-design.md`,
+numbers: `docs/en/research/0004-dawg-dense-alphabet-with-payload.md`) shrinks
 `words.dawg` by ~36% with no read-path compromise, but nothing wires it into
 production yet (`Open`/`Parse`/`save.go` all still assume raw UTF-8 keys).
-Production wiring was paused mid-design on 2026-09-15/16 (`docs/todo.md`,
-section "Плотный алфавит в проде: тезисы обсуждения (пауза, не решено)") on
+Production wiring was paused mid-design on 2026-09-15/16 (`docs/en/todo.md`,
+section "Dense alphabet in production: discussion notes (paused, unresolved)") on
 one genuinely open question: whether to keep pymorphy2's `words.dawg` as a
 direct UTF-8 passthrough (`pkg/morphology/importers/pymorphy2/import.go:65-69`,
 `d.Words = []*internal.DAWG{words}` with zero transformation) or recompile it
@@ -18,7 +18,7 @@ through gomorphy's own dense-alphabet pipeline so the whole library is always
 The recompiler option was set aside as "a genuinely new, large chunk of work
 ... bigger than adapting the read path to 2 shapes" — the estimate rested on
 "read the whole pymorphy2 dictionary" being expensive/risky. That premise was
-checked directly (`docs/research/0005-pymorphy2-full-dawg-walk-cost.md`):
+checked directly (`docs/en/research/0005-pymorphy2-full-dawg-walk-cost.md`):
 walking the real pymorphy2 `words.dawg` (3,064,708 word→(para,form) pairs,
 downloaded via the new `pkg/pymorphy` loader) with a ~35-line wrapper over
 already-exported `DAWG.ForEachChild`/`DAWG.ValuesForIndex` took **570ms**.
@@ -75,7 +75,7 @@ now and promoting it later would just be redone work.
 // enumeration under a PayloadSeparator edge) — the same primitives
 // SimilarItems and ValuesForIndex already use for single-key lookups, just
 // exhaustively instead of following a caller-given key. See
-// docs/research/0005-pymorphy2-full-dawg-walk-cost.md for the validated
+// docs/en/research/0005-pymorphy2-full-dawg-walk-cost.md for the validated
 // approach and real-corpus timing (3,064,708 keys, 570ms).
 func (d *DAWG) Walk(fn func(key string, values [][]byte)) {
 	var walk func(index uint32, prefix []byte)
@@ -248,7 +248,7 @@ no new low-level DAWG-building logic is needed at all.
 - `Prediction`/`Probability` DAWGs — different key shapes (word suffixes;
   `"word:tag"` with ASCII grammeme names), unexplored, explicitly deferred
   per the walk-cost research doc's own open item.
-- Any change to the `gomorphy_build` CLI or `.dat` compile pipeline (Этап
+- Any change to the `gomorphy_build` CLI or `.dat` compile pipeline (Stage
   21) — this is a Go-API-only increment, matching the design conversation's
   scope decision.
 - A general multi-dict API — `DAWG.Walk` is deliberately built as a

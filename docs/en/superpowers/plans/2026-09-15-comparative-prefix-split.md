@@ -8,13 +8,13 @@
 
 **Tech Stack:** Go (stdlib `strings`, `unicode/utf8`), existing `github.com/stretchr/testify` for fixture-based tests, plain table-driven tests for white-box unit tests (matching `shard_test.go`'s existing style).
 
-**Spec:** [docs/superpowers/specs/2026-09-15-comparative-prefix-split-design.md](../specs/2026-09-15-comparative-prefix-split-design.md)
+**Spec:** [docs/en/superpowers/specs/2026-09-15-comparative-prefix-split-design.md](../specs/2026-09-15-comparative-prefix-split-design.md)
 
 ## Global Constraints
 
 - Narrow scope: only the `Cmp2` grammeme → literal `"по"` prefix. No generic/configurable prefix table.
 - `Cmp2` form text that does not literally start with `"по"` must not fail the whole import — fall back to no-prefix-split for that lemma only, and this must be independently unit-testable.
-- `paradigmKeyHash` must hash prefix IDs, suffix IDs, and tag IDs together — this is the same class of bug as the precedent fix in `docs/todo.md` ("баг 2": `n = copy(...)` instead of `n += copy(...)`).
+- `paradigmKeyHash` must hash prefix IDs, suffix IDs, and tag IDs together — this is the same class of bug as the precedent fix in `docs/en/todo.md` ("bug 2": `n = copy(...)` instead of `n += copy(...)`).
 - No changes to `pkg/morphology/parse.go` or any other read-path code — it already handles non-empty prefixes correctly (proven by the pymorphy2 importer).
 - No `.dat` backward compatibility to preserve (pre-1.0, no released format).
 - `go test ./... -race` must stay green after every task.
@@ -104,7 +104,7 @@ In `pkg/morphology/importers/opencorpora/import.go`, replace the `lcp` function 
 // byte-level cut can otherwise land inside a multi-byte character when
 // two texts share a lead byte but differ in its continuation byte (e.g.
 // any Cyrillic letter in the а-п block compared against "по") — see
-// docs/research/0003-comparative-paradigms-not-merging.md, section 4/6.
+// docs/en/research/0003-comparative-paradigms-not-merging.md, section 4/6.
 func lcp(texts []string) string {
 	if len(texts) == 0 {
 		return ""
@@ -179,7 +179,7 @@ Expected: PASS, no regressions (the byte-boundary fix does not change behavior f
 git add pkg/morphology/importers/opencorpora/import.go pkg/morphology/importers/opencorpora/internal_test.go
 git commit -m "opencorpora: make lcp() rune-safe, operate on []string
 
-Fixes the byte-vs-rune LCP bug from docs/research/0003-comparative-paradigms-not-merging.md
+Fixes the byte-vs-rune LCP bug from docs/en/research/0003-comparative-paradigms-not-merging.md
 (section 4/6): a raw byte-level cut could land inside a multi-byte
 UTF-8 character, producing invalid suffix strings for any lemma whose
 forms diverge on the first character within the same lead byte (e.g.
@@ -209,7 +209,7 @@ In `pkg/morphology/importers/opencorpora/import_test.go`, add a new fixture cons
 // "плотнее") with different roots but the same tag pattern (COMP,Qual /
 // COMP,Qual,V-ej / COMP,Qual,Cmp2 / COMP,Qual,Cmp2,V-ej) — real
 // OpenCorpora data shows this pattern accounts for 82% of shard 0's
-// paradigms (docs/research/0003-comparative-paradigms-not-merging.md).
+// paradigms (docs/en/research/0003-comparative-paradigms-not-merging.md).
 // The Cmp2-tagged forms are literally "по" + the corresponding
 // non-Cmp2 form, matching the real dict.xml lemma "поправимее" (id
 // 259490) verified in that document.
@@ -242,7 +242,7 @@ const comparativeDictXML = `<?xml version="1.0" encoding="UTF-8"?>
 
 // TestImportFromXMLComparativeParadigmsMerge guards against the
 // root-in-suffix duplication documented in
-// docs/research/0003-comparative-paradigms-not-merging.md: "яснее" and
+// docs/en/research/0003-comparative-paradigms-not-merging.md: "яснее" and
 // "плотнее" share suffix/tag/prefix structure once "по" is split off
 // as a real prefix, and must collapse into ONE paradigm.
 func TestImportFromXMLComparativeParadigmsMerge(t *testing.T) {
@@ -251,13 +251,13 @@ func TestImportFromXMLComparativeParadigmsMerge(t *testing.T) {
 	require.Len(t, d.Paradigms, 1)
 
 	assert.Equal(t, 1, len(d.Paradigms[0]),
-		"яснее и плотнее делят один паттерн словоизменения и должны схлопнуться в одну парадигму, несмотря на разные корни")
+		"яснее and плотнее share one inflection pattern and must collapse into one paradigm despite different roots")
 
-	assert.Contains(t, d.Prefixes, "по", "по-приставка Cmp2-форм должна попасть в таблицу префиксов")
+	assert.Contains(t, d.Prefixes, "по", "the Cmp2 forms' по- prefix must land in the prefix table")
 
 	for _, word := range []string{"яснее", "ясней", "пояснее", "поясней", "плотнее", "плотней", "поплотнее", "поплотней"} {
 		items := d.Words[0].SimilarItems(word, d.CharPolicy)
-		assert.Greater(t, len(items), 0, "%q должно быть найдено", word)
+		assert.Greater(t, len(items), 0, "%q must be found", word)
 	}
 }
 ```
@@ -320,9 +320,9 @@ func TestImportFromXMLComparativeParadigmsNormalFormPerLemma(t *testing.T) {
 	require.Len(t, d.Words, 1)
 
 	assert.Contains(t, normalFormsForWord(t, d, 0, "поясней"), "яснее",
-		"поясней должно нормализоваться к 'яснее', не к 'плотнее'")
+		"поясней must normalize to 'яснее', not 'плотнее'")
 	assert.Contains(t, normalFormsForWord(t, d, 0, "поплотней"), "плотнее",
-		"поплотней должно нормализоваться к 'плотнее', не к 'яснее'")
+		"поплотней must normalize to 'плотнее', not 'яснее'")
 }
 ```
 
@@ -437,7 +437,7 @@ Add `stripCmp2Prefix` right after `lcp` (after the function added in Task 1):
 ```go
 // cmp2Prefix is the only lemma-internal separable prefix present in
 // OpenCorpora's dict.xml (verified against the real file — see
-// docs/superpowers/specs/2026-09-15-comparative-prefix-split-design.md):
+// docs/en/superpowers/specs/2026-09-15-comparative-prefix-split-design.md):
 // the Cmp2 grammeme marks a comparative-degree form that is literally
 // "по" + the corresponding non-Cmp2 form (e.g. lemma "поправимее",
 // dict.xml id 259490: Cmp2 form "попоправимее" = "по" + "поправимее").
@@ -447,7 +447,7 @@ const cmp2Prefix = "по"
 // "") from the text that should feed lcp(), so the shared root never
 // ends up split across different suffix strings depending on which
 // forms happen to carry that prefix (the root-in-suffix problem from
-// docs/research/0003-comparative-paradigms-not-merging.md).
+// docs/en/research/0003-comparative-paradigms-not-merging.md).
 //
 // If any Cmp2-tagged form's text does not literally start with "по"
 // (an anomaly not observed against the real dict.xml — see the
@@ -620,7 +620,7 @@ git add pkg/morphology/importers/opencorpora/import.go pkg/morphology/importers/
 git commit -m "opencorpora: split Cmp2 (\"по-\") prefix off before computing stem
 
 Fixes the root-in-suffix paradigm explosion from
-docs/research/0003-comparative-paradigms-not-merging.md: comparative-degree
+docs/en/research/0003-comparative-paradigms-not-merging.md: comparative-degree
 adjective paradigms no longer duplicate per lexical root, because the
 Cmp2 grammeme's literal \"по\" prefix is now split off before LCP
 instead of ending up inside the suffix string. paradigmKeyHash now
@@ -646,7 +646,7 @@ Create `pkg/morphology/importers/opencorpora/real_dict_integration_test.go`:
 //go:build integration
 
 // Integration tests here require the real OpenCorpora dict.xml at
-// .data/opencorpora/dict.xml (see docs/todo.md / Makefile's
+// .data/opencorpora/dict.xml (see docs/en/todo.md / Makefile's
 // test-integration target). Run explicitly:
 //
 //	go test -tags=integration ./pkg/morphology/importers/opencorpora/... -v
@@ -742,14 +742,14 @@ func TestStripCmp2PrefixRealDictHasNoAnomalies(t *testing.T) {
 	if anomalies != 0 {
 		t.Errorf("real dict.xml has %d lemmas where a Cmp2 form does not start with \"по\" "+
 			"(examples: %v) — the narrow Cmp2-only fix assumed this doesn't happen; "+
-			"see docs/superpowers/specs/2026-09-15-comparative-prefix-split-design.md",
+			"see docs/en/superpowers/specs/2026-09-15-comparative-prefix-split-design.md",
 			anomalies, examples)
 	}
 }
 
 // TestImportFromXMLRealDictComparativeWordsResolve spot-checks known
 // comparative-degree words from
-// docs/research/0003-comparative-paradigms-not-merging.md against the
+// docs/en/research/0003-comparative-paradigms-not-merging.md against the
 // real compiled dictionary: each word must be found, and — critically
 // — must resolve to ITS OWN normal form even though it now shares a
 // paradigm with unrelated lemmas (same regression shape as
@@ -780,7 +780,7 @@ func TestImportFromXMLRealDictComparativeWordsResolve(t *testing.T) {
 		{"пояснее", "яснее"},
 		{"поясней", "яснее"},
 		{"абажурнее", "абажурнее"},
-		{"поабажурнее", "абажурнее"}, // "по" + full base word, per docs/research/0003-...md's own example
+		{"поабажурнее", "абажурнее"}, // "по" + full base word, per docs/en/research/0003-...md's own example
 		{"поправимее", "поправимее"},
 		{"попоправимее", "поправимее"},
 	}
@@ -840,7 +840,7 @@ This step has no scripted assertion — the exact counts are not known ahead of 
 ./deploy/gomorphy_build compile
 ```
 
-Then, using the same technique as the original research (`pkg/morphology/internal`'s exported `OpenContainer`/`DecodeStrings`/`DecodeParadigms`/`DecodeTagSet` functions, in a throwaway `_test.go` — see `docs/research/0003-comparative-paradigms-not-merging.md`'s own "Эксперимент" section for the exact method), record:
+Then, using the same technique as the original research (`pkg/morphology/internal`'s exported `OpenContainer`/`DecodeStrings`/`DecodeParadigms`/`DecodeTagSet` functions, in a throwaway `_test.go` — see `docs/en/research/0003-comparative-paradigms-not-merging.md`'s own "Experiment" section for the exact method), record:
 
 - Total paradigms and suffix-table bytes for shard 0/1, before vs. after.
 - Confirm the two `COMP`/`COMP,Qual` tag groups now collapse to a small number of paradigms (not 14,735).
@@ -848,12 +848,12 @@ Then, using the same technique as the original research (`pkg/morphology/interna
 
 - [ ] **Step 4: Update the research document with real numbers**
 
-Edit `docs/research/0003-comparative-paradigms-not-merging.md`, "Дополнение 2" section — replace the paragraph starting "Точный количественный эффект (сколько именно парадигм схлопнется после фикса) не пересчитан..." with the actual measured before/after numbers from Step 3, in the same table style used elsewhere in that document.
+Edit `docs/en/research/0003-comparative-paradigms-not-merging.md`, "Addendum 2" section — replace the paragraph noting that the exact quantitative effect (how many paradigms collapse after the fix) had not yet been recomputed, with the actual measured before/after numbers from Step 3, in the same table style used elsewhere in that document.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add pkg/morphology/importers/opencorpora/real_dict_integration_test.go docs/research/0003-comparative-paradigms-not-merging.md
+git add pkg/morphology/importers/opencorpora/real_dict_integration_test.go docs/en/research/0003-comparative-paradigms-not-merging.md
 git commit -m "opencorpora: real-data verification for the Cmp2 prefix-split fix
 
 Adds integration tests against the real dict.xml (anomaly count,
@@ -867,57 +867,58 @@ post-fix paradigm/suffix counts in the research document, closing the
 ## Task 4: Update the roadmap
 
 **Files:**
-- Modify: `docs/todo.md`
+- Modify: `docs/en/todo.md`
 
 **Interfaces:** none (documentation only).
 
 - [ ] **Step 1: Insert this fix into the pre-1.0.0 path**
 
-In `docs/todo.md`, section "## Путь к версии 1.0.0", replace:
+In `docs/en/todo.md`, section "## Path to version 1.0.0", replace:
 
 ```markdown
-Порядок до релиза (зафиксирован 2026-09-14):
+Order before release (fixed 2026-09-14):
 
-1. ~~Формат: задел под расширяемое сжатие + секция info~~ — ВЫПОЛНЕНО.
-2. ~~Ревью кода перед 1.0.0 + разбор находок~~ — ВЫПОЛНЕНО, см. ниже.
-   ~~Суффиксы больше, чем вмещает uint16~~ — ВЫПОЛНЕНО (шардирование);
-   ~~искажённые теги OpenCorpora-словоформ~~ — ВЫПОЛНЕНО, включая баг
-   схлопывания парадигм в дедупликации (`paradigmKeyHash`), найденный
-   финальным ревью всей ветки. Обе критические находки код-ревью
-   закрыты.
-3. Этап 18, но сначала — груминг CLI-команд (есть отдельные идеи,
-   уточняются с пользователем до начала этапа).
-4. Релиз 1.0.0.
+1. ~~Format: room for extensible compression + an info section~~ — DONE.
+2. ~~Pre-1.0.0 code review + findings triage~~ — DONE, see below.
+   ~~Suffixes exceeding uint16's capacity~~ — DONE (sharding);
+   ~~corrupted OpenCorpora wordform tags~~ — DONE, including the
+   paradigm-collapse bug in dedup (`paradigmKeyHash`), found by the
+   final review of the whole branch. Both critical code-review findings
+   are closed.
+3. Stage 18, but first — CLI command grooming (there are specific ideas,
+   being clarified with the user before the stage starts).
+4. Release 1.0.0.
 ```
 
 with:
 
 ```markdown
-Порядок до релиза (зафиксирован 2026-09-14, дополнен 2026-09-15):
+Order before release (fixed 2026-09-14, extended 2026-09-15):
 
-1. ~~Формат: задел под расширяемое сжатие + секция info~~ — ВЫПОЛНЕНО.
-2. ~~Ревью кода перед 1.0.0 + разбор находок~~ — ВЫПОЛНЕНО, см. ниже.
-   ~~Суффиксы больше, чем вмещает uint16~~ — ВЫПОЛНЕНО (шардирование);
-   ~~искажённые теги OpenCorpora-словоформ~~ — ВЫПОЛНЕНО, включая баг
-   схлопывания парадигм в дедупликации (`paradigmKeyHash`), найденный
-   финальным ревью всей ветки. Обе критические находки код-ревью
-   закрыты.
-3. Фикс корня-в-суффиксе для сравнительной степени (`Cmp2`/«по-») +
-   руно-безопасный `lcp()` — см.
-   [docs/research/0003-comparative-paradigms-not-merging.md](research/0003-comparative-paradigms-not-merging.md),
-   [docs/superpowers/specs/2026-09-15-comparative-prefix-split-design.md](superpowers/specs/2026-09-15-comparative-prefix-split-design.md),
-   [docs/superpowers/plans/2026-09-15-comparative-prefix-split.md](superpowers/plans/2026-09-15-comparative-prefix-split.md).
-   Не блокировало 1.0.0 по своей природе (data-hygiene + рычаг сжатия,
-   не корректность lookup), но решено сделать до релиза, пока формат
-   `.dat` ещё не выпущен и версионирование не требуется.
-4. Этап 18, но сначала — груминг CLI-команд (есть отдельные идеи,
-   уточняются с пользователем до начала этапа).
-5. Релиз 1.0.0.
+1. ~~Format: room for extensible compression + an info section~~ — DONE.
+2. ~~Pre-1.0.0 code review + findings triage~~ — DONE, see below.
+   ~~Suffixes exceeding uint16's capacity~~ — DONE (sharding);
+   ~~corrupted OpenCorpora wordform tags~~ — DONE, including the
+   paradigm-collapse bug in dedup (`paradigmKeyHash`), found by the
+   final review of the whole branch. Both critical code-review findings
+   are closed.
+3. The root-in-suffix fix for the comparative degree (`Cmp2`/"по-") +
+   a rune-safe `lcp()` — see
+   [docs/en/research/0003-comparative-paradigms-not-merging.md](research/0003-comparative-paradigms-not-merging.md),
+   [docs/en/superpowers/specs/2026-09-15-comparative-prefix-split-design.md](superpowers/specs/2026-09-15-comparative-prefix-split-design.md),
+   [docs/en/superpowers/plans/2026-09-15-comparative-prefix-split.md](superpowers/plans/2026-09-15-comparative-prefix-split.md).
+   Didn't block 1.0.0 by its nature (data hygiene + a compression
+   lever, not lookup correctness), but decided to do it before release
+   while the `.dat` format hasn't shipped yet and versioning isn't
+   required.
+4. Stage 18, but first — CLI command grooming (there are specific ideas,
+   being clarified with the user before the stage starts).
+5. Release 1.0.0.
 ```
 
 - [ ] **Step 2: Commit**
 
 ```bash
-git add docs/todo.md
+git add docs/en/todo.md
 git commit -m "docs: add comparative-prefix-split fix to the pre-1.0.0 path"
 ```

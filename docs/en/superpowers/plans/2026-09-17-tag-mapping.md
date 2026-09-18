@@ -17,7 +17,7 @@ call `tagmap.Map` themselves.
 **Tech Stack:** Go (this repo's existing toolchain), `github.com/stretchr/testify`
 (already vendored) for test assertions.
 
-**Spec:** [docs/superpowers/specs/2026-09-17-tag-mapping-design.md](../specs/2026-09-17-tag-mapping-design.md)
+**Spec:** [docs/en/superpowers/specs/2026-09-17-tag-mapping-design.md](../specs/2026-09-17-tag-mapping-design.md)
 
 ## Global Constraints
 
@@ -169,7 +169,7 @@ Create `pkg/morphology/tagmap/bundle.go`:
 // into a universal feature bundle (the UniMorph Schema), so tags from
 // different dictionary sources (OpenCorpora, pymorphy2) can be compared
 // for the same grammatical meaning. See
-// docs/superpowers/specs/2026-09-17-tag-mapping-design.md.
+// docs/en/superpowers/specs/2026-09-17-tag-mapping-design.md.
 package tagmap
 
 import "sort"
@@ -356,7 +356,7 @@ func TestTokenizeOpenCorporaEmptyTagIsNil(t *testing.T) {
 
 func TestOpenCorporaTableCoversKotNominativeSingular(t *testing.T) {
 	// "кот" (NOUN,anim,masc,sing,nomn) — the exact example already used
-	// throughout docs/todo.md and docs/implementation/ for this dictionary.
+	// throughout docs/en/todo.md and docs/en/implementation/ for this dictionary.
 	b := buildBundle(tokenizeOpenCorpora("NOUN,anim,masc,sing,nomn"), openCorporaTable)
 
 	assert.Equal(t, []Feature{
@@ -398,7 +398,7 @@ func tokenizeOpenCorpora(tag string) []string {
 // openCorporaTable maps OpenCorpora grammeme names (as produced by
 // pkg/morphology/importers/opencorpora's import, TagSet.Name ==
 // "opencorpora") to UniMorph features. A representative subset, not
-// exhaustive — see docs/superpowers/plans/2026-09-17-tag-mapping.md's
+// exhaustive — see docs/en/superpowers/plans/2026-09-17-tag-mapping.md's
 // Global Constraints. Grows incrementally as uncovered grammemes are
 // found; an uncovered grammeme is not an error (see Bundle.Unmapped).
 var openCorporaTable = map[string]Feature{
@@ -483,7 +483,7 @@ git commit -m "feat(tagmap): add OpenCorpora tokenizer and grammeme mapping tabl
     separate even where content is identical, because the two sources'
     token spellings are not assumed identical without this kind of
     explicit, checkable duplication. (The one real example already
-    verified in `docs/todo.md` — `"NOUN,anim,masc sing,nomn"` from a real
+    verified in `docs/en/todo.md` — `"NOUN,anim,masc sing,nomn"` from a real
     `gramtab-opencorpora-int.json` — uses the exact same token spellings
     as OpenCorpora's `NOUN`, `anim`, `masc`, `sing`, `nomn`, which is why
     this table's content matches Task 2's; if a future real-data check
@@ -505,7 +505,7 @@ import (
 
 func TestTokenizeOpenCorporaIntSplitsSpaceThenComma(t *testing.T) {
 	// Real example from a pymorphy2 gramtab-opencorpora-int.json, quoted
-	// in docs/todo.md's "Универсальный маппинг тегов между словарями"
+	// in docs/en/todo.md's "Universal tag mapping between dictionaries"
 	// section.
 	assert.Equal(t,
 		[]string{"NOUN", "anim", "masc", "sing", "nomn"},
@@ -705,7 +705,7 @@ func TestMapUnmappedTokenPassesThrough(t *testing.T) {
 }
 
 func TestMapOpenCorporaAndOpenCorporaIntAgree(t *testing.T) {
-	// The real documented example (docs/todo.md's tag-mapping section):
+	// The real documented example (docs/en/todo.md's tag-mapping section):
 	// same word "кот", same grammatical meaning, two different native
 	// tag syntaxes — must normalize to the same Bundle.Features.
 	oc, ok := tagmap.Map("opencorpora", "NOUN,anim,masc,sing,nomn")
@@ -917,7 +917,7 @@ Run: `go test -tags=integration ./pkg/morphology/tagmap/... -v`
 Expected: either PASS (if `.data/opencorpora/dict.xml` and a pymorphy2
 data directory — set `GOMORPHY_PYMORPHY2_DIR` to its path — are present
 on this machine, matching the pattern already used by
-`docs/todo.md`/other integration tests to obtain them), or SKIP with the
+`docs/en/todo.md`/other integration tests to obtain them), or SKIP with the
 message naming which environment variable to set, if the data isn't
 present. Either outcome is acceptable — this step is about confirming the
 test compiles and runs its intended branch, not about requiring real data
@@ -938,68 +938,67 @@ git commit -m "test(tagmap): add real-dictionary cross-source integration check"
 
 ---
 
-## Task 6: Update `docs/todo.md`'s tag-mapping section
+## Task 6: Update `docs/en/todo.md`'s tag-mapping section
 
 **Files:**
-- Modify: `docs/todo.md` (its final section, "Универсальный маппинг
-  тегов между словарями")
+- Modify: `docs/en/todo.md` (its final section, "Universal tag mapping
+  between dictionaries")
 
 **Interfaces:** none — documentation only, no code.
 
 - [ ] **Step 1: Update the section heading**
 
-In `docs/todo.md`, find this line (the file's last heading):
+In `docs/en/todo.md`, find this line (the file's last heading):
 
 ```
-### Универсальный маппинг тегов между словарями — НЕ СПРОЕКТИРОВАНО
+### Universal tag mapping between dictionaries — NOT DESIGNED
 ```
 
 Replace it with:
 
 ```
-### Универсальный маппинг тегов между словарями — РЕШЕНО И РЕАЛИЗОВАНО 2026-09-17 (native → universal)
+### Universal tag mapping between dictionaries — RESOLVED AND IMPLEMENTED 2026-09-17 (native → universal)
 ```
 
 - [ ] **Step 2: Append the resolution note**
 
 At the very end of the file (after the last bullet point, which currently
-ends with "...если маппинг появится, он логично встраивается именно в
-этот путь."), append:
+ends with "...if a mapping is ever added, it fits naturally into this
+same path."), append:
 
 ```markdown
 
-**Открытые вопросы — решены 2026-09-17, см.
-[docs/superpowers/specs/2026-09-17-tag-mapping-design.md](superpowers/specs/2026-09-17-tag-mapping-design.md)
-и [docs/research/0008-dictionary-export-feasibility.md](research/0008-dictionary-export-feasibility.md):**
-1. Таблица соответствий — отдельный пакет `pkg/morphology/tagmap`, не
-   часть `TagSet` и не внешняя конфигурация: `TagSet` остаётся общим
-   интернером строк, не знающим о синтаксисе и семантике тегов.
-2. Opaque-теги и непокрытые граммемы — единое правило: как есть, в
-   `Bundle.Unmapped`, без ошибки. `tagmap.Map` возвращает `ok=false`
-   только для незарегистрированного `dictName` целиком, не за
-   содержимое тега.
-3. Формат universal-тега — независимый набор признаков UniMorph
-   (`tagmap.Bundle`/`tagmap.Feature`/`tagmap.Dimension`), в
-   каноническом порядке измерений (не зависящем от исходного порядка
-   токенов в теге источника) — не привязан к одному из существующих
-   словарных наборов.
-4. Связь с multi-dict — `MultiDictionary`/`Reading`/`LemmaRef` не
-   изменены; вызывающий код сам вызывает `tagmap.Map(dictName,
-   reading.Tag)`, когда нужен universal-тег.
+**Open questions — resolved 2026-09-17, see
+[docs/en/superpowers/specs/2026-09-17-tag-mapping-design.md](superpowers/specs/2026-09-17-tag-mapping-design.md)
+and [docs/en/research/0008-dictionary-export-feasibility.md](research/0008-dictionary-export-feasibility.md):**
+1. The correspondence table — a standalone package `pkg/morphology/tagmap`,
+   not part of `TagSet` and not external configuration: `TagSet` stays a
+   shared string interner, oblivious to tag syntax and semantics.
+2. Opaque tags and uncovered grammemes — a single rule: keep as-is, in
+   `Bundle.Unmapped`, with no error. `tagmap.Map` returns `ok=false`
+   only for an unregistered `dictName` as a whole, never for a tag's
+   contents.
+3. The universal tag's format — UniMorph's own independent feature set
+   (`tagmap.Bundle`/`tagmap.Feature`/`tagmap.Dimension`), in a
+   canonical dimension order (independent of the source tag's original
+   token order) — not tied to any one of the existing dictionary sets.
+4. The link to multi-dict — `MultiDictionary`/`Reading`/`LemmaRef` are
+   unchanged; calling code invokes `tagmap.Map(dictName,
+   reading.Tag)` itself whenever a universal tag is needed.
 
-Реализованы таблицы для `opencorpora` и `opencorpora-int` (pymorphy2) —
-представительное подмножество граммем (часть речи, одушевлённость,
-падеж, число, род, время, вид, наклонение, залог, лицо), не
-исчерпывающее покрытие; расширяется по мере находок непокрытых токенов.
-Обратное направление (`universal → native`, нужное для экспорта) —
-сознательно не реализовано в этом инкременте, отдельная будущая задача
-(см. `0008-dictionary-export-feasibility.md`).
+Tables are implemented for `opencorpora` and `opencorpora-int` (pymorphy2)
+— a representative subset of grammemes (part of speech, animacy,
+case, number, gender, tense, aspect, mood, voice, person), not
+exhaustive coverage; it expands as uncovered tokens are found.
+The reverse direction (`universal → native`, needed for export) is
+deliberately not implemented in this increment — a separate future task
+(see `0008-dictionary-export-feasibility.md`).
 ```
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add docs/todo.md
+git add docs/en/todo.md
 git commit -m "docs: mark universal tag mapping (native -> universal) shipped in todo.md"
 ```
 

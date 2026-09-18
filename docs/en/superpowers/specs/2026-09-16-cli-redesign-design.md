@@ -8,8 +8,8 @@ Two separate binaries exist today: `cmd/gomorphy` (interactive console +
 stdlib `flag`, `-l`/`-d`/`-o`/`-version`). Neither supports multiple
 dictionaries, long/short flag pairing, or per-command help; `pkg/pymorphy`
 (download+unpack, shipped 2026-09-16) has no CLI at all yet.
-`docs/todo.md`'s path-to-1.0.0 lists "CLI grooming" as the last gate before
-Этап 18/release, with the note "user has specific ideas, not yet discussed
+`docs/en/todo.md`'s path-to-1.0.0 lists "CLI grooming" as the last gate before
+Stage 18/release, with the note "user has specific ideas, not yet discussed
 with Claude" — this spec is that discussion's outcome.
 
 This session shipped two library prerequisites the CLI redesign depends on
@@ -22,7 +22,7 @@ by both importers (also shipped this session) — relevant here because
 `DictInfo(i).Source`/`.SourceVersion` is available for any future verbose
 dictionary-identification output.
 
-`docs/todo.md`'s Этап 21 ("gomorphy_build CLI редизайн + pymorphy2
+`docs/en/todo.md`'s Stage 21 ("gomorphy_build CLI redesign + pymorphy2
 source") — previously scoped 2026-09-15 as post-1.0 backlog — is
 explicitly superseded by this spec, per the user's decision in this
 session's brainstorming: this redesign absorbs and replaces it rather than
@@ -62,7 +62,7 @@ parsing layer to maintain.
 `type` for `download`/`unpack`/`build`/`update`: `opencorpora`, `pymorphy`
 (matches the sources `pkg/opencorpora`/`pkg/pymorphy` already support;
 `unimorph` stays a documented-but-unimplemented future value, consistent
-with Этап 16 being unstarted).
+with Stage 16 being unstarted).
 
 **Dictionary resolution is one shared code path for every command that
 reads a dictionary (`lookup`/`lemmas`/`fuzzy`/`top`/`cli`), always
@@ -159,7 +159,7 @@ import (
 func main() {
 	root := &cobra.Command{
 		Use:   "gomorphy",
-		Short: "gomorphy — морфологический анализ слов по словарям в едином формате (GMOR)",
+		Short: "gomorphy - morphological analysis over dictionaries in a unified format (GMOR)",
 	}
 
 	root.PersistentFlags().StringArrayP("dictionary", "d", nil, "path to a .dat file or a directory of .dat files (repeatable)")
@@ -443,7 +443,7 @@ commands use, not a duplicate implementation.
   brainstorming decision. A real merge needs to reconcile `Paradigms`,
   `Suffixes`, `Prefixes`, `TagSet`, and the DAWGs themselves across
   dictionaries — a separate future design, not scoped here.
-- `unimorph` as a real `-t` value — Этап 16 (UniMorph import) is
+- `unimorph` as a real `-t` value — Stage 16 (UniMorph import) is
   unstarted; `download`/`unpack`/`build -t unimorph` are not required to
   work, only to not be silently confused with a typo (an unrecognized
   `-t` value is a hard error either way).

@@ -11,8 +11,8 @@ limit (65536)**. Before the guard, this was silent data corruption (the
 65536th suffix's id wraps to 0, colliding with the first-ever registered
 suffix); now it's a hard, honest build failure — but the real dictionary
 currently cannot be compiled at all. This is the second critical,
-release-blocking finding, tracked in `docs/todo.md` under "Суффиксы:
-расширение адресации".
+release-blocking finding, tracked in `docs/en/todo.md` under "Suffixes:
+extending the addressing scheme".
 
 Tags (3437) and paradigms (16939) are comfortably under the same 65536
 ceiling today and are **not** part of this work.
@@ -33,7 +33,7 @@ uint16 suffix-id space starting at 0).
 - Sharding requires **no format-breaking type change** and **no public API
   change beyond one additive field** (`Reading.Shard`, see below) — safer
   pre-1.0 than reshaping `Paradigm`'s wire layout.
-- Sharding composes with future needs (Этап 19 thematic dictionaries,
+- Sharding composes with future needs (Stage 19 thematic dictionaries,
   parallel build/load) that a scalar type widening does not address.
 
 Paradigm id was specifically considered and rejected for widening on its
@@ -205,8 +205,9 @@ implementation-time detail, not fixed by this spec.
 Lookup (`pkg/morphology/parse.go`'s `exact`/`predict`) currently queries a
 single `x.d.Words`. With shards, every lookup fans out to all shards
 concurrently (one goroutine per shard, per the user's stated preference:
-"решается простым параллельным запросом в горутинах к разным словарям и
-склейкой результатов") and merges the resulting `[]Reading` slices. Each
+"solve it with a simple parallel query in goroutines against the
+different dictionaries, then merge the results") and merges the
+resulting `[]Reading` slices. Each
 shard's own `Suffixes`/`Paradigms` tables resolve that shard's readings
 before merging, so the merge step operates on already-fully-resolved
 `Reading` values (word/lemma/tag strings), not raw ids.
@@ -230,7 +231,7 @@ and any code that ignores the new field is unaffected.
   itself uint16-addressed at the source, so it isn't subject to the same
   overflow risk gomorphy's own OpenCorpora pipeline is; out of scope here.
 
-## Deferred ideas (to `docs/todo.md` backlog, not part of this work)
+## Deferred ideas (to `docs/en/todo.md` backlog, not part of this work)
 
 Recorded per the user's request, not committed to:
 
@@ -241,7 +242,7 @@ Recorded per the user's request, not committed to:
   alongside the sharding approach rather than replace it — two different
   answers to "what if uint16 isn't enough," chosen per use case.
 - **Narrow-index variant (`uint8`) for small/low-cardinality
-  dictionaries.** Relevant to Этап 19 thematic/domain dictionaries with a
+  dictionaries.** Relevant to Stage 19 thematic/domain dictionaries with a
   small vocabulary and a small custom tag set — could shrink suffix/tag/
   paradigm storage for dictionaries that will never come close to 256
   unique values in any of those dimensions.
@@ -249,8 +250,8 @@ Recorded per the user's request, not committed to:
 ## Follow-up noted by the user (unverified, not part of this work)
 
 The user mentioned that once sharding lands, it should become possible to
-"fix/verify a bug with lemma loss from OpenCorpora" (formulated in
-Russian as "багу с потерей лемм из opencorpora"). This has **not** been
+"fix/verify a bug with lemma loss from OpenCorpora" (originally
+described as "the bug where lemmas are lost from opencorpora"). This has **not** been
 investigated or confirmed in this session — it is not the same as either
 of the two already-documented critical bugs (the tag-accumulation bug or
 this suffix-overflow bug) unless it turns out to be a symptom of one of

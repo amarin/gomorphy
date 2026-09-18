@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.27, existing GMOR container format (`pkg/morphology/internal/format.go`), no new dependencies.
 
-**Spec:** `docs/superpowers/specs/2026-09-14-suffix-sharding-design.md`
+**Spec:** `docs/en/superpowers/specs/2026-09-14-suffix-sharding-design.md`
 
 ## Global Constraints
 
@@ -84,7 +84,7 @@ package opencorpora
 // suffixes.
 //
 // v1 ships exactly one implementation, FillOnDemand — see
-// docs/superpowers/specs/2026-09-14-suffix-sharding-design.md for why
+// docs/en/superpowers/specs/2026-09-14-suffix-sharding-design.md for why
 // (near-zero overhead at today's real N=2 shard count; a second
 // strategy, e.g. paradigm-grouped, can be added later as another type
 // satisfying this interface without touching ImportFromXML's structure).
@@ -123,7 +123,7 @@ git add pkg/morphology/importers/opencorpora/shard.go pkg/morphology/importers/o
 git commit -m "opencorpora: add ShardingStrategy interface and FillOnDemand
 
 Standalone building block for suffix-overflow sharding — see
-docs/superpowers/specs/2026-09-14-suffix-sharding-design.md. Not yet
+docs/en/superpowers/specs/2026-09-14-suffix-sharding-design.md. Not yet
 wired into ImportFromXML.
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
@@ -222,15 +222,15 @@ Replace `pkg/morphology/internal/dictionary.go` in full:
 ```go
 package internal
 
-// Dictionary — иммутабельный снимок словаря.
+// Dictionary is an immutable dictionary snapshot.
 //
-// Suffixes, Paradigms и Words — по одному элементу на шард; индекс 0 —
-// единственный шард для несегментированных словарей (нет отдельного
-// "нешардированного" представления). Шарды существуют потому, что
-// suffix id адресуется uint16: словарь с суффиксов больше, чем помещается
-// в один uint16-диапазон, делится на несколько шардов с независимыми
-// id-пространствами (см. docs/superpowers/specs/2026-09-14-suffix-sharding-design.md).
-// TagSet и Prefixes остаются общими для всех шардов.
+// Suffixes, Paradigms and Words each hold one element per shard; index 0
+// is the only shard for unsharded dictionaries (there's no separate
+// "unsharded" representation). Shards exist because a suffix id is
+// addressed as a uint16: a dictionary with more suffixes than fit in one
+// uint16 range is split into several shards with independent id spaces
+// (see docs/en/superpowers/specs/2026-09-14-suffix-sharding-design.md).
+// TagSet and Prefixes stay shared across all shards.
 type Dictionary struct {
 	Language    string
 	TagSet      *TagSet
@@ -244,13 +244,13 @@ type Dictionary struct {
 	Info        *BuildInfo
 }
 
-// NewDictionary собирает Dictionary из компонентов. suffixes, paradigms и
-// words обязаны иметь одинаковую длину (число шардов) — паникует иначе,
-// как и NewParadigm паникует на несовпадении длин своих частей. Prediction,
-// Probability и Info остаются nil; Prediction/Probability заполняются
-// импортёрами при чтении prediction-файлов, Info — импортёром (обычно
-// только Source) или SaveTo (BuiltAt/LibraryVersion — при каждом
-// сохранении).
+// NewDictionary assembles a Dictionary from its components. suffixes,
+// paradigms, and words must have equal length (the number of shards) — it
+// panics otherwise, the same way NewParadigm panics on mismatched part
+// lengths. Prediction, Probability, and Info stay nil; Prediction/
+// Probability are filled in by importers when reading prediction files,
+// Info by an importer (usually just Source) or by SaveTo
+// (BuiltAt/LibraryVersion — on every save).
 func NewDictionary(
 	language string,
 	tagSet *TagSet,
@@ -402,15 +402,15 @@ func TestFullDictStructure(t *testing.T) {
 	d := importFullDict(t)
 
 	require.Len(t, d.Paradigms, 1, "pymorphy2 import is never sharded")
-	assert.Greater(t, len(d.Paradigms[0]), 1000, "полный словарь: ~3000 парадигм")
+	assert.Greater(t, len(d.Paradigms[0]), 1000, "full dictionary: ~3000 paradigms")
 	require.Len(t, d.Suffixes, 1)
-	assert.Greater(t, len(d.Suffixes[0]), 1000, "полный словарь: ~5K суффиксов")
-	assert.Greater(t, len(d.TagSet.Tags), 500, "полный словарь: ~1K тегов")
+	assert.Greater(t, len(d.Suffixes[0]), 1000, "full dictionary: ~5K suffixes")
+	assert.Greater(t, len(d.TagSet.Tags), 500, "full dictionary: ~1K tags")
 	assert.Equal(t, []string{"", "по", "наи"}, d.Prefixes)
 
 	require.Len(t, d.Words, 1)
 	require.NotNil(t, d.Words[0])
-	require.Len(t, d.Prediction, 3, "prediction-suffixes по числу префиксов")
+	require.Len(t, d.Prediction, 3, "prediction-suffixes, one per prefix")
 	require.NotNil(t, d.Probability)
 }
 
@@ -423,7 +423,7 @@ func TestFullDictVseReadings(t *testing.T) {
 		total += len(it.Values)
 	}
 	t.Logf("все: items=%d readings=%d", len(items), total)
-	assert.GreaterOrEqual(t, total, 4, "Parse(\"все\") даёт ≥4 разбора")
+	assert.GreaterOrEqual(t, total, 4, "Parse(\"все\") gives ≥4 readings")
 }
 ```
 
@@ -445,7 +445,7 @@ git commit -m "pymorphy2: wrap importer output into a single shard
 
 pymorphy2's own paradigms.array format is itself uint16-addressed at
 the source, so this importer never needs more than one shard — see
-docs/superpowers/specs/2026-09-14-suffix-sharding-design.md.
+docs/en/superpowers/specs/2026-09-14-suffix-sharding-design.md.
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```
@@ -480,18 +480,18 @@ import (
 	"github.com/amarin/gomorphy/pkg/morphology/internal"
 )
 
-// SaveTo записывает словарь в файл GMOR — единый дисковый формат.
-// Секции: meta, info, tagset, prefixes, suffixes-N, paradigms-N,
-// words.dawg-N (по одному набору на шард, N от 0), prediction-N,
-// probability (если есть).
+// SaveTo writes the dictionary to a GMOR file — the single on-disk format.
+// Sections: meta, info, tagset, prefixes, suffixes-N, paradigms-N,
+// words.dawg-N (one set per shard, N starting at 0), prediction-N,
+// probability (if present).
 func (x *Dictionary) SaveTo(path string) error {
 	if x == nil || x.d == nil {
 		return fmt.Errorf("morphology: nil dictionary")
 	}
 
-	// info — копия x.d.Info (если импортёр её заполнил, например Source),
-	// с BuiltAt/LibraryVersion, проставленными заново при каждом
-	// сохранении; сам x.d не мутируется (Dictionary иммутабелен).
+	// info is a copy of x.d.Info (if an importer populated it, e.g.
+	// Source), with BuiltAt/LibraryVersion set anew on every save; x.d
+	// itself is not mutated (Dictionary is immutable).
 	info := internal.BuildInfo{}
 	if x.d.Info != nil {
 		info = *x.d.Info
@@ -499,10 +499,11 @@ func (x *Dictionary) SaveTo(path string) error {
 	info.BuiltAt = time.Now().UTC()
 	info.LibraryVersion = Version
 
-	// Сжатие пока не реализовано (см. docs/todo.md, "Этап 17") — все секции
-	// пишутся как есть. words.dawg-N всегда останется CompressionNone: она
-	// алиасится из mmap без копирования, а сжатая секция требует полной
-	// декомпрессии в память при загрузке.
+	// Compression is not yet implemented (see docs/en/todo.md, "Stage 17")
+	// — all sections are written as-is. words.dawg-N will always stay
+	// CompressionNone: it is aliased from mmap without copying, while a
+	// compressed section would require full decompression into memory on
+	// load.
 	const noCompression = internal.CompressionNone
 	sections := []internal.Section{
 		{Name: "meta", Data: internal.EncodeMeta(x.d.Language, x.d.CharPolicy), Flags: noCompression},
@@ -547,7 +548,8 @@ func (x *Dictionary) SaveTo(path string) error {
 In `pkg/morphology/open.go`, replace the `parseContainer` function (lines 80–167) in full:
 
 ```go
-// parseContainer собирает внутренний словарь из секций GMOR-файла.
+// parseContainer assembles the internal dictionary from a GMOR file's
+// sections.
 func parseContainer(cont *internal.Container) (*internal.Dictionary, error) {
 	meta, _, err := cont.Section("meta")
 	if err != nil {
@@ -675,21 +677,21 @@ import (
 	"github.com/amarin/gomorphy/pkg/morphology/internal"
 )
 
-// Reading — один разбор словоформы.
+// Reading — one parse of a wordform.
 type Reading struct {
-	Word   string  // словоформа как в словаре (с «ё»)
-	Normal string  // начальная форма (лемма)
-	Tag    string  // граммемный тег, например "NOUN,anim,masc,sing,nomn"
-	Para   uint16  // id парадигмы — уникален только вместе с Shard
-	Form   uint16  // индекс формы в парадигме
-	Shard  int     // индекс шарда словаря; всегда 0 для нешардированных словарей
-	Prob   float64 // вероятность разбора (0, если probability недоступен)
+	Word   string  // wordform as stored in the dictionary (with "ё")
+	Normal string  // lemma (base form)
+	Tag    string  // grammeme tag, e.g. "NOUN,anim,masc,sing,nomn"
+	Para   uint16  // paradigm id — unique only together with Shard
+	Form   uint16  // form index within the paradigm
+	Shard  int     // dictionary shard index; always 0 for unsharded dictionaries
+	Prob   float64 // probability of this reading (0 if probability data is unavailable)
 }
 
-// Parse разбирает слово и возвращает все чтения словаря, отсортированные
-// по вероятности (убыванию). Для слов вне словаря пытается предсказать
-// чтения по prediction-DAWG (окончания). Возвращает nil, если разборы
-// не найдены. Вход приводится к нижнему регистру.
+// Parse parses word and returns all dictionary readings, sorted by
+// probability (descending). For out-of-dictionary words, it tries to
+// predict readings from the prediction-DAWG (suffixes). Returns nil if no
+// readings are found. The input is lowercased.
 func (x *Dictionary) Parse(word string) []Reading {
 	if x == nil || x.d == nil || len(x.d.Words) == 0 {
 		return nil
@@ -702,15 +704,16 @@ func (x *Dictionary) Parse(word string) []Reading {
 	return x.predict(word)
 }
 
-// shardExactResult — результат exactInShard для одного шарда.
+// shardExactResult — the result of exactInShard for a single shard.
 type shardExactResult struct {
 	readings []Reading
 	hasProb  bool
 }
 
-// exact собирает чтения слова, найденного в словаре, с учётом подмен
-// CharPolicy (е→ё) и сортирует по вероятности. Шарды опрашиваются
-// параллельно (по горутине на шард), результаты склеиваются.
+// exact collects readings for a word found in the dictionary, accounting
+// for CharPolicy substitutions (е→ё), and sorts them by probability.
+// Shards are queried in parallel (one goroutine per shard), and results
+// are concatenated.
 func (x *Dictionary) exact(word string) []Reading {
 	results := make([]shardExactResult, len(x.d.Words))
 
@@ -739,9 +742,9 @@ func (x *Dictionary) exact(word string) []Reading {
 	return readings
 }
 
-// exactInShard собирает чтения слова из одного шарда. Вызывается
-// параллельно с другими шардами из exact — только чтение, общего
-// изменяемого состояния между горутинами нет.
+// exactInShard collects a word's readings from a single shard. It is
+// called in parallel with other shards from exact — read-only, no mutable
+// state shared between goroutines.
 func (x *Dictionary) exactInShard(shard int, dawg *internal.DAWG, word string) shardExactResult {
 	items := dawg.SimilarItems(word, x.d.CharPolicy)
 	if len(items) == 0 {
@@ -768,8 +771,9 @@ func (x *Dictionary) exactInShard(shard int, dawg *internal.DAWG, word string) s
 	return res
 }
 
-// predict ищет чтения для несловарного слова по окончаниям в prediction-DAWG
-// (алгоритм KnownSuffixAnalyzer из pymorphy2, как в opennota/morph).
+// predict looks up readings for an out-of-dictionary word by its endings
+// in the prediction-DAWG (pymorphy2's KnownSuffixAnalyzer algorithm, as in
+// opennota/morph).
 func (x *Dictionary) predict(word string) []Reading {
 	if len(x.d.Prediction) == 0 {
 		return nil
@@ -804,7 +808,7 @@ func (x *Dictionary) predict(word string) []Reading {
 //
 // Predictions always resolve against shard 0: the prediction-DAWG feature
 // currently exists only for pymorphy2 imports, which are never sharded
-// (see docs/superpowers/specs/2026-09-14-suffix-sharding-design.md).
+// (see docs/en/superpowers/specs/2026-09-14-suffix-sharding-design.md).
 func (x *Dictionary) predictForPrefix(id int, splits [][2]string, seen map[string]bool) []Reading {
 	const predictionShard = 0
 
@@ -847,8 +851,8 @@ func (x *Dictionary) predictForPrefix(id int, splits [][2]string, seen map[strin
 	return readings
 }
 
-// reading декодирует payload-запись words.dawg (4 байта BE: para, form) в
-// указанном шарде.
+// reading decodes a words.dawg payload entry (4 bytes BE: para, form) in
+// the given shard.
 func (x *Dictionary) reading(shard int, word string, value []byte) (Reading, bool) {
 	if len(value) < 4 {
 		return Reading{}, false
@@ -858,8 +862,9 @@ func (x *Dictionary) reading(shard int, word string, value []byte) (Reading, boo
 	return x.readingForm(shard, word, para, form), true
 }
 
-// readingForm строит Reading по парадигме и форме в указанном шарде
-// (норма = prefix₀ + stem + suffix₀ для form≠0, иначе — само слово).
+// readingForm builds a Reading from a paradigm and form in the given shard
+// (normal form = prefix₀ + stem + suffix₀ for form≠0, otherwise the word
+// itself).
 func (x *Dictionary) readingForm(shard int, word string, paraNum, form uint16) Reading {
 	para, ok := x.paradigm(shard, paraNum)
 	if !ok || int(form) >= para.Len() {
@@ -895,9 +900,9 @@ func (x *Dictionary) paradigm(shard int, id uint16) (internal.Paradigm, bool) {
 	return internal.Paradigm{}, false
 }
 
-// paradigmAffix возвращает префикс и суффикс формы парадигмы для
-// указанного шарда (пустые при выходе за границы). Prefixes общий для
-// всех шардов; Suffixes — свой на шард.
+// paradigmAffix returns the prefix and suffix of a paradigm form for the
+// given shard (empty when out of bounds). Prefixes is shared across all
+// shards; Suffixes is per-shard.
 func (x *Dictionary) paradigmAffix(shard int, para internal.Paradigm, form int) (prefix, suffix string) {
 	if form >= para.Len() {
 		return "", ""
@@ -909,8 +914,8 @@ func (x *Dictionary) paradigmAffix(shard int, para internal.Paradigm, form int) 
 	return strAt(x.d.Prefixes, para.Prefix(form)), strAt(suffixes, para.Suffix(form))
 }
 
-// paradigmTag возвращает имя тега формы парадигмы. TagSet общий для всех
-// шардов, поэтому шард не нужен.
+// paradigmTag returns the tag name of a paradigm form. TagSet is shared
+// across all shards, so no shard is needed.
 func (x *Dictionary) paradigmTag(para internal.Paradigm, form int) string {
 	if form >= para.Len() {
 		return ""
@@ -928,7 +933,7 @@ func strAt(ar []string, i uint16) string {
 	return ""
 }
 
-// productive — граммема не входит в nonproductiveGrammemes.
+// productive reports whether the grammeme is not in nonproductiveGrammemes.
 func productive(tag string) bool {
 	if tag == "" {
 		return false
@@ -941,8 +946,8 @@ func productive(tag string) bool {
 	return true
 }
 
-// nonproductiveGrammemes — граммемы, для которых предсказание не даёт
-// продуктивных разборов (pymorphy2).
+// nonproductiveGrammemes — grammemes for which prediction does not yield
+// productive readings (pymorphy2).
 var nonproductiveGrammemes = []string{"NUMR", "NPRO", "PRED", "PREP", "CONJ", "PRCL", "INTJ", "Apro"}
 
 func suffixSplits(word string, max int) ([][2]string, bool) {
@@ -979,18 +984,18 @@ import (
 	"github.com/amarin/gomorphy/pkg/morphology/internal"
 )
 
-// FuzzyMatch — найденное по нечёткому поиску слово и расстояние до запроса.
+// FuzzyMatch — a word found by fuzzy search, with its distance to the query.
 type FuzzyMatch struct {
 	Word     string
 	Distance int
 }
 
-// Fuzzy возвращает слова словаря в пределах расстояния Левенштейна maxDist
-// от word (метрика по рунам: вставка/удаление/замена одной руны = 1,
-// «ё/е» — одна замена). Результат отсортирован по (расстояние, слово),
-// дубликаты слова (несколько чтений, в том числе из разных шардов)
-// схлопнуты. Отрицательное maxDist трактуется как 0 (точный поиск).
-// Пустой результат — слов нет.
+// Fuzzy returns dictionary words within Levenshtein distance maxDist of
+// word (a rune-wise metric: inserting/deleting/replacing one rune costs 1;
+// "ё/е" counts as one substitution). The result is sorted by
+// (distance, word), with duplicate words (multiple readings, including
+// from different shards) collapsed. A negative maxDist is treated as 0
+// (exact lookup). An empty result means no words match.
 func (x *Dictionary) Fuzzy(word string, maxDist int) []FuzzyMatch {
 	if maxDist < 0 {
 		maxDist = 0
@@ -998,11 +1003,12 @@ func (x *Dictionary) Fuzzy(word string, maxDist int) []FuzzyMatch {
 	return dedupeFuzzy(x.fuzzyWalk(word, maxDist))
 }
 
-// FuzzyTop возвращает до maxWords ближайших слов, упорядоченных по
-// (расстояние, слово). Расстояние расширяется итеративно от 0 до верхней
-// границы (len(query)+наибольшая длина слова в рунах среди всех шардов),
-// пока не набраны maxWords слов или не пройден весь словарь. maxWords ≤ 0
-// — точный поиск (слово само по себе, либо пусто).
+// FuzzyTop returns up to maxWords nearest words, ordered by
+// (distance, word). The distance is widened iteratively from 0 up to an
+// upper bound (len(query) + the longest word length in runes across all
+// shards), until either maxWords words are collected or the whole
+// dictionary has been walked. maxWords ≤ 0 means exact lookup (the word
+// itself, or nothing).
 func (x *Dictionary) FuzzyTop(word string, maxWords int) []FuzzyMatch {
 	if maxWords <= 0 {
 		return x.Fuzzy(word, 0)
@@ -1053,9 +1059,9 @@ func dedupeFuzzy(matches []FuzzyMatch) []FuzzyMatch {
 	return out
 }
 
-// fuzzyWalk обходит каждый шард параллельно (по горутине на шард) и
-// склеивает результаты. Шарды — независимые DAWG, поэтому обходы не
-// делят изменяемое состояние.
+// fuzzyWalk walks each shard in parallel (one goroutine per shard) and
+// concatenates the results. Shards are independent DAWGs, so the walks
+// share no mutable state.
 func (x *Dictionary) fuzzyWalk(word string, k int) []FuzzyMatch {
 	results := make([][]FuzzyMatch, len(x.d.Words))
 
@@ -1085,8 +1091,8 @@ func (x *Dictionary) fuzzyWalk(word string, k int) []FuzzyMatch {
 	return out
 }
 
-// fuzzyWalkShard — один проход совместного обхода одного шарда DAWG и
-// banded DP Левенштейна.
+// fuzzyWalkShard — a single pass of the joint traversal of one DAWG shard
+// and banded Levenshtein DP.
 func fuzzyWalkShard(words *internal.DAWG, word string, k int) []FuzzyMatch {
 	f := &fuzzySearch{
 		words: words,
@@ -1103,8 +1109,9 @@ func fuzzyWalkShard(words *internal.DAWG, word string, k int) []FuzzyMatch {
 	return f.out
 }
 
-// fuzzySearch переносит состояние одного обхода: rows[depth] — DP-строка
-// после depth рун пути, path — байты текущего пути DAWG.
+// fuzzySearch carries the state of a single traversal: rows[depth] is the
+// DP row after depth runes of the path, path is the current DAWG path's
+// bytes.
 type fuzzySearch struct {
 	words *internal.DAWG
 	q     []rune
@@ -1132,8 +1139,9 @@ func (f *fuzzySearch) visit(state uint32, depth int, row []int) {
 	})
 }
 
-// explore завершает текущую руну (путь из байтов с позиции start) и
-// применяет DP-переход; продолжает рекурсию, если строка ещё в пределах k.
+// explore completes the current rune (the byte path from position start
+// onward) and applies the DP transition; recursion continues if the row is
+// still within k.
 func (f *fuzzySearch) explore(state uint32, depth int, row []int, start int) {
 	tail := f.path[start:]
 
@@ -1201,8 +1209,8 @@ func minRow(row []int) int {
 	return m
 }
 
-// maxWordRunes возвращает наибольшую длину словоформы словаря в рунах,
-// среди всех шардов.
+// maxWordRunes returns the longest dictionary wordform's length in runes,
+// across all shards.
 func (x *Dictionary) maxWordRunes() int {
 	best := 0
 	for _, dawg := range x.d.Words {
@@ -1216,10 +1224,10 @@ func (x *Dictionary) maxWordRunes() int {
 	return best
 }
 
-// maxWordRunesInShard обходит DAG одного шарда. Обход дедуплицирует узлы
-// по наибольшей достигнутой глубине — иначе разделяемые суффиксы
-// считались бы экспоненциально. Продолжающие байты UTF-8 (0x80–0xBF)
-// руну не добавляют.
+// maxWordRunesInShard walks one shard's DAG. The walk deduplicates nodes
+// by the greatest depth reached — otherwise shared suffixes would be
+// counted exponentially. UTF-8 continuation bytes (0x80-0xBF) do not add
+// a rune.
 func maxWordRunesInShard(words *internal.DAWG) int {
 	seen := make(map[uint32]int)
 	var rec func(state uint32, runes int)
@@ -1299,12 +1307,12 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 In `pkg/morphology/importers/opencorpora/import.go`, replace the `ImportFromXML` function (currently lines 76–197, from `func ImportFromXML(...)` through its closing `return dict, nil` / `}`) with:
 
 ```go
-// suffixShardLimit — вместимость uint16 id-пространства суффиксов одного
-// шарда.
+// suffixShardLimit — the capacity of the uint16 id space for one shard's
+// suffixes.
 const suffixShardLimit = 1 << 16
 
-// shardBuild накапливает состояние (суффиксы, парадигмы, ключи DAWG)
-// одного шарда во время ImportFromXML.
+// shardBuild accumulates the state (suffixes, paradigms, DAWG keys)
+// of one shard during ImportFromXML.
 type shardBuild struct {
 	suffixList     []string
 	suffixTexts    map[string]uint16
@@ -1320,27 +1328,28 @@ func newShardBuild() *shardBuild {
 	}
 }
 
-// ImportFromXML читает dict.xml из r и возвращает *internal.Dictionary с
-// заполненными TagSet, Suffixes, Prefixes, Paradigms и Words (DAWG).
+// ImportFromXML reads dict.xml from r and returns a *internal.Dictionary
+// with TagSet, Suffixes, Prefixes, Paradigms, and Words (DAWG) filled in.
 //
 // Pipeline:
 //
-//  1. xmlscan собирает все леммы с словоформами.
-//  2. Для каждой леммы вычисляется LCP-stem всех словоформ.
-//  3. Каждая словоформа → (suffix_id, tag_id) в парадигму текущего шарда.
-//     Suffix id адресуется uint16, поэтому леммы делятся на несколько
-//     шардов с независимыми id-пространствами, если суффиксов больше,
-//     чем помещается в один uint16-диапазон (см. FillOnDemand в shard.go
-//     и docs/superpowers/specs/2026-09-14-suffix-sharding-design.md).
-//  4. Парадигмы дедуплицируются через map[paradigmKey] → paradigmID,
-//     отдельно на каждый шард.
-//  5. Строится DAWG из ключей (stem + suffix, value=paraID<<16|formIdx),
-//     отдельно на каждый шард.
+//  1. xmlscan collects all lemmas with their wordforms.
+//  2. For each lemma, the LCP-stem of all its wordforms is computed.
+//  3. Each wordform → (suffix_id, tag_id) goes into the current shard's
+//     paradigm. The suffix id is addressed as a uint16, so lemmas are
+//     split across several shards with independent id spaces once there
+//     are more suffixes than fit in one uint16 range (see FillOnDemand in
+//     shard.go and docs/en/superpowers/specs/2026-09-14-suffix-sharding-design.md).
+//  4. Paradigms are deduplicated via map[paradigmKey] → paradigmID,
+//     separately per shard.
+//  5. A DAWG is built from the keys (stem + suffix, value=paraID<<16|formIdx),
+//     separately per shard.
 //
-// progress — необязательный callback для вывода прогресса. Вызывается
-// периодически с (processed, total), где total — суммарное число ключей
-// DAWG по всем шардам и processed растёт непрерывно через границы шардов
-// (CLI видит один общий прогресс-бар, а не рестарт на каждом шарде).
+// progress — an optional callback for reporting progress. Called
+// periodically with (processed, total), where total is the combined
+// number of DAWG keys across all shards and processed increases
+// continuously across shard boundaries (so the CLI sees one overall
+// progress bar instead of a restart on every shard).
 func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*internal.Dictionary, error) {
 	if tagSet == nil {
 		tagSet = internal.NewTagSet("opencorpora")
@@ -1527,9 +1536,9 @@ func TestImportFromXMLBasic(t *testing.T) {
 	assert.Greater(t, len(d.Paradigms[0]), 0)
 
 	items := d.Words[0].SimilarItems("кот", d.CharPolicy)
-	assert.Greater(t, len(items), 0, "кот должен быть найден")
+	assert.Greater(t, len(items), 0, "кот must be found")
 	if len(items) > 0 {
-		assert.GreaterOrEqual(t, len(items[0].Values), 1, "кот имеет хотя бы один разбор")
+		assert.GreaterOrEqual(t, len(items[0].Values), 1, "кот has at least one reading")
 	}
 }
 
@@ -1538,7 +1547,7 @@ func TestImportFromXMLParadigmsDedup(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, d.Paradigms, 1)
-	assert.LessOrEqual(t, len(d.Paradigms[0]), 3, "число парадигм <= число лемм")
+	assert.LessOrEqual(t, len(d.Paradigms[0]), 3, "number of paradigms <= number of lemmas")
 }
 
 func TestImportFromXMLStemLCP(t *testing.T) {
@@ -1547,7 +1556,7 @@ func TestImportFromXMLStemLCP(t *testing.T) {
 
 	require.Len(t, d.Suffixes, 1)
 	require.Greater(t, len(d.Suffixes[0]), 0)
-	assert.Equal(t, "", d.Suffixes[0][0], "первый суффикс в шарде 0 должен быть пустым")
+	assert.Equal(t, "", d.Suffixes[0][0], "the first suffix in shard 0 must be empty")
 }
 
 func TestImportFromXMLDAWGContains(t *testing.T) {
@@ -1558,7 +1567,7 @@ func TestImportFromXMLDAWGContains(t *testing.T) {
 	// DAWG keys include payload suffixes, so SimilarItems is the correct lookup.
 	for _, w := range []string{"кот", "кота", "мышь", "мыши"} {
 		items := d.Words[0].SimilarItems(w, d.CharPolicy)
-		assert.Greater(t, len(items), 0, "слово %q должно быть найдено через SimilarItems", w)
+		assert.Greater(t, len(items), 0, "word %q must be found via SimilarItems", w)
 	}
 }
 
@@ -1569,10 +1578,10 @@ func TestImportFromXMLRoundtrip(t *testing.T) {
 
 	items := d.Words[0].SimilarItems("кот", d.CharPolicy)
 	require.GreaterOrEqual(t, len(items), 1)
-	require.GreaterOrEqual(t, len(items[0].Values), 1, "кот имеет хотя бы один разбор")
+	require.GreaterOrEqual(t, len(items[0].Values), 1, "кот has at least one reading")
 
 	for _, v := range items[0].Values {
-		require.Len(t, v, 4, "значение должно быть 4 байта")
+		require.Len(t, v, 4, "value must be 4 bytes")
 	}
 }
 
@@ -1603,10 +1612,10 @@ func TestImportFromXMLNoForms(t *testing.T) {
 	require.Len(t, d.Words, 1)
 
 	items := d.Words[0].SimilarItems("есть", d.CharPolicy)
-	assert.Greater(t, len(items), 0, "есть должно быть найдено")
+	assert.Greater(t, len(items), 0, "есть must be found")
 
 	items2 := d.Words[0].SimilarItems("пустая", d.CharPolicy)
-	assert.Equal(t, 0, len(items2), "пустая не должна быть найдена")
+	assert.Equal(t, 0, len(items2), "пустая must not be found")
 }
 ```
 
@@ -1621,7 +1630,7 @@ Replace `TestImportFromXMLTooManySuffixes` (the function added during the pre-1.
 // sharding, id 65536 would wrap to 0, colliding with the very first
 // suffix ever registered — see the critical finding in
 // docs/code-review-pre-1.0.md and the design in
-// docs/superpowers/specs/2026-09-14-suffix-sharding-design.md.
+// docs/en/superpowers/specs/2026-09-14-suffix-sharding-design.md.
 func TestImportFromXMLShardsOnSuffixOverflow(t *testing.T) {
 	const uniqueSuffixes = 1 << 16 // one more than fits in a single uint16 shard
 
@@ -1677,7 +1686,7 @@ func TestImportFromXMLPropertyTest(t *testing.T) {
 	words := []string{"кот", "кота", "мышь", "мыши"}
 	for _, w := range words {
 		items := d.Words[0].SimilarItems(w, d.CharPolicy)
-		assert.GreaterOrEqual(t, len(items), 1, "слово %q должно быть найдено", w)
+		assert.GreaterOrEqual(t, len(items), 1, "word %q must be found", w)
 	}
 }
 ```
@@ -1718,7 +1727,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 **Files:**
 - No source changes — verification only, plus documentation updates.
-- Modify: `docs/todo.md` (mark the suffix-sharding item done)
+- Modify: `docs/en/todo.md` (mark the suffix-sharding item done)
 
 **Interfaces:**
 - Consumes: everything from Tasks 1–5.
@@ -1733,23 +1742,23 @@ Expected: succeeds (this currently fails on `master` with `too many unique suffi
 
 Write a short throwaway script (do not commit it) that opens `/tmp/sharded-real.dat` via `morphology.Open` and calls `.Parse("кота")`, `.Parse("ежа")`, and a handful of other words already used as manual checks earlier in this project's history, confirming non-empty results. Delete the script when done; this step is manual verification, not a new automated test (the automated coverage is `TestImportFromXMLShardsOnSuffixOverflow` from Task 5 plus the existing `TestSaveOpenRoundtrip`/`TestOpenPyMorphy`-style tests, which already exercise the sharded save/open path structurally).
 
-- [ ] **Step 3: Update `docs/todo.md`**
+- [ ] **Step 3: Update `docs/en/todo.md`**
 
-In `docs/todo.md`, find the section header `### Суффиксы: шардирование — СПЕКА ГОТОВА (release-blocking)` and change it to:
+In `docs/en/todo.md`, find the section header `### Suffixes: sharding — SPEC READY (release-blocking)` and change it to:
 
 ```
-### Суффиксы: шардирование — ВЫПОЛНЕНО
+### Suffixes: sharding — DONE
 ```
 
 Immediately below the existing paragraph describing the decision, add:
 
 ```
-**Реализовано** (2026-09-14, план:
+**Implemented** (2026-09-14, plan:
 [2026-09-14-suffix-sharding.md](superpowers/plans/2026-09-14-suffix-sharding.md)):
-`gomorphy_build compile` на полном `.data/opencorpora/dict.xml` теперь
-успешно собирается в 2 шарда. `FillOnDemand` — единственная стратегия,
-интерфейс `ShardingStrategy` открыт для дальнейших (paradigm-grouped и
-т.п.), если понадобятся при большем переполнении.
+`gomorphy_build compile` on the full `.data/opencorpora/dict.xml` now
+successfully builds into 2 shards. `FillOnDemand` is the only strategy;
+the `ShardingStrategy` interface is open for further ones (paradigm-
+grouped, etc.) if a larger overflow ever needs them.
 ```
 
 - [ ] **Step 4: Final full-suite check and commit the docs update**
@@ -1758,7 +1767,7 @@ Run: `go build ./... && go vet ./... && go test ./... -race -count=1`
 Expected: green.
 
 ```bash
-git add docs/todo.md
+git add docs/en/todo.md
 git commit -m "docs: mark suffix-sharding done, verified against real dict.xml
 
 gomorphy_build compile now succeeds end-to-end on the full OpenCorpora
