@@ -276,7 +276,7 @@ func (d *DAWG) HasPayloadChild(index uint32) bool {
 // enumeration under a PayloadSeparator edge) — the same primitives
 // SimilarItems and ValuesForIndex already use for single-key lookups, just
 // exhaustively instead of following a caller-given key. See
-// docs/research/0005-pymorphy2-full-dawg-walk-cost.md for the validated
+// docs/en/research/0005-pymorphy2-full-dawg-walk-cost.md for the validated
 // approach and real-corpus timing (3,064,708 keys, 570ms).
 func (d *DAWG) Walk(fn func(key string, values [][]byte)) {
 	var walk func(index uint32, prefix []byte)

@@ -1,6 +1,6 @@
 // Package pymorphy2's RecompileDense rebuilds an imported dictionary's
 // words.dawg under a dense 1-byte alphabet. See
-// docs/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md.
+// docs/en/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md.
 package pymorphy2
 
 import (

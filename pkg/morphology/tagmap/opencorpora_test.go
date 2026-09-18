@@ -22,7 +22,7 @@ func TestTokenizeOpenCorporaEmptyTagIsNil(t *testing.T) {
 
 func TestOpenCorporaTableCoversKotNominativeSingular(t *testing.T) {
 	// "кот" (NOUN,anim,masc,sing,nomn) — the exact example already used
-	// throughout docs/todo.md and docs/implementation/ for this dictionary.
+	// throughout docs/en/todo.md and docs/en/implementation/ for this dictionary.
 	b := buildBundle(tokenizeOpenCorpora("NOUN,anim,masc,sing,nomn"), openCorporaTable)
 
 	assert.Equal(t, []Feature{

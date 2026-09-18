@@ -9,7 +9,7 @@ import "fmt"
 type Region struct{}
 
 // Open is not implemented on Windows yet — gomorphy currently targets Unix
-// platforms only (see docs/todo.md for planned Windows mmap support).
+// platforms only (see docs/en/todo.md for planned Windows mmap support).
 func Open(path string) (*Region, error) {
 	return nil, fmt.Errorf("mmapx: %s: not supported on windows yet", path)
 }

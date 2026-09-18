@@ -19,7 +19,7 @@ func (x *Dictionary) SaveTo(path string) error {
 		return fmt.Errorf("morphology: SaveTo: dictionaries with a non-nil Alphabet " +
 			"(e.g. from OpenPyMorphyDense) cannot yet be serialized to .dat — the Alphabet " +
 			"codec has no on-disk representation, so a saved-and-reopened dense dictionary " +
-			"would silently mis-decode; see docs/superpowers/specs/" +
+			"would silently mis-decode; see docs/en/superpowers/specs/" +
 			"2026-09-16-pymorphy2-dense-recompile-design.md's non-goals")
 	}
 

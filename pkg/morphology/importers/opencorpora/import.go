@@ -100,7 +100,7 @@ var excludedLinkTypes = map[string]bool{"7": true, "21": true, "23": true, "27":
 // type="3" INFN-VERB, type="4" INFN-PRTF, type="5" INFN-GRND). Without
 // this merge, every finite/participle/gerund form gets normalized to
 // its own fragment's headword (e.g. "ложился" -> "ложусь") instead of
-// the infinitive — see docs/research/0008-opencorpora-link-merge-design.md.
+// the infinitive — see docs/en/research/0008-opencorpora-link-merge-design.md.
 //
 // This mirrors pymorphy2's _join_lexemes exactly: for each <link
 // from="A" to="B" type="T">, unless T is excluded, B's forms move into
@@ -388,7 +388,7 @@ func ImportFromXML(r io.Reader, tagSet *internal.TagSet, progress Progress) (*in
 // they arrive interleaved across many XML events; a form's own <g>
 // children are only fully known once </f> closes, so its final tag is
 // assembled on OnFormEnd, not on OnForm. See
-// docs/superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md.
+// docs/en/superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md.
 //
 // The field is named formOwnGrams, not formGrams, to avoid colliding in
 // spirit with the package's existing formGrams *type* (used below and in
@@ -509,7 +509,7 @@ func (h *xmlHandler) OnFormEnd() error {
 // byte-level cut can otherwise land inside a multi-byte character when
 // two texts share a lead byte but differ in its continuation byte (e.g.
 // any Cyrillic letter in the а-п block compared against "по") — see
-// docs/research/0003-comparative-paradigms-not-merging.md, section 4/6.
+// docs/en/research/0003-comparative-paradigms-not-merging.md, section 4/6.
 func lcp(texts []string) string {
 	if len(texts) == 0 {
 		return ""
@@ -540,7 +540,7 @@ func lcp(texts []string) string {
 
 // cmp2Prefix is the only lemma-internal separable prefix present in
 // OpenCorpora's dict.xml (verified against the real file — see
-// docs/superpowers/specs/2026-09-15-comparative-prefix-split-design.md):
+// docs/en/superpowers/specs/2026-09-15-comparative-prefix-split-design.md):
 // the Cmp2 grammeme marks a comparative-degree form that is literally
 // "по" + the corresponding non-Cmp2 form (e.g. lemma "поправимее",
 // dict.xml id 259490: Cmp2 form "попоправимее" = "по" + "поправимее").
@@ -550,7 +550,7 @@ const cmp2Prefix = "по"
 // "") from the text that should feed lcp(), so the shared root never
 // ends up split across different suffix strings depending on which
 // forms happen to carry that prefix (the root-in-suffix problem from
-// docs/research/0003-comparative-paradigms-not-merging.md).
+// docs/en/research/0003-comparative-paradigms-not-merging.md).
 //
 // If any Cmp2-tagged form's text does not literally start with "по",
 // every form of this lemma falls back to prefix "" and its own full
@@ -561,7 +561,7 @@ const cmp2Prefix = "по"
 // (недо-/около-/мульти-) and OpenCorpora infixes "по" after it rather
 // than prepending it to the whole word (e.g. "недобитее" -> Cmp2 form
 // "недопобитее", not "понедобитее") — see
-// docs/research/0003-comparative-paradigms-not-merging.md for the full
+// docs/en/research/0003-comparative-paradigms-not-merging.md for the full
 // trace. The fallback handles these 3 lemmas correctly (no merge
 // benefit, no data corruption) — it is not dead code, keep it.
 func stripCmp2Prefix(forms []formGrams) (stemInput []string, prefixes []string, ok bool) {

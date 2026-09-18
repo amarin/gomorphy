@@ -66,7 +66,7 @@ const testDictXML = `<?xml version="1.0" encoding="UTF-8"?>
 // "плотнее") with different roots but the same tag pattern (COMP,Qual /
 // COMP,Qual,V-ej / COMP,Qual,Cmp2 / COMP,Qual,Cmp2,V-ej) — real
 // OpenCorpora data shows this pattern accounts for 82% of shard 0's
-// paradigms (docs/research/0003-comparative-paradigms-not-merging.md).
+// paradigms (docs/en/research/0003-comparative-paradigms-not-merging.md).
 // The Cmp2-tagged forms are literally "по" + the corresponding
 // non-Cmp2 form, matching the real dict.xml lemma "поправимее" (id
 // 259490) verified in that document.
@@ -99,7 +99,7 @@ const comparativeDictXML = `<?xml version="1.0" encoding="UTF-8"?>
 
 // TestImportFromXMLComparativeParadigmsMerge guards against the
 // root-in-suffix duplication documented in
-// docs/research/0003-comparative-paradigms-not-merging.md: "яснее" and
+// docs/en/research/0003-comparative-paradigms-not-merging.md: "яснее" and
 // "плотнее" share suffix/tag/prefix structure once "по" is split off
 // as a real prefix, and must collapse into ONE paradigm.
 func TestImportFromXMLComparativeParadigmsMerge(t *testing.T) {
@@ -189,7 +189,7 @@ func TestImportFromXMLStemLCP(t *testing.T) {
 
 // TestImportFromXMLFormTagsCombineLemmaAndOwnGrammemes guards against the
 // tag-corruption bug documented in docs/code-review-pre-1.0.md and fixed
-// per docs/superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md:
+// per docs/en/superpowers/specs/2026-09-15-opencorpora-tag-fix-design.md:
 // each form's tag must be its lemma's own grammemes plus its own — not
 // empty, not a previous form's, not an accumulating mixture.
 func TestImportFromXMLFormTagsCombineLemmaAndOwnGrammemes(t *testing.T) {
@@ -436,7 +436,7 @@ func TestImportFromXMLNoForms(t *testing.T) {
 // sharding, id 65536 would wrap to 0, colliding with the very first
 // suffix ever registered — see the critical finding in
 // docs/code-review-pre-1.0.md and the design in
-// docs/superpowers/specs/2026-09-14-suffix-sharding-design.md.
+// docs/en/superpowers/specs/2026-09-14-suffix-sharding-design.md.
 func TestImportFromXMLShardsOnSuffixOverflow(t *testing.T) {
 	const uniqueSuffixes = 1 << 16 // one more than fits in a single uint16 shard
 

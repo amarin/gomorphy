@@ -14,7 +14,7 @@ func tokenizeOpenCorpora(tag string) []string {
 // openCorporaTable maps OpenCorpora grammeme names (as produced by
 // pkg/morphology/importers/opencorpora's import, TagSet.Name ==
 // "opencorpora") to UniMorph features. A representative subset, not
-// exhaustive — see docs/superpowers/plans/2026-09-17-tag-mapping.md's
+// exhaustive — see docs/en/superpowers/plans/2026-09-17-tag-mapping.md's
 // Global Constraints. Grows incrementally as uncovered grammemes are
 // found; an uncovered grammeme is not an error (see Bundle.Unmapped).
 var openCorporaTable = map[string]Feature{

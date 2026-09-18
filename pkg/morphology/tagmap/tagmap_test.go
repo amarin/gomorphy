@@ -36,7 +36,7 @@ func TestMapUnmappedTokenPassesThrough(t *testing.T) {
 }
 
 func TestMapOpenCorporaAndOpenCorporaIntAgree(t *testing.T) {
-	// The real documented example (docs/todo.md's tag-mapping section):
+	// The real documented example (docs/en/todo.md's tag-mapping section):
 	// same word "кот", same grammatical meaning, two different native
 	// tag syntaxes — must normalize to the same Bundle.Features.
 	oc, ok := tagmap.Map("opencorpora", "NOUN,anim,masc,sing,nomn")

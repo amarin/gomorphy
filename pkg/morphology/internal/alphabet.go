@@ -11,7 +11,7 @@ import (
 // alphabet-agnostic: FollowByte/Follow already walk a key one raw byte at
 // a time, so a dense multi-byte-per-character alphabet needs no engine
 // changes - only a codec at the key-construction boundary. See
-// docs/superpowers/specs/2026-09-15-dawg-alphabet-harness-design.md.
+// docs/en/superpowers/specs/2026-09-15-dawg-alphabet-harness-design.md.
 type Alphabet interface {
 	// Name identifies the alphabet for logging/comparison output.
 	Name() string
@@ -60,7 +60,7 @@ type DenseAlphabet struct {
 // DAWG guide-traversal sentinel (dawg.go's ForEachChild) even though the
 // *code* itself was never 0 or 1. This was a real bug, found by the
 // final review of this branch - see
-// docs/superpowers/specs/2026-09-15-dawg-alphabet-harness-design.md.
+// docs/en/superpowers/specs/2026-09-15-dawg-alphabet-harness-design.md.
 func maxCodesForWidth(width int) int {
 	switch width {
 	case 1:

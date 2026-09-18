@@ -7,7 +7,7 @@ package opencorpora
 // suffixes.
 //
 // v1 ships exactly one implementation, FillOnDemand — see
-// docs/superpowers/specs/2026-09-14-suffix-sharding-design.md for why
+// docs/en/superpowers/specs/2026-09-14-suffix-sharding-design.md for why
 // (near-zero overhead at today's real N=2 shard count; a second
 // strategy, e.g. paradigm-grouped, can be added later as another type
 // satisfying this interface without touching ImportFromXML's structure).

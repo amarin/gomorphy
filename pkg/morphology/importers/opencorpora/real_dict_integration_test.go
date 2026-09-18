@@ -1,7 +1,7 @@
 //go:build integration
 
 // Integration tests here require the real OpenCorpora dict.xml at
-// .data/opencorpora/dict.xml (see docs/todo.md / Makefile's
+// .data/opencorpora/dict.xml (see docs/en/todo.md / Makefile's
 // test-integration target). Run explicitly:
 //
 //	go test -tags=integration ./pkg/morphology/importers/opencorpora/... -v
@@ -108,7 +108,7 @@ func TestStripCmp2PrefixRealDictAnomalies(t *testing.T) {
 		t.Errorf("real dict.xml has %d lemmas where a Cmp2 form does not literally start with \"по\" "+
 			"(examples: %v) — well above the %d known/expected (недобитее, окологлоточнее, "+
 			"мультипроцессорнее) — investigate before assuming the fallback still covers this safely; "+
-			"see docs/research/0003-comparative-paradigms-not-merging.md",
+			"see docs/en/research/0003-comparative-paradigms-not-merging.md",
 			anomalies, examples, maxKnownAnomalies)
 	} else if anomalies > 0 {
 		t.Logf("real dict.xml has %d lemmas where a Cmp2 form does not literally start with \"по\" "+
@@ -118,14 +118,14 @@ func TestStripCmp2PrefixRealDictAnomalies(t *testing.T) {
 			"(недо-/около-/мульти-/etc.) and OpenCorpora infixes \"по\" after it rather than "+
 			"prepending it to the whole word (e.g. \"недобитее\" -> Cmp2 form \"недопобитее\", not "+
 			"\"понедобитее\") — out of scope for the narrow Cmp2-only fix by design, see "+
-			"docs/superpowers/specs/2026-09-15-comparative-prefix-split-design.md.",
+			"docs/en/superpowers/specs/2026-09-15-comparative-prefix-split-design.md.",
 			anomalies, examples)
 	}
 }
 
 // TestImportFromXMLRealDictComparativeWordsResolve spot-checks known
 // comparative-degree words from
-// docs/research/0003-comparative-paradigms-not-merging.md against the
+// docs/en/research/0003-comparative-paradigms-not-merging.md against the
 // real compiled dictionary: each word must be found, and at least one
 // of its DAWG readings must resolve to the expected normal form. Real
 // dict.xml has legitimate cross-lemma homonyms (a surface string can
@@ -169,7 +169,7 @@ func TestImportFromXMLRealDictComparativeWordsResolve(t *testing.T) {
 		{"пояснее", "ясный"},
 		{"поясней", "ясный"},
 		{"абажурнее", "абажурный"},
-		{"поабажурнее", "абажурный"}, // "по" + full base word, per docs/research/0003-...md's own example
+		{"поабажурнее", "абажурный"}, // "по" + full base word, per docs/en/research/0003-...md's own example
 		{"поправимее", "поправимый"},
 		{"попоправимее", "поправимый"},
 	}

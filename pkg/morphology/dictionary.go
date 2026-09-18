@@ -1,7 +1,7 @@
 // Package morphology is the public API for morphological analysis over
 // dictionaries in a single internal format. Two sources are supported
 // today: pymorphy2 and OpenCorpora; UniMorph import is planned but not
-// yet implemented (see docs/todo.md, Stage 16).
+// yet implemented (see docs/en/todo.md, Stage 16).
 package morphology
 
 import (

@@ -2,7 +2,7 @@
 // into a universal feature bundle (the UniMorph Schema), so tags from
 // different dictionary sources (OpenCorpora, pymorphy2) can be compared
 // for the same grammatical meaning. See
-// docs/superpowers/specs/2026-09-17-tag-mapping-design.md.
+// docs/en/superpowers/specs/2026-09-17-tag-mapping-design.md.
 package tagmap
 
 import "sort"
