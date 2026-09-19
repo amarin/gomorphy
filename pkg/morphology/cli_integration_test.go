@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/amarin/gomorphy/pkg/morphology/internal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,7 +30,18 @@ func TestCLIEndToEnd(t *testing.T) {
 	require.NoError(t, err, "build: %s", build)
 	require.Contains(t, string(build), "saved")
 	_, err = os.Stat(out)
-	require.NoError(t, err, ".dat файл создан")
+	require.NoError(t, err, ".dat file was created")
+
+	// gomorphy build pymorphy defaults to a dense 1-byte alphabet, no
+	// opt-out flag (see docs/en/implementation/pymorphy2-dense-alphabet.md,
+	// "Agreed design decisions", item 2) — confirm the CLI-built file
+	// actually carries the "alphabet" section, not just that it opens.
+	raw, err := os.ReadFile(out)
+	require.NoError(t, err)
+	cont, err := internal.OpenContainer(raw)
+	require.NoError(t, err)
+	_, _, err = cont.Section("alphabet")
+	require.NoError(t, err, "gomorphy build pymorphy must produce a dense (alphabet-section) .dat by default")
 
 	// кот has two paradigms in stdWords (NOUN and VERB, a homonym) - both
 	// must surface in one lookup, same as before this redesign.

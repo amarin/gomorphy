@@ -43,3 +43,16 @@ func TestBuildCommand_MissingInputFile(t *testing.T) {
 	root.SetArgs([]string{"build", "opencorpora", "-i", "/no/such/file.xml", "-o", filepath.Join(t.TempDir(), "out.dat")})
 	assert.Error(t, root.Execute())
 }
+
+// TestBuildCommand_PyMorphy_MissingDir is a smoke test for the "pymorphy"
+// case's wiring (error propagation from morphology.OpenPyMorphyDense
+// reaching the CLI). The dense-alphabet build itself — the actual
+// behavior this case now defaults to — is covered exhaustively at the
+// library level (pkg/morphology/dense_test.go, save_test.go); building a
+// real pymorphy2-format fixture directory here would need
+// pkg/morphology/internal, which cmd/gomorphy cannot import.
+func TestBuildCommand_PyMorphy_MissingDir(t *testing.T) {
+	root := newTestRootCmd(newBuildCommand())
+	root.SetArgs([]string{"build", "pymorphy", "-i", "/no/such/dir", "-o", filepath.Join(t.TempDir(), "out.dat")})
+	assert.Error(t, root.Execute())
+}

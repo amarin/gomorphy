@@ -133,6 +133,13 @@ gomorphy build opencorpora -i dict.xml -o out.dat
 gomorphy build pymorphy -i /path/to/unpacked/dir -o out.dat
 ```
 
+`build pymorphy` always recompiles `words.dawg` under a dense 1-byte
+alphabet — there's no flag to opt out. This is an agreed default (see
+[implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md)),
+not yet extended to `build opencorpora`. Embedding a raw (non-dense)
+pymorphy2 dictionary is Go-API-only: call `morphology.OpenPyMorphy`
+directly instead of going through the CLI.
+
 Flags:
 
 | Flag | Description |

@@ -183,7 +183,9 @@ func (loader *Loader) UnpackUpdate() error {
 
 // Sync downloads and unpacks the dictionary archive if needed, without
 // compiling. After Sync completes, the caller can use loader.UnpackedDirPath()
-// to load the dictionary via pkg/morphology.OpenPyMorphy.
+// to load the dictionary via pkg/morphology.OpenPyMorphy (raw UTF-8) or
+// OpenPyMorphyDense (the dense 1-byte alphabet gomorphy's own CLI
+// defaults to, see cmd/gomorphy's build command).
 func (loader *Loader) Sync(skipDownload bool) error {
 	downloadedExists := loader.IsDownloadExists()
 	updateRequired, err := loader.IsUpdateRequired()

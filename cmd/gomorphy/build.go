@@ -40,7 +40,13 @@ func runBuild(cmd *cobra.Command, typ, input, output string) error {
 		if dir == "" {
 			dir = pymorphy.NewLoader("").UnpackedDirPath()
 		}
-		d, err = morphology.OpenPyMorphy(dir)
+		// The CLI always builds a dense 1-byte alphabet, no opt-out flag —
+		// an agreed design decision (see
+		// docs/en/implementation/pymorphy2-dense-alphabet.md, "Agreed
+		// design decisions", item 2). The raw/non-dense variant
+		// (morphology.OpenPyMorphy) is Go-API-only, for embedders who want
+		// it directly.
+		d, err = morphology.OpenPyMorphyDense(dir)
 		defaultOut = common.DomainFilePath(pymorphy.DomainName, "pymorphy.dat")
 	default:
 		return fmt.Errorf("unknown dictionary type %q (use opencorpora or pymorphy)", typ)

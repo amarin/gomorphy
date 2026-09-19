@@ -144,10 +144,10 @@ through the same pipeline as OpenCorpora.
   below. `SaveTo`'s former hard rejection of a non-nil `Alphabet` is
   gone.
 
-## Remaining backlog (doesn't block 1.0.0, separate future tasks)
+## Backlog (closed 2026-09-19)
 
-Deliberately not done in the 2026-09-16 pass (item 1 closed 2026-09-19,
-see above):
+Deliberately not done in the 2026-09-16 pass, closed in a follow-up
+session on 2026-09-19:
 
 1. ~~**Serializing `Alphabet` into the `.dat` and support in `Open()`**~~
    — DONE 2026-09-19, see "What's implemented" above.
@@ -187,5 +187,17 @@ see above):
    above — it would only matter for a real multilingual consumer for
    whom multi-dict (see [multi-dict.md](multi-dict.md)) somehow doesn't
    fit, and none exists today. Revisit only if one does.
-5. **CLI** (`gomorphy`) is untouched — this was a Go-API-only increment;
-   there's no way to get a dense dictionary from the CLI without writing code.
+5. ~~**CLI**~~ — DONE 2026-09-19: `gomorphy build pymorphy`
+   (`cmd/gomorphy/build.go`) now calls `OpenPyMorphyDense` instead of
+   `OpenPyMorphy` — a dense 1-byte alphabet by default, no opt-out flag.
+   This matches the "Agreed design decisions" item 2 above exactly; it
+   had simply never been wired up until now. The raw/non-dense variant
+   is Go-API-only (call `morphology.OpenPyMorphy` directly). Verified
+   end to end through the actual compiled binary
+   (`TestCLIEndToEnd`, `pkg/morphology/cli_integration_test.go` —
+   asserts the built `.dat` carries an `"alphabet"` section). `build
+   opencorpora` is untouched — OpenCorpora has no dense-alphabet
+   recompile path at all yet (see Stage 17 remainder item 2 in
+   `docs/en/todo.md`), a separate, larger, not-started task.
+
+All five backlog items are now closed.

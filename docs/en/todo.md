@@ -50,7 +50,7 @@ A short status with links to details — the write-ups themselves live in
 | 17. Narrowing ID types + format groundwork for compression + `info` section | PARTIAL (see below) | [implementation/stage-17-optimize.md](implementation/stage-17-optimize.md), [implementation/info-section.md](implementation/info-section.md) |
 | — Pre-1.0.0 code review: findings triage + both critical bugs (suffix overflow, corrupted wordform tags) | DONE | [implementation/code-review-pre-1.0-triage.md](implementation/code-review-pre-1.0-triage.md) |
 | — Multi-dict: `morphology.MultiDictionary` | DONE | [implementation/multi-dict.md](implementation/multi-dict.md) |
-| — Dense 1-byte DAWG alphabet for pymorphy2 `words.dawg` | DONE (partial, see remaining backlog below) | [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md) |
+| — Dense 1-byte DAWG alphabet for pymorphy2 `words.dawg` | DONE (`.dat` serialization, `fuzzy.go`, Prediction/Probability, and the CLI default all closed 2026-09-19; the 2-byte read-path item was dropped, no consumer) | [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md) |
 | — pymorphy2 source (`pkg/pymorphy`) + integration into the `gomorphy` CLI | DONE | [implementation/pymorphy-source-and-cli.md](implementation/pymorphy-source-and-cli.md) |
 | — Universal tag mapping between dictionaries (`pkg/morphology/tagmap`, native -> universal) | DONE (partial, see remaining backlog below) | [implementation/tag-mapping.md](implementation/tag-mapping.md) |
 | — Stage 18 (documentation + tests + godoc audit; the CLI part was closed separately, see above) | DONE 2026-09-17 | [implementation/stage-18-finalize.md](implementation/stage-18-finalize.md) |
@@ -91,13 +91,12 @@ order:
 Details and what's already done are in
 [implementation/stage-17-optimize.md](implementation/stage-17-optimize.md).
 
-### Dense alphabet: remaining backlog (not blocking 1.0.0)
+### Dense alphabet backlog (closed 2026-09-19)
 
 For pymorphy2 `words.dawg`, the dense 1-byte alphabet is implemented
-(see the table above). The full breakdown of what's done and what's
-left is in
+and its backlog is closed (see the table above). Full history in
 [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md).
-A short summary of what remains, in priority order:
+What was tracked here, in priority order:
 
 1. ~~Serializing `Alphabet` into `.dat` + support in `Open()`~~ — DONE
    2026-09-19: a new `"alphabet"` section, written/read like the
@@ -126,7 +125,17 @@ A short summary of what remains, in priority order:
    (see [implementation/multi-dict.md](implementation/multi-dict.md))
    somehow doesn't fit, and none exists. Revisit only if such a
    consumer actually shows up.
-5. CLI (`gomorphy`) — a dense dictionary can only be obtained via the Go API.
+5. ~~CLI (`gomorphy`)~~ — DONE 2026-09-19: `gomorphy build pymorphy`
+   always recompiles under a dense 1-byte alphabet, no opt-out flag —
+   this was already an agreed design decision (see
+   [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md),
+   "Agreed design decisions", item 2) that just hadn't been implemented
+   yet. The raw/non-dense variant is Go-API-only
+   (`morphology.OpenPyMorphy`). `build opencorpora` is untouched — dense
+   alphabet support for OpenCorpora builds remains a separate,
+   not-started task (Stage 17 remainder item 2).
+
+All five items are now closed — the dense-alphabet backlog is done.
 
 ### Universal tag mapping: remaining backlog (not blocking 1.0.0)
 

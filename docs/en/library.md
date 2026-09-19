@@ -31,10 +31,12 @@ func CompileFromXMLFile(path string, progress opencorpora.Progress) (*Dictionary
 - **`OpenPyMorphyDense(dir)`** — like `OpenPyMorphy`, but rebuilds
   `words.dawg` with a dense 1-byte alphabet (see
   [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md)).
-  Produces the same readings as `OpenPyMorphy`, but faster and more
-  compact in memory; a dictionary with a dense alphabet **cannot** be
-  saved via `SaveTo` (see below) and does not support `Fuzzy`/`FuzzyTop`
-  (they return `nil`).
+  Produces the same readings, `Parse`/`Lemma`/`Fuzzy`/`FuzzyTop` results,
+  as `OpenPyMorphy`, but faster and more compact in memory. `SaveTo`/
+  `Open` round-trip it like any other dictionary. This is what
+  `gomorphy build pymorphy` uses by default (see [cli.md](cli.md)) — call
+  `OpenPyMorphy` directly instead if you specifically want the raw,
+  non-dense variant.
 - **`CompileFromXML`/`CompileFromXMLFile`** — compiles an OpenCorpora
   dictionary from `dict.xml`. `progress` is an optional callback
   `func(processed, total int)` for tracking compilation progress (`nil`
@@ -156,8 +158,9 @@ type FuzzyMatch struct {
 }
 ```
 
-Does not work (returns `nil`) for dictionaries with a dense alphabet
-(`OpenPyMorphyDense`) — see "Opening a dictionary" above.
+Works the same for dictionaries with a dense alphabet
+(`OpenPyMorphyDense`) — same matches as the raw dictionary, see "Opening
+a dictionary" above.
 
 ## Diagnostic metadata
 
@@ -230,8 +233,9 @@ wg.Wait()
 
 ## Saving to disk
 
-`SaveTo` saves a dictionary (including one compiled from XML or loaded via
-`OpenPyMorphy`) into the unified format:
+`SaveTo` saves a dictionary (including one compiled from XML, loaded via
+`OpenPyMorphy`, or rebuilt via `OpenPyMorphyDense`) into the unified
+format:
 
 ```go
 d, err := morphology.CompileFromXMLFile("dict.xml", nil)
@@ -243,8 +247,9 @@ if err := d.SaveTo("opencorpora.dat"); err != nil {
 }
 ```
 
-A dictionary with a dense alphabet (`OpenPyMorphyDense`) cannot be saved —
-`SaveTo` returns an error (see "Opening a dictionary" above).
+A dictionary with a dense alphabet (`OpenPyMorphyDense`) round-trips
+through `SaveTo`/`Open` like any other — the alphabet codec is written
+into its own `.dat` section and reconstructed on `Open`.
 
 ## Errors
 
