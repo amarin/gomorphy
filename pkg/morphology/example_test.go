@@ -1,6 +1,7 @@
 package morphology_test
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/amarin/gomorphy/pkg/morphology"
+	"github.com/amarin/gomorphy/pkg/morphology/internal/testdawg"
 	"github.com/amarin/gomorphy/pkg/morphology/tagmap"
 )
 
@@ -60,6 +62,11 @@ const exampleDictXML2 = `<?xml version="1.0" encoding="UTF-8"?>
  </lemmata>
 </dictionary>`
 
+// exampleUniMorphTSV is a minimal UniMorph TSV fragment (lemma<TAB>
+// wordform<TAB>bundle), used by the CompileFromUniMorph* examples below.
+const exampleUniMorphTSV = "кот\tкот\tN;NOM;SG\n" +
+	"кот\tкота\tN;ACC;SG\n"
+
 // mustCompileExampleDict compiles exampleDictXML, the fixture every example
 // below that doesn't specifically demonstrate compilation itself reuses.
 func mustCompileExampleDict() *morphology.Dictionary {
@@ -70,12 +77,52 @@ func mustCompileExampleDict() *morphology.Dictionary {
 	return d
 }
 
-// Example_compileFromXML shows the simplest way to embed gomorphy in a
+// mustPyMorphyExampleDir builds a minimal pymorphy2-format directory (the
+// same shape OpenPyMorphy reads from a real pymorphy2-dicts-ru install:
+// words.dawg + paradigms.array + JSON side tables) in a temp directory, so
+// ExampleOpenPyMorphy needs no external data. Reuses fixture_test.go's
+// payloadSeparator/b64/readingValue helpers (same package).
+func mustPyMorphyExampleDir() string {
+	dir, err := os.MkdirTemp("", "gomorphy-example-pymorphy")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	write := func(name string, data []byte) {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	// paradigms.array: 1 paradigm, 2 forms — suffix ids | tag ids | prefix ids.
+	paraData := []uint16{0, 1, 0, 1, 0, 0}
+	paradigms := make([]byte, 4+2*len(paraData))
+	binary.LittleEndian.PutUint16(paradigms[0:], 1)                     // paradigm count
+	binary.LittleEndian.PutUint16(paradigms[2:], uint16(len(paraData))) // paradigm 0 length
+	for i, v := range paraData {
+		binary.LittleEndian.PutUint16(paradigms[4+2*i:], v)
+	}
+	write("paradigms.array", paradigms)
+	write("suffixes.json", []byte(`["","а"]`))
+	write("paradigm-prefixes.json", []byte(`[""]`))
+	write("gramtab-opencorpora-int.json", []byte(`["NOUN,anim,masc,sing,nomn","NOUN,anim,masc,sing,gent"]`))
+
+	words := map[string]uint32{
+		"кот" + payloadSeparator + b64(readingValue(0, 0)):  0,
+		"кота" + payloadSeparator + b64(readingValue(0, 1)): 0,
+	}
+	wordsDAWG, guide := testdawg.Build(words)
+	write("words.dawg", testdawg.Marshal(wordsDAWG, guide))
+
+	return dir
+}
+
+// ExampleCompileFromXML shows the simplest way to embed gomorphy in a
 // program: compile a dictionary directly from an in-memory dict.xml (or any
 // io.Reader - a file, an HTTP response body, etc.), with no separate
 // download/build step. This is the same entry point gomorphy_build's
 // "compile" command and the OpenCorpora importer use internally.
-func Example_compileFromXML() {
+func ExampleCompileFromXML() {
 	d, err := morphology.CompileFromXML(strings.NewReader(exampleDictXML), nil)
 	if err != nil {
 		log.Fatal(err)
@@ -88,12 +135,111 @@ func Example_compileFromXML() {
 	// кот NOUN,anim,masc,sing,gent
 }
 
-// Example_openByAbsolutePath shows the on-disk embedding path: compile a
-// dictionary once, save it to a .dat file with SaveTo, then later reopen it
-// from its absolute path with Open - the way a long-running service loads
-// a prebuilt dictionary at startup. Open mmaps the hot sections, so the
+// ExampleCompileFromXMLFile shows compiling straight from a dict.xml file on
+// disk, rather than an in-memory io.Reader (see ExampleCompileFromXML) -
+// what `gomorphy build opencorpora -i dict.xml` uses internally.
+func ExampleCompileFromXMLFile() {
+	path := filepath.Join(os.TempDir(), "gomorphy-example-dict.xml")
+	if err := os.WriteFile(path, []byte(exampleDictXML), 0o644); err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = os.Remove(path) }()
+
+	d, err := morphology.CompileFromXMLFile(path, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, r := range d.Parse("кота") {
+		fmt.Println(r.Normal, r.Tag)
+	}
+	// Output:
+	// кот NOUN,anim,masc,sing,gent
+}
+
+// ExampleOpenPyMorphy shows reading a pymorphy2 dictionary directly from its
+// source directory (words.dawg, paradigms.array, ...), without a separate
+// compile-to-.dat step. A real directory comes from `gomorphy download
+// pymorphy`; this example builds a minimal one inline (mustPyMorphyExampleDir)
+// so it needs no external data.
+func ExampleOpenPyMorphy() {
+	dir := mustPyMorphyExampleDir()
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	d, err := morphology.OpenPyMorphy(dir)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, r := range d.Parse("кота") {
+		fmt.Println(r.Normal, r.Tag)
+	}
+	// Output:
+	// кот NOUN,anim,masc,sing,gent
+}
+
+// ExampleCompileFromUniMorph shows compiling a dictionary from a UniMorph
+// TSV (lemma<TAB>wordform<TAB>bundle). Language is mandatory; "ru" is
+// currently the only accepted value (see
+// docs/en/implementation/stage-16-import-unimorph.md).
+func ExampleCompileFromUniMorph() {
+	d, err := morphology.CompileFromUniMorph(strings.NewReader(exampleUniMorphTSV), morphology.UniMorphOptions{Language: "ru"})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, r := range d.Parse("кота") {
+		fmt.Println(r.Normal, r.Tag)
+	}
+	// Output:
+	// кот N;ACC;SG
+}
+
+// ExampleCompileFromUniMorphFile shows the same compilation, straight from a
+// TSV file on disk rather than an in-memory io.Reader (see
+// ExampleCompileFromUniMorph).
+func ExampleCompileFromUniMorphFile() {
+	path := filepath.Join(os.TempDir(), "gomorphy-example.tsv")
+	if err := os.WriteFile(path, []byte(exampleUniMorphTSV), 0o644); err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = os.Remove(path) }()
+
+	d, err := morphology.CompileFromUniMorphFile(path, morphology.UniMorphOptions{Language: "ru"})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, r := range d.Parse("кота") {
+		fmt.Println(r.Normal, r.Tag)
+	}
+	// Output:
+	// кот N;ACC;SG
+}
+
+// ExampleDictionary_SaveTo shows saving a compiled dictionary to a .dat
+// file, to be reopened later with Open (see ExampleOpen) instead of
+// recompiling from source every time.
+func ExampleDictionary_SaveTo() {
+	d := mustCompileExampleDict()
+
+	path := filepath.Join(os.TempDir(), "gomorphy-example-savetotest.dat")
+	if err := d.SaveTo(path); err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = os.Remove(path) }()
+
+	fmt.Println("saved")
+	// Output:
+	// saved
+}
+
+// ExampleOpen shows the on-disk embedding path: compile a dictionary once,
+// save it to a .dat file with SaveTo, then later reopen it from its
+// absolute path with Open - the way a long-running service loads a
+// prebuilt dictionary at startup. Open mmaps the hot sections, so the
 // returned Dictionary must be closed with Close when no longer needed.
-func Example_openByAbsolutePath() {
+func ExampleOpen() {
 	d := mustCompileExampleDict()
 
 	path := filepath.Join(os.TempDir(), "gomorphy-example.dat")

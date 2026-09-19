@@ -12,6 +12,9 @@ use.
 
 Runnable, self-contained programs for each entry point below live in
 [examples/](../../examples/README.md) — `go run ./examples/<name>`.
+Each entry point also has a matching `ExampleXxx` function in
+`pkg/morphology/example_test.go`, which pkg.go.dev/godoc renders
+inline on that function's own doc page.
 
 ## Opening a dictionary
 
