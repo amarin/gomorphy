@@ -104,13 +104,18 @@ A short summary of what remains, in priority order:
    optional `probability` section; `OpenPyMorphyDense` -> `SaveTo` ->
    `Open` now round-trips with identical `Parse`/`Lemma` results. See
    [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md).
-2. `fuzzy.go` — doesn't work for dense dictionaries (`nil`); the
-   traversal needs to be rethought for fixed width.
+2. ~~`fuzzy.go`~~ — DONE 2026-09-19: the traversal now decodes
+   `Dictionary.Alphabet.Width()` bytes at a time instead of assuming
+   raw UTF-8; `Fuzzy`/`FuzzyTop` on a dense dictionary now give the
+   same matches as the same dictionary without a dense alphabet. See
+   [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md).
 3. `Prediction`/`Probability` DAWGs — not investigated under a dense
    alphabet.
-4. A 2-byte alphabet in the read path — not carried into `Open`/`Parse`;
-   only needed by a real multilingual consumer for whom multi-dict
-   (see [implementation/multi-dict.md](implementation/multi-dict.md)) doesn't fit.
+4. A 2-byte alphabet in the read path — `fuzzy.go` itself is
+   width-agnostic now, but `Open`/`Parse`/`Lemma` still don't carry a
+   2-byte alphabet through the pipeline (`RecompileDense` only ever
+   builds width 1); only needed by a real multilingual consumer for
+   whom multi-dict (see [implementation/multi-dict.md](implementation/multi-dict.md)) doesn't fit.
 5. CLI (`gomorphy`) — a dense dictionary can only be obtained via the Go API.
 
 ### Universal tag mapping: remaining backlog (not blocking 1.0.0)

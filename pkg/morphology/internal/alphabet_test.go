@@ -11,6 +11,7 @@ import (
 func TestIdentityAlphabetRoundtrip(t *testing.T) {
 	a := IdentityAlphabet{}
 	assert.Equal(t, "identity", a.Name())
+	assert.Equal(t, 0, a.Width(), "IdentityAlphabet is variable-width (raw UTF-8), Width() must report 0")
 
 	cases := []string{"", "abc", "кот", "поясней"}
 	for _, s := range cases {
@@ -29,6 +30,7 @@ func TestDenseAlphabetRoundtrip(t *testing.T) {
 			a, err := NewDenseAlphabet(width, corpus)
 			require.NoError(t, err)
 			assert.Equal(t, fmt.Sprintf("dense-%d", width), a.Name())
+			assert.Equal(t, width, a.Width())
 
 			for _, s := range corpus {
 				enc, err := a.Encode(s)

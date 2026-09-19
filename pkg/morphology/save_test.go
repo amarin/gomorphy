@@ -200,10 +200,7 @@ func TestSaveToCreatesMissingDir(t *testing.T) {
 
 // TestSaveToDenseAlphabetRoundtrip verifies that a dictionary with a
 // non-nil Alphabet (OpenPyMorphyDense) round-trips through SaveTo/Open
-// with identical Parse/Lemma results. Fuzzy/FuzzyTop must keep returning
-// nil on the reopened dictionary — the same pre-existing limitation a
-// freshly built dense dictionary already has (see fuzzy.go's doc
-// comments), not a new one introduced by persisting Alphabet.
+// with identical Parse/Lemma/Fuzzy/FuzzyTop results.
 func TestSaveToDenseAlphabetRoundtrip(t *testing.T) {
 	words := map[string]uint32{}
 	stdWords(words)
@@ -228,8 +225,8 @@ func TestSaveToDenseAlphabetRoundtrip(t *testing.T) {
 	after := got.Lemma("кота")
 	assert.Equal(t, before, after)
 
-	assert.Nil(t, got.Fuzzy("кот", 1), "reopened dense dictionaries must keep Fuzzy's existing nil limitation")
-	assert.Nil(t, got.FuzzyTop("кот", 3), "reopened dense dictionaries must keep FuzzyTop's existing nil limitation")
+	assert.Equal(t, dense.Fuzzy("кот", 1), got.Fuzzy("кот", 1))
+	assert.Equal(t, dense.FuzzyTop("кот", 3), got.FuzzyTop("кот", 3))
 }
 
 // TestSaveToNilAlphabetStillWorks is a regression test: a regular (non-dense)

@@ -22,13 +22,17 @@ type FuzzyMatch struct {
 // from different shards) collapsed. A negative maxDist is treated as 0
 // (exact lookup). An empty result means no words match.
 //
-// Dictionaries with a dense alphabet (Dictionary.Alphabet != nil, e.g.
-// opened via OpenPyMorphyDense) are not yet supported: the internal walk
-// decodes DAWG bytes as raw UTF-8, which for dense-coded bytes produces
-// silent garbage rather than an error. For such a dictionary, Fuzzy
-// returns nil.
+// Dictionaries with a fixed-width alphabet (Dictionary.Alphabet != nil,
+// e.g. opened via OpenPyMorphyDense) are supported: the internal walk
+// decodes each Dictionary.Alphabet.Width() bytes into a rune via
+// Dictionary.Alphabet.Decode instead of assuming raw UTF-8, and gives the
+// exact same matches as the identical dictionary without a dense
+// alphabet. A variable-width Alphabet other than nil (Width() == 0, not
+// produced by anything in this codebase today) isn't supported and makes
+// Fuzzy return nil, the same fail-safe this had before dense-alphabet
+// support existed.
 func (x *Dictionary) Fuzzy(word string, maxDist int) []FuzzyMatch {
-	if x.d.Alphabet != nil {
+	if x.d.Alphabet != nil && x.d.Alphabet.Width() == 0 {
 		return nil
 	}
 	if maxDist < 0 {
@@ -44,10 +48,10 @@ func (x *Dictionary) Fuzzy(word string, maxDist int) []FuzzyMatch {
 // dictionary has been walked. maxWords ≤ 0 means exact lookup (the word
 // itself, or nothing).
 //
-// Like Fuzzy, this does not support dictionaries with a dense alphabet
-// (Dictionary.Alphabet != nil) — it returns nil.
+// Like Fuzzy, this supports a fixed-width Dictionary.Alphabet and returns
+// nil only for a variable-width non-nil Alphabet (Width() == 0).
 func (x *Dictionary) FuzzyTop(word string, maxWords int) []FuzzyMatch {
-	if x.d.Alphabet != nil {
+	if x.d.Alphabet != nil && x.d.Alphabet.Width() == 0 {
 		return nil
 	}
 	if maxWords <= 0 {
@@ -113,7 +117,7 @@ func (x *Dictionary) fuzzyWalk(word string, k int) []FuzzyMatch {
 		wg.Add(1)
 		go func(shard int, dawg *internal.DAWG) {
 			defer wg.Done()
-			results[shard] = fuzzyWalkShard(dawg, word, k)
+			results[shard] = fuzzyWalkShard(dawg, x.d.Alphabet, word, k)
 		}(shard, dawg)
 	}
 	wg.Wait()
@@ -132,13 +136,15 @@ func (x *Dictionary) fuzzyWalk(word string, k int) []FuzzyMatch {
 }
 
 // fuzzyWalkShard — a single pass of the joint traversal of one DAWG shard
-// and banded Levenshtein DP.
-func fuzzyWalkShard(words *internal.DAWG, word string, k int) []FuzzyMatch {
+// and banded Levenshtein DP. alphabet is the dictionary's Alphabet (nil
+// for raw UTF-8 DAWGs).
+func fuzzyWalkShard(words *internal.DAWG, alphabet internal.Alphabet, word string, k int) []FuzzyMatch {
 	f := &fuzzySearch{
-		words: words,
-		q:     []rune(word),
-		k:     k,
-		path:  make([]byte, 0, 32),
+		words:    words,
+		alphabet: alphabet,
+		q:        []rune(word),
+		k:        k,
+		path:     make([]byte, 0, 32),
 	}
 
 	row := f.rowFor(0)
@@ -151,12 +157,13 @@ func fuzzyWalkShard(words *internal.DAWG, word string, k int) []FuzzyMatch {
 
 // fuzzySearch carries the state of a single traversal: rows[depth] is the
 // DP row after depth runes of the path, path is the current DAWG path's
-// bytes.
+// bytes. alphabet decodes path's bytes into runes (nil = raw UTF-8).
 type fuzzySearch struct {
-	words *internal.DAWG
-	q     []rune
-	k     int
-	rows  [][]int
+	words    *internal.DAWG
+	alphabet internal.Alphabet
+	q        []rune
+	k        int
+	rows     [][]int
 	path  []byte
 	out   []FuzzyMatch
 }
@@ -164,7 +171,9 @@ type fuzzySearch struct {
 func (f *fuzzySearch) visit(state uint32, depth int, row []int) {
 	if f.words.HasPayloadChild(state) {
 		if dist := row[len(f.q)]; dist <= f.k {
-			f.out = append(f.out, FuzzyMatch{Word: string(f.path), Distance: dist})
+			if word, ok := f.decodeWord(); ok {
+				f.out = append(f.out, FuzzyMatch{Word: word, Distance: dist})
+			}
 		}
 	}
 
@@ -179,13 +188,27 @@ func (f *fuzzySearch) visit(state uint32, depth int, row []int) {
 	})
 }
 
+// decodeWord decodes the fully accumulated path into the matched word's
+// text: a raw UTF-8 passthrough when alphabet is nil, otherwise
+// alphabet.Decode. ok is false only if Decode errors, which isn't
+// expected for a path built entirely from bytes decodeTail already
+// validated rune by rune — treated as "skip this match", not a panic.
+func (f *fuzzySearch) decodeWord() (string, bool) {
+	if f.alphabet == nil {
+		return string(f.path), true
+	}
+	word, err := f.alphabet.Decode(f.path)
+	return word, err == nil
+}
+
 // explore completes the current rune (the byte path from position start
 // onward) and applies the DP transition; recursion continues if the row is
 // still within k.
 func (f *fuzzySearch) explore(state uint32, depth int, row []int, start int) {
 	tail := f.path[start:]
 
-	if !utf8.FullRune(tail) {
+	r, ok, more := f.decodeTail(tail)
+	if more {
 		f.words.ForEachChild(state, func(label byte, next uint32) {
 			if label == internal.PayloadSeparator {
 				return
@@ -196,9 +219,7 @@ func (f *fuzzySearch) explore(state uint32, depth int, row []int, start int) {
 		})
 		return
 	}
-
-	r, _ := utf8.DecodeRune(tail)
-	if r == utf8.RuneError {
+	if !ok {
 		return
 	}
 
@@ -206,6 +227,40 @@ func (f *fuzzySearch) explore(state uint32, depth int, row []int, start int) {
 	if minRow(nrow) <= f.k {
 		f.visit(state, depth+1, nrow)
 	}
+}
+
+// decodeTail tries to decode tail — the bytes accumulated since the
+// previous completed rune — into exactly one rune, using f.alphabet if
+// non-nil or raw UTF-8 otherwise. more=true means tail isn't a complete
+// encoded unit yet (recurse deeper along the DAWG to accumulate more
+// bytes). ok=false with more=false means tail is complete-length but
+// invalid (malformed UTF-8, or a dense code the alphabet doesn't
+// recognize) — abandon this path.
+func (f *fuzzySearch) decodeTail(tail []byte) (r rune, ok bool, more bool) {
+	if f.alphabet == nil {
+		if !utf8.FullRune(tail) {
+			return 0, false, true
+		}
+		r, _ = utf8.DecodeRune(tail)
+		if r == utf8.RuneError {
+			return 0, false, false
+		}
+		return r, true, false
+	}
+
+	width := f.alphabet.Width()
+	if len(tail) < width {
+		return 0, false, true
+	}
+	decoded, err := f.alphabet.Decode(tail)
+	if err != nil {
+		return 0, false, false
+	}
+	rr := []rune(decoded)
+	if len(rr) != 1 {
+		return 0, false, false
+	}
+	return rr[0], true, false
 }
 
 func (f *fuzzySearch) nextRow(depth int, row []int, r rune) []int {
@@ -252,39 +307,51 @@ func minRow(row []int) int {
 // maxWordRunes returns the longest dictionary wordform's length in runes,
 // across all shards.
 func (x *Dictionary) maxWordRunes() int {
+	width := 0
+	if x.d.Alphabet != nil {
+		width = x.d.Alphabet.Width()
+	}
 	best := 0
 	for _, dawg := range x.d.Words {
 		if dawg == nil {
 			continue
 		}
-		if m := maxWordRunesInShard(dawg); m > best {
+		if m := maxWordRunesInShard(dawg, width); m > best {
 			best = m
 		}
 	}
 	return best
 }
 
-// maxWordRunesInShard walks one shard's DAG. The walk deduplicates nodes
-// by the greatest depth reached — otherwise shared suffixes would be
-// counted exponentially. UTF-8 continuation bytes (0x80-0xBF) do not add
-// a rune.
-func maxWordRunesInShard(words *internal.DAWG) int {
+// maxWordRunesInShard walks one shard's DAG, returning the length (in
+// runes) of its longest key. The walk deduplicates nodes by the greatest
+// byte depth reached — otherwise shared suffixes would be counted
+// exponentially.
+//
+// For width == 0 (raw UTF-8 keys), it counts non-continuation bytes:
+// 0x80-0xBF continuation bytes don't add a rune. For width > 0 (a
+// fixed-width Alphabet), it counts every byte and divides the final
+// max by width: every encoded rune is exactly width bytes, and — since a
+// fixed-width encoding only ever produces whole-rune keys — every DAWG
+// node in such a shard sits on a rune boundary on any path from the
+// root, so this division is always exact, not an approximation.
+func maxWordRunesInShard(words *internal.DAWG, width int) int {
 	seen := make(map[uint32]int)
-	var rec func(state uint32, runes int)
-	rec = func(state uint32, runes int) {
-		if prev, ok := seen[state]; ok && prev >= runes {
+	var rec func(state uint32, bytes int)
+	rec = func(state uint32, bytes int) {
+		if prev, ok := seen[state]; ok && prev >= bytes {
 			return
 		}
-		seen[state] = runes
+		seen[state] = bytes
 		words.ForEachChild(state, func(label byte, next uint32) {
 			if label == internal.PayloadSeparator {
 				return
 			}
 			step := 1
-			if label >= 0x80 && label <= 0xBF {
+			if width == 0 && label >= 0x80 && label <= 0xBF {
 				step = 0
 			}
-			rec(next, runes+step)
+			rec(next, bytes+step)
 		})
 	}
 	rec(0, 0)
@@ -294,6 +361,9 @@ func maxWordRunesInShard(words *internal.DAWG) int {
 		if depth > max {
 			max = depth
 		}
+	}
+	if width > 1 {
+		max /= width
 	}
 	return max
 }

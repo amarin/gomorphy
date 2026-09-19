@@ -25,6 +25,14 @@ type Alphabet interface {
 	// a byte sequence previously produced by Encode. Returns an error on
 	// malformed input.
 	Decode(b []byte) (string, error)
+
+	// Width returns the number of bytes Encode spends on each rune, for a
+	// fixed-width alphabet, or 0 if the alphabet is variable-width (e.g.
+	// IdentityAlphabet's raw UTF-8). Callers that need to detect "one
+	// complete encoded rune has been accumulated" while walking a DAWG
+	// byte by byte (see fuzzy.go) use this instead of attempting a Decode
+	// after every byte.
+	Width() int
 }
 
 // IdentityAlphabet is a raw UTF-8 passthrough - today's actual DAWG key
@@ -37,6 +45,8 @@ func (IdentityAlphabet) Name() string { return "identity" }
 func (IdentityAlphabet) Encode(s string) ([]byte, error) { return []byte(s), nil }
 
 func (IdentityAlphabet) Decode(b []byte) (string, error) { return string(b), nil }
+
+func (IdentityAlphabet) Width() int { return 0 }
 
 // DenseAlphabet maps each rune in a fixed corpus to a code of exactly
 // width bytes (1 or 2), reserving code 0 (the DAWG engine's
@@ -143,6 +153,8 @@ func newDenseAlphabetFromRunes(width int, runes []rune) (*DenseAlphabet, error) 
 func (a *DenseAlphabet) Name() string {
 	return fmt.Sprintf("dense-%d", a.width)
 }
+
+func (a *DenseAlphabet) Width() int { return a.width }
 
 func (a *DenseAlphabet) Encode(s string) ([]byte, error) {
 	buf := make([]byte, 0, len(s)*a.width)

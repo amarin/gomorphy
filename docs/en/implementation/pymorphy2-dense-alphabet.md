@@ -150,14 +150,26 @@ see above):
 
 1. ~~**Serializing `Alphabet` into the `.dat` and support in `Open()`**~~
    — DONE 2026-09-19, see "What's implemented" above.
-2. **`fuzzy.go`** — still assumes the DAWG's bytes are UTF-8; disabled
-   for dense dictionaries (returns `nil`), not rethought for fixed
-   width (item 3 of the read-path complexity above).
+2. ~~**`fuzzy.go`**~~ — DONE 2026-09-19: the traversal (`fuzzySearch`,
+   `explore`/`visit`) now decodes `Dictionary.Alphabet.Width()` bytes at
+   a time via `Alphabet.Decode` instead of assuming raw UTF-8, and
+   `maxWordRunesInShard` counts bytes and divides by `width` instead of
+   using the UTF-8-continuation-byte heuristic. `Fuzzy`/`FuzzyTop` on a
+   reopened dense dictionary now give byte-for-byte the same matches as
+   the same fixture without a dense alphabet
+   (`TestFuzzyDenseAlphabetMatchesRawResults`); a width-2 alphabet is
+   covered too (`TestFuzzyWalkShardDenseAlphabetWidth2`), even though
+   nothing in production builds one yet (item 4 below). The one
+   remaining fallback: a non-nil `Alphabet` with `Width() == 0`
+   (variable-width — not produced by anything in this codebase) still
+   makes `Fuzzy`/`FuzzyTop` return `nil`, the same fail-safe as before.
 3. **`Prediction`/`Probability` DAWGs** — not investigated (a different
    key format: word suffixes and `"word:tag"` with ASCII grammemes), item 4 above.
-4. **The 2-byte alphabet in the read path** — deliberately not carried
-   in (`Open`/`Parse`/`Lemma`/`fuzzy.go` don't understand it), see item
-   7 above; only relevant if a real multilingual consumer shows up for
-   whom multi-dict (see [multi-dict.md](multi-dict.md)) somehow doesn't fit.
+4. **The 2-byte alphabet in the read path** — `fuzzy.go` itself is now
+   width-agnostic (see item 2), but `Open`/`Parse`/`Lemma` still don't
+   carry a 2-byte alphabet through the pipeline (`RecompileDense` only
+   ever builds width 1); see item 7 above — only relevant if a real
+   multilingual consumer shows up for whom multi-dict (see
+   [multi-dict.md](multi-dict.md)) somehow doesn't fit.
 5. **CLI** (`gomorphy`) is untouched — this was a Go-API-only increment;
    there's no way to get a dense dictionary from the CLI without writing code.

@@ -96,19 +96,35 @@ func TestFuzzyTopExactProbe(t *testing.T) {
 	assert.Empty(t, d.FuzzyTop("неттакогослова", 0))
 }
 
-// TestFuzzyDenseAlphabetReturnsNil — a finding from the final review: on a
-// dense-alphabet dictionary (OpenPyMorphyDense) the internal traversal in
-// fuzzy.go decodes DAWG bytes as raw UTF-8, which for 1-byte dense codes
-// "successfully" produces garbage strings with no error. Fuzzy/FuzzyTop must
-// instead return nil, not garbage, and must not panic.
-func TestFuzzyDenseAlphabetReturnsNil(t *testing.T) {
+// TestFuzzyDenseAlphabetMatchesRawResults verifies that Fuzzy/FuzzyTop on a
+// dense-alphabet dictionary (OpenPyMorphyDense) give exactly the same
+// matches as the identical fixture opened without a dense alphabet
+// (OpenPyMorphy): the DAWG traversal now decodes dense-coded bytes through
+// Dictionary.Alphabet instead of assuming raw UTF-8.
+func TestFuzzyDenseAlphabetMatchesRawResults(t *testing.T) {
 	words := map[string]uint32{}
 	stdWords(words)
 	dir := buildFixtureDir(t, words, nil, nil)
 
+	raw, err := morphology.OpenPyMorphy(dir)
+	require.NoError(t, err)
 	dense, err := morphology.OpenPyMorphyDense(dir)
 	require.NoError(t, err)
 
-	assert.Nil(t, dense.Fuzzy("кот", 3))
-	assert.Nil(t, dense.FuzzyTop("кот", 3))
+	for _, tc := range []struct {
+		word    string
+		maxDist int
+	}{
+		{"кот", 1},
+		{"кот", 2},
+		{"ежик", 1},
+		{"ёж", 2},
+		{"неттакогослова", 0},
+	} {
+		assert.Equal(t, raw.Fuzzy(tc.word, tc.maxDist), dense.Fuzzy(tc.word, tc.maxDist),
+			"Fuzzy(%q, %d)", tc.word, tc.maxDist)
+	}
+
+	assert.Equal(t, raw.FuzzyTop("кот", 5), dense.FuzzyTop("кот", 5))
+	assert.Equal(t, raw.FuzzyTop("кот", 100), dense.FuzzyTop("кот", 100))
 }
