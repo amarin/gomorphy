@@ -127,6 +127,45 @@ Recommended order if this work is picked up:
    `internal.Dictionary`. If ever needed, specify it as "XML export for
    human/third-party-tool reading," not as a reversible operation.
 
+### Word inflection / form generation (`Forms`, `Inflect`) — PLANNED, backlog after 1.0.0
+
+Surfaced by [docs/en/comparison.md](comparison.md) (2026-09-19): two of
+three alternative Go implementations (AlexMaxy/gomorphy, SteosMorphy)
+can produce a specific grammatical form of a word or list a lemma's
+full wordform set; gomorphy currently cannot. Design sketch, not yet
+decided or scheduled:
+
+- **The data is already there.** `internal.Paradigm` is a flat
+  `[suffix_i | tag_i | prefix_i]` table — every form of a lemma, always
+  fully expanded at import time (see `pkg/morphology/parse.go`'s
+  `readingForm`, which already reconstructs any one form's stem from
+  any other form via `word - prefix(form) - suffix(form)`, including
+  suppletive lemmas like "человек"/"люди" and prefixed comparatives
+  like "по-" — both already solved for `Parse`/`Lemma`). This is
+  cheaper for gomorphy than it was for AlexMaxy/gomorphy, which had to
+  port pymorphy2's whole heuristic generation engine
+  (`units_by_analogy`/`units_by_hyphen`/`units_by_shape`) — gomorphy
+  needs none of that, since paradigms are never generated on the fly.
+- **Proposed shape**: methods on `*Dictionary` (and mirrored on
+  `MultiDictionary` via `Reading.Dict`, same pattern as `Parse`/`Lemma`
+  today), taking an already-resolved `Reading` rather than a bare word
+  string — this reuses `Parse`'s homonym disambiguation instead of
+  duplicating it:
+  ```go
+  func (x *Dictionary) Forms(r Reading) []Reading   // r's whole paradigm, form order (0 = lemma)
+  func (x *Dictionary) Inflect(r Reading, want []string) []Reading  // Forms filtered by native tag tokens
+  ```
+- **Open questions for whoever picks this up**: (1) `Inflect`'s `want`
+  matches native tag tokens (comma/semicolon/space-split depending on
+  source, same as `Reading.Tag` already is) — a `tagmap`-based
+  universal-query variant is a plausible v2, not required for v1;
+  (2) whether to allow `Forms`/`Inflect` on a `Reading` produced by
+  prediction (an OOV word) — the paradigm is a guess in that case,
+  same caveat prediction already carries for `Parse`, so probably
+  allow it but document the caveat rather than special-case it;
+  (3) no design doc or implementation plan exists yet — this needs its
+  own brainstorming pass before work starts, this is only a sketch.
+
 ## Path to version 1.0.0
 
 Every item on the release checklist fixed on 2026-09-14 is done; the
@@ -138,9 +177,10 @@ redesign, Stage 18) is in
 **Release 1.0.0 — the next step, nothing blocks it.**
 
 Everything else (the zstd implementation from Stage 17, Stage 19,
-Stage 20, the remaining tag-mapping work, dictionary export, the
-skill + examples, Universal Dependencies) is backlog after 1.0.0, to be
-prioritized and refined separately before each task starts.
+Stage 20, the remaining tag-mapping work, dictionary export, word
+inflection/form generation, the skill + examples, Universal
+Dependencies) is backlog after 1.0.0, to be prioritized and refined
+separately before each task starts.
 
 ### Dictionary usage skill + `examples/` — NOT STARTED
 
