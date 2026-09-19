@@ -90,21 +90,20 @@ Details and what's already done are in
 ### Universal tag mapping: remaining backlog (not blocking 1.0.0)
 
 The `native -> universal` direction is implemented (see the table
-above). Two items found during implementation remain separate future
-tasks — details in
+above). One item remains — details in
 [implementation/tag-mapping.md](implementation/tag-mapping.md):
 
 1. **`Unmap` (universal -> native)** — needed for dictionary export,
    see "Dictionary export" below; deliberately deferred until a
    concrete consumer appears (the ambiguity of the reverse mapping
-   needs to be resolved against a specific exporter).
-2. **`TagSet.Name` is unreachable from `pkg/morphology`'s public API** —
-   `tagmap.Map` needs a `dictName`, and there's currently no way to get
-   one from outside the package (`Dictionary` doesn't export `TagSet`,
-   and `BuildInfo.Source` isn't a substitute — their values diverge).
-   Doesn't block anything right now (`tagmap` is a leaf package nobody
-   uses yet), but it's the first item for any real consumer of
-   `tagmap.Map` or for export.
+   needs to be resolved against a specific exporter, not guessed at
+   ahead of time).
+
+~~`TagSet.Name` was unreachable from `pkg/morphology`'s public API~~ —
+DONE 2026-09-19: `Dictionary.TagSetName()`/
+`MultiDictionary.DictTagSetName(i)` (mirroring `Info`/`DictInfo`) now
+give `tagmap.Map`'s `dictName` directly, without out-of-band knowledge
+of which importer built a dictionary.
 
 ### Dictionary export: pymorphy2 / OpenCorpora — NOT STARTED, feasibility assessed
 

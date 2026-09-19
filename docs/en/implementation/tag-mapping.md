@@ -63,19 +63,26 @@ convention as metadata, but did nothing to eliminate it.
   singular) normalizes to an identical `Bundle.Features` from both
   tables, with no uncovered tokens.
 
-## A known, deliberately unclosed gap (found by the final review)
+## A known gap, found by the final review — CLOSED 2026-09-19
 
-`dictName` (`TagSet.Name`) is currently **unreachable from
-`pkg/morphology`'s public API**: `Dictionary` doesn't export `TagSet`
+`dictName` (`TagSet.Name`) used to be **unreachable from
+`pkg/morphology`'s public API**: `Dictionary` didn't export `TagSet`
 or its name, and `BuildInfo.Source` isn't a substitute (for pymorphy2,
 `Source == "pymorphy2"`, but `TagSet.Name == "opencorpora-int"`). A
 real external consumer of `tagmap.Map` holding a
 `*morphology.Dictionary` (especially one opened via `Open(path)`,
-where it's unknown which importer built it) can't get the right
-`dictName` without out-of-band knowledge. Doesn't block this task
-(nothing in the repository uses the package yet — it's a clean leaf),
-but it's the first item for the next increment once a real consumer
-shows up (see `todo.md`).
+where it's unknown which importer built it) couldn't get the right
+`dictName` without out-of-band knowledge.
+
+Fixed with two small accessors mirroring the existing `Info`/`DictInfo`
+pattern: `Dictionary.TagSetName() string` and
+`MultiDictionary.DictTagSetName(i int) string` (nil-safe, "" when
+absent/out of range). Typical real usage:
+`tagmap.Map(multi.DictTagSetName(reading.Dict), reading.Tag)`. Verified
+against real dictionaries — both sources report exactly the `dictName`
+`tagmap.Map` already recognizes
+(`TestDictionary_TagSetName`, `TestMultiDictionary_DictTagSetName`,
+`pkg/morphology/tagsetname_test.go`).
 
 ## What's left (separate future tasks, not part of this increment)
 
@@ -84,12 +91,14 @@ shows up (see `todo.md`).
    `0008-dictionary-export-feasibility.md`). Ambiguous by construction
    (one universal tag can correspond to several native-tag variants) —
    resolving the ambiguity needs to be decided against a concrete
-   consumer (an exporter), not ahead of time.
-2. **An exporter in the public API** — access to `TagSet.Name`, see the
-   gap above.
-3. **A table for the UniMorph importer (Stage 16)** — trivial (its
+   consumer (an exporter), not ahead of time. **Deliberately still not
+   started** (2026-09-19 decision): building it without a concrete
+   exporter to design against would mean guessing at the ambiguity
+   resolution, with real rework risk once dictionary export actually
+   starts (see `todo.md`, "Dictionary export").
+2. **A table for the UniMorph importer (Stage 16)** — trivial (its
    bundle is already in the target schema), but not written since the
    importer itself doesn't exist yet.
-4. **`Dimension.String()`** — for readable diagnostic messages when
+3. **`Dimension.String()`** — for readable diagnostic messages when
    tags diverge between dictionaries (`Dimension` currently prints as
    a `uint8`).

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/amarin/gomorphy/pkg/morphology"
+	"github.com/amarin/gomorphy/pkg/morphology/tagmap"
 )
 
 // exampleDictXML is a minimal, valid OpenCorpora dict.xml fragment used by
@@ -183,4 +184,36 @@ func ExampleNewMultiDictionary() {
 	// Output:
 	// 0 кот NOUN,anim,masc,sing,nomn
 	// 1 дом NOUN,inan,masc,sing,nomn
+}
+
+// ExampleMultiDictionary_DictTagSetName shows combining a Reading from
+// MultiDictionary with pkg/morphology/tagmap to get a universal tag
+// comparable across dictionaries with different native tag syntax:
+// Reading.Dict says which dictionary produced the Reading, and
+// DictTagSetName(reading.Dict) gives tagmap.Map the dictName it needs.
+func ExampleMultiDictionary_DictTagSetName() {
+	main := mustCompileExampleDict()
+	extra, err := morphology.CompileFromXML(strings.NewReader(exampleDictXML2), nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	multi := morphology.NewMultiDictionary(main, extra)
+	defer func() { _ = multi.Close() }()
+
+	for _, r := range multi.Parse("дом") {
+		bundle, ok := tagmap.Map(multi.DictTagSetName(r.Dict), r.Tag)
+		if !ok {
+			log.Fatal("unrecognized dictName")
+		}
+		for _, f := range bundle.Features {
+			fmt.Println(f.Value)
+		}
+	}
+	// Output:
+	// N
+	// INAN
+	// NOM
+	// SG
+	// MASC
 }

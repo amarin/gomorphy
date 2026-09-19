@@ -82,6 +82,19 @@ func CompileFromXMLFileDense(path string, progress opencorpora.Progress) (*Dicti
 // Language returns the dictionary's language code.
 func (x *Dictionary) Language() string { return x.d.Language }
 
+// TagSetName returns the dictionary's TagSet.Name — the dictName
+// pkg/morphology/tagmap.Map expects as its first argument to normalize
+// this dictionary's tags — or "" if the dictionary has no TagSet (only
+// possible for a Builder-assembled dictionary that never registered
+// one; every importer sets one). See
+// docs/en/implementation/tag-mapping.md's "known gap" note.
+func (x *Dictionary) TagSetName() string {
+	if x == nil || x.d == nil || x.d.TagSet == nil {
+		return ""
+	}
+	return x.d.TagSet.Name
+}
+
 // Open loads a dictionary from a GMOR file (the single on-disk format,
 // SaveTo). Hot sections (words.dawg) are mapped via mmap without copying;
 // the result must be closed with the Close method.

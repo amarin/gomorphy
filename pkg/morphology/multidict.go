@@ -39,6 +39,18 @@ func (m *MultiDictionary) DictInfo(i int) *BuildInfo {
 	return m.dicts[i].Info()
 }
 
+// DictTagSetName returns the TagSet.Name of the dictionary at index i
+// (the same index carried by Reading.Dict/LemmaRef.Dict) — the dictName
+// pkg/morphology/tagmap.Map expects — or "" if the index is out of range
+// or that dictionary has no TagSet. Typical use:
+// tagmap.Map(m.DictTagSetName(reading.Dict), reading.Tag).
+func (m *MultiDictionary) DictTagSetName(i int) string {
+	if i < 0 || i >= len(m.dicts) {
+		return ""
+	}
+	return m.dicts[i].TagSetName()
+}
+
 // Parse parses word across all dictionaries in the set in parallel (one
 // goroutine per dictionary — the same pattern Dictionary.exact already
 // uses for shards within a single dictionary). The result is the
