@@ -156,48 +156,31 @@ not a documentation fix:
   point (`Open`/`OpenPyMorphy`/`CompileFromXMLFile`/
   `Parse`/`MultiDictionary`).
 
-### Universal Dependencies as a data source — open questions
+### Universal Dependencies as a data source — ARCHIVED 2026-09-19, not being pursued
 
-Exploratory research: [docs/research/0007-universal-dependencies-import-plan.md](research/0007-universal-dependencies-import-plan.md).
-Three ways to use UD: (A) a full importer into `.dat` — not
-recommended (low marginal value, licensing-confusion risk for some
-Russian treebanks); (B) a reference corpus for checking `Parse()`'s
-accuracy; (C) UD FEATS' ready-made schema as the target for universal
-tag mapping between dictionaries.
+Exploratory research (kept for reference, not acted on):
+[docs/research/0007-universal-dependencies-import-plan.md](research/0007-universal-dependencies-import-plan.md).
+Three ways to use UD had been identified: (A) a full importer into
+`.dat`; (B) a reference corpus for checking `Parse()`'s accuracy; (C)
+UD FEATS' ready-made schema as the target for universal tag mapping
+between dictionaries.
 
-**Schema conflict — RESOLVED 2026-09-19: staying on UniMorph.** A
-conflict was found between this research's recommendation (variant C:
-take UD FEATS as the target mapping schema) and `pkg/morphology/tagmap`,
-which was implemented 2026-09-17 (see
-[implementation/tag-mapping.md](implementation/tag-mapping.md)) against
-the **UniMorph** schema instead, by default rather than deliberately.
-Decision: **keep UniMorph**, don't switch to UD FEATS. Reasoning:
+**Decision: shelve UD entirely, all three variants.** Reasoning: UD's
+value proposition is annotated connected text (a treebank), which
+isn't a priority for this project — ready-made wordform-set sources
+(UniMorph, pymorphy2, OpenCorpora) are far more valuable for gomorphy's
+actual goal (a morphological dictionary, not a disambiguation/parsing
+benchmark). This forecloses variant A (the importer) and variant B (the
+reference corpus) outright, since both are only meaningful if annotated
+text itself has value here. Variant C (UD FEATS as the tag-mapping
+schema) was already separately decided against on 2026-09-19 — see
+`implementation/tag-mapping.md`'s "What's left": `tagmap` keeps its
+UniMorph schema, for reasons independent of this archival (it's already
+implemented/tested on UniMorph, and has a direct synergy with Stage 16,
+see above).
 
-1. `tagmap` is already implemented, tested, and verified against real
-   OpenCorpora/pymorphy2 dictionaries on the UniMorph schema (literal
-   codes like `NOM`/`SG`/`MASC`/`PFV`). Switching means rewriting every
-   entry in both mapping tables to UD FEATS' spelling (`Nom`/`Sing`/
-   `Masc`), not relabeling — a real cost, not a rename.
-2. Direct synergy with the still-unstarted Stage 16 (UniMorph import):
-   [implementation/tag-mapping.md](implementation/tag-mapping.md)'s
-   "What's left" already notes a UniMorph mapping table will be
-   "trivial" once Stage 16 lands, since its bundles are already in the
-   target schema. On UD FEATS that synergy is lost — it would become
-   real translation work instead.
-3. UD as a data source isn't approved yet at all (see below) — even the
-   research's own recommended variant A (a full importer) is explicitly
-   discouraged. Discarding working code for an unapproved future
-   feature isn't justified.
-4. Not a dead end either way: [docs/unimorph.md](unimorph.md) §2.4
-   records that a maintained UD -> UniMorph converter already exists
-   (linked from the UniMorph site) — if UD is ever adopted, bridging the
-   two schemas is a known, tractable problem, not a redesign.
-
-The research's other open questions (Q1-Q5: which treebank to use as
-the reference for variant B, manual vs. programmatic mapping, how to
-store test CoNLL-U files, whether a separate CoNLL-U reader is needed)
-are unresolved, awaiting discussion with the user on whether to take on
-UD at all.
+The research's open questions (Q1-Q5) are moot — not being revisited
+unless UD is reconsidered from scratch in the future.
 
 ### Comparison with alternative Go implementations — NOT STARTED
 
