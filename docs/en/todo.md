@@ -182,20 +182,25 @@ inflection/form generation, the skill + examples, Universal
 Dependencies) is backlog after 1.0.0, to be prioritized and refined
 separately before each task starts.
 
-### Dictionary usage skill + `examples/` — NOT STARTED
+### Dictionary usage skill — NOT STARTED
 
 Split out of Stage 18 (2026-09-17) as new content with its own design,
-not a documentation fix:
+not a documentation fix: `skills/use-dictionary/SKILL.md` — an agent
+skill: `lookup`/`lemmas`/`fuzzy`/`top`, working with several `.dat`
+files via `-d`, interactive mode (`gomorphy cli`). Versioned together
+with the library, copied into the agent's configuration. (Not to be
+confused with the "thematic dictionary" skill from Stage 19 — this one
+is about using a dictionary, that one is about building one.)
 
-- `skills/use-dictionary/SKILL.md` — an agent skill: `lookup`/
-  `lemmas`/`fuzzy`/`top`, working with several `.dat` files via `-d`,
-  interactive mode (`gomorphy cli`). Versioned together with the
-  library, copied into the agent's configuration. (Not to be confused
-  with the "thematic dictionary" skill from Stage 19 — this one is
-  about using a dictionary, that one is about building one.)
-- `examples/` — minimal Go examples for each `pkg/morphology` entry
-  point (`Open`/`OpenPyMorphy`/`CompileFromXMLFile`/
-  `Parse`/`MultiDictionary`).
+~~`examples/`~~ — DONE 2026-09-19: [examples/](../../examples/) — one
+runnable `package main` per `pkg/morphology` entry point
+(`CompileFromXML`, `CompileFromUniMorph`, `NewMultiDictionary`,
+`OpenPyMorphyDense`, `Open`), each under 50 lines, with a
+[examples/README.md](../../examples/README.md) index. The three that
+don't need real dictionary data (opencorpora/unimorph/multidict) embed
+a tiny inline fixture and run with no setup; the two that read a real
+pymorphy2 directory or a compiled `.dat` take the path as a flag and
+were verified against this session's already-downloaded real data.
 
 ### Universal Dependencies as a data source — ARCHIVED 2026-09-19, not being pursued
 

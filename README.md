@@ -37,6 +37,10 @@ gomorphy lookup -d .data/pymorphy/pymorphy.dat кота
 > unreachable and its continued availability is not guaranteed — `pymorphy`
 > is the recommended source for new setups. See [docs/en/cli.md](docs/en/cli.md).
 
+Using the Go API instead of the CLI? See [examples/](examples/README.md)
+for a runnable program per entry point (`go run ./examples/opencorpora`
+needs no download at all).
+
 ## Documentation
 
 Full documentation (English): **[docs/en/index.md](docs/en/index.md)**.

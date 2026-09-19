@@ -10,6 +10,9 @@ The entire public API lives in the `morphology` package — the nested
 `morphology/internal` package is not exported and is not meant for direct
 use.
 
+Runnable, self-contained programs for each entry point below live in
+[examples/](../../examples/README.md) — `go run ./examples/<name>`.
+
 ## Opening a dictionary
 
 Entry points, all returning `*morphology.Dictionary`:
