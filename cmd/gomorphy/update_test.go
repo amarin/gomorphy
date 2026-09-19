@@ -9,7 +9,7 @@ import (
 
 func TestUpdateCommand_UnknownType(t *testing.T) {
 	root := newTestRootCmd(newUpdateCommand())
-	root.SetArgs([]string{"update", "unimorph"})
+	root.SetArgs([]string{"update", "klingon"})
 	err := root.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown dictionary type")

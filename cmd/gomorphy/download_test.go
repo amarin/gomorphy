@@ -9,7 +9,7 @@ import (
 
 func TestDownloadCommand_UnknownType(t *testing.T) {
 	root := newTestRootCmd(newDownloadCommand())
-	root.SetArgs([]string{"download", "unimorph"})
+	root.SetArgs([]string{"download", "klingon"})
 	err := root.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown dictionary type")

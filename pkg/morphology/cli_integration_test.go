@@ -86,3 +86,32 @@ func TestCLIEndToEnd_OpenCorpora(t *testing.T) {
 	require.Contains(t, string(lookup), "кот")
 	require.Contains(t, string(lookup), "NOUN,anim,masc,sing,gent")
 }
+
+// TestCLIEndToEnd_UniMorph mirrors TestCLIEndToEnd/TestCLIEndToEnd_OpenCorpora
+// for "build unimorph": dense by default, plus the --lang flag and the
+// "unsupported language" error path.
+func TestCLIEndToEnd_UniMorph(t *testing.T) {
+	tsvPath := filepath.Join(t.TempDir(), "rus.tsv")
+	require.NoError(t, os.WriteFile(tsvPath, []byte("кот\tкот\tN;NOM;SG\nкот\tкота\tN;ACC;SG\n"), 0o644))
+	bin := buildCLI(t)
+	out := filepath.Join(t.TempDir(), "unimorph.dat")
+
+	build, err := exec.Command(bin, "build", "unimorph", "-i", tsvPath, "-o", out, "--lang", "ru").CombinedOutput()
+	require.NoError(t, err, "build: %s", build)
+	require.Contains(t, string(build), "saved")
+
+	raw, err := os.ReadFile(out)
+	require.NoError(t, err)
+	cont, err := internal.OpenContainer(raw)
+	require.NoError(t, err)
+	_, _, err = cont.Section("alphabet")
+	require.NoError(t, err, "gomorphy build unimorph must produce a dense (alphabet-section) .dat by default")
+
+	lookup, err := exec.Command(bin, "lookup", "-d", out, "кота").CombinedOutput()
+	require.NoError(t, err, "lookup: %s", lookup)
+	require.Contains(t, string(lookup), "кот")
+	require.Contains(t, string(lookup), "N;ACC;SG")
+
+	badLang, err := exec.Command(bin, "build", "unimorph", "-i", tsvPath, "-o", out, "--lang", "en").CombinedOutput()
+	require.Error(t, err, "build unimorph --lang en must fail: %s", badLang)
+}
