@@ -156,7 +156,7 @@ not a documentation fix:
   point (`Open`/`OpenPyMorphy`/`CompileFromXMLFile`/
   `Parse`/`MultiDictionary`).
 
-### Universal Dependencies as a data source — open questions, including a conflict with the already-implemented tag mapping
+### Universal Dependencies as a data source — open questions
 
 Exploratory research: [docs/research/0007-universal-dependencies-import-plan.md](research/0007-universal-dependencies-import-plan.md).
 Three ways to use UD: (A) a full importer into `.dat` — not
@@ -165,21 +165,33 @@ Russian treebanks); (B) a reference corpus for checking `Parse()`'s
 accuracy; (C) UD FEATS' ready-made schema as the target for universal
 tag mapping between dictionaries.
 
-**A conflict found (not noticed until today's cross-check of the
-documents)**: the research's recommendation is to start with variant C,
-taking **UD FEATS** as the target mapping schema. The `pkg/morphology/tagmap`
-implemented on 2026-09-17 (see [implementation/tag-mapping.md](implementation/tag-mapping.md))
-uses the **UniMorph** schema, not UD FEATS — a decision made in a
-separate brainstorming session on 2026-09-17 without cross-checking
-this research (which wasn't accounted for at the time). That's not
-necessarily a mistake — UniMorph has its own grounds too (its format
-was already analyzed, and it was already referenced in
-`docs/unimorph.md` §5.4) — but the choice between the two universal-tag
-schemas was effectively made by default, not deliberately. An open
-question before any further work on tag mapping or dictionary export:
-whether to switch the schema to UD FEATS, keep UniMorph, or whether it
-doesn't matter in practice (both are fixed external standards, and
-converting between them isn't any harder than the original task).
+**Schema conflict — RESOLVED 2026-09-19: staying on UniMorph.** A
+conflict was found between this research's recommendation (variant C:
+take UD FEATS as the target mapping schema) and `pkg/morphology/tagmap`,
+which was implemented 2026-09-17 (see
+[implementation/tag-mapping.md](implementation/tag-mapping.md)) against
+the **UniMorph** schema instead, by default rather than deliberately.
+Decision: **keep UniMorph**, don't switch to UD FEATS. Reasoning:
+
+1. `tagmap` is already implemented, tested, and verified against real
+   OpenCorpora/pymorphy2 dictionaries on the UniMorph schema (literal
+   codes like `NOM`/`SG`/`MASC`/`PFV`). Switching means rewriting every
+   entry in both mapping tables to UD FEATS' spelling (`Nom`/`Sing`/
+   `Masc`), not relabeling — a real cost, not a rename.
+2. Direct synergy with the still-unstarted Stage 16 (UniMorph import):
+   [implementation/tag-mapping.md](implementation/tag-mapping.md)'s
+   "What's left" already notes a UniMorph mapping table will be
+   "trivial" once Stage 16 lands, since its bundles are already in the
+   target schema. On UD FEATS that synergy is lost — it would become
+   real translation work instead.
+3. UD as a data source isn't approved yet at all (see below) — even the
+   research's own recommended variant A (a full importer) is explicitly
+   discouraged. Discarding working code for an unapproved future
+   feature isn't justified.
+4. Not a dead end either way: [docs/unimorph.md](unimorph.md) §2.4
+   records that a maintained UD -> UniMorph converter already exists
+   (linked from the UniMorph site) — if UD is ever adopted, bridging the
+   two schemas is a known, tractable problem, not a redesign.
 
 The research's other open questions (Q1-Q5: which treebank to use as
 the reference for variant B, manual vs. programmatic mapping, how to
