@@ -51,6 +51,7 @@ Minimal Russian subset (installation/CLI/library basics only):
 | Why there's no built-in MCP server | [docs/en/mcp.md](docs/en/mcp.md) | [docs/ru/mcp.md](docs/ru/mcp.md) |
 | Comparison with other Go morphological analyzers | [docs/en/comparison.md](docs/en/comparison.md) | — (English only) |
 | Roadmap, implementation history, research, design specs | [docs/en/todo.md](docs/en/todo.md) | — (English only) |
+| Release history | [CHANGELOG.md](CHANGELOG.md) | — (English only) |
 
 ## Related projects
 
