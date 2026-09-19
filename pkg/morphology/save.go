@@ -10,17 +10,10 @@ import (
 // SaveTo writes the dictionary to a GMOR file — the single on-disk format.
 // Sections: meta, info, tagset, prefixes, suffixes-N, paradigms-N,
 // words.dawg-N (one set per shard, N starting at 0), prediction-N,
-// probability (if present).
+// probability, alphabet (all three if present).
 func (x *Dictionary) SaveTo(path string) error {
 	if x == nil || x.d == nil {
 		return fmt.Errorf("morphology: nil dictionary")
-	}
-	if x.d.Alphabet != nil {
-		return fmt.Errorf("morphology: SaveTo: dictionaries with a non-nil Alphabet " +
-			"(e.g. from OpenPyMorphyDense) cannot yet be serialized to .dat — the Alphabet " +
-			"codec has no on-disk representation, so a saved-and-reopened dense dictionary " +
-			"would silently mis-decode; see docs/en/superpowers/specs/" +
-			"2026-09-16-pymorphy2-dense-recompile-design.md's non-goals")
 	}
 
 	// info is a copy of x.d.Info (if an importer populated it, e.g.
@@ -71,6 +64,15 @@ func (x *Dictionary) SaveTo(path string) error {
 	if x.d.Probability != nil {
 		sections = append(sections, internal.Section{
 			Name: "probability", Data: x.d.Probability.Bytes(), Flags: noCompression,
+		})
+	}
+	if x.d.Alphabet != nil {
+		data, err := internal.EncodeAlphabet(x.d.Alphabet)
+		if err != nil {
+			return fmt.Errorf("morphology: SaveTo: %w", err)
+		}
+		sections = append(sections, internal.Section{
+			Name: "alphabet", Data: data, Flags: noCompression,
 		})
 	}
 	return internal.SaveContainer(path, sections)

@@ -42,7 +42,8 @@ Plan: [2026-09-16-pymorphy2-dense-recompile.md](../superpowers/plans/2026-09-16-
 5. The alphabet table is serialized into the `.dat` in full (a new
    section, similar to `prefixes`), so `Open()` can reconstruct the
    exact codec regardless of whether it's the default, custom, or
-   extended on the fly. **Not implemented** — see "Remaining backlog" below.
+   extended on the fly. **Implemented 2026-09-19** — see "What's
+   implemented" below.
 6. Alphabet overflow (in the CLI — extend hitting the 254-character
    ceiling for 1-byte width) — an honest, detailed compile error linking
    to the documentation, not a silent failure or truncation.
@@ -122,22 +123,33 @@ through the same pipeline as OpenCorpora.
   dictionary (3,064,708 words, 25.7s to rebuild+compare).
 - **Explicit guards against silent data corruption** (found by the
   final review of the whole branch, the same risk class as
-  `paradigmKeyHash`): `SaveTo` now returns an error for a dictionary
-  with a non-empty `Alphabet` (without this, saving+reopening silently
-  lost the codec and produced wrong readings — reproduced by the review
-  on real data: "кот" 1->2 readings, "все" 5->4). `Fuzzy`/`FuzzyTop`
-  return `nil` for such a dictionary (without the guard, dense codes
-  would accidentally decode as "valid" UTF-8 garbage instead of an error).
+  `paradigmKeyHash`): at the time, `SaveTo` returned an error for a
+  dictionary with a non-empty `Alphabet` instead of saving it (without
+  this, saving+reopening would have silently lost the codec and
+  produced wrong readings — reproduced by the review on real data:
+  "кот" 1->2 readings, "все" 5->4); this guard was replaced 2026-09-19
+  by the `.dat` serialization below. `Fuzzy`/`FuzzyTop` still return
+  `nil` for a dictionary with a non-nil `Alphabet` (dense dictionaries
+  aren't a new risk here — see backlog item 2 below — this guard stays).
+- **`.dat` serialization of `Alphabet` and `Open()` support (2026-09-19)**
+  — a new `"alphabet"` section: 1 byte kind (only `*DenseAlphabet`
+  exists, kind 0), 1 byte width, then the alphabet's runes in code
+  order as a UTF-8 string (`internal.EncodeAlphabet`/`DecodeAlphabet`).
+  Written by `SaveTo` only when `Dictionary.Alphabet != nil` (like the
+  optional `probability` section); read by `Open()`'s `parseContainer`
+  the same way. `OpenPyMorphyDense` -> `SaveTo` -> `Open` now round-trips
+  with identical `Parse()`/`Lemma()` results
+  (`TestSaveToDenseAlphabetRoundtrip`), closing item 1 of the backlog
+  below. `SaveTo`'s former hard rejection of a non-nil `Alphabet` is
+  gone.
 
 ## Remaining backlog (doesn't block 1.0.0, separate future tasks)
 
-Deliberately not done in the 2026-09-16 pass:
+Deliberately not done in the 2026-09-16 pass (item 1 closed 2026-09-19,
+see above):
 
-1. **Serializing `Alphabet` into the `.dat` and support in `Open()`** —
-   item 5 of the agreed decisions above remains unimplemented; so
-   `SaveTo` currently just refuses a dictionary with a dense alphabet,
-   rather than saving it. Without this, `OpenPyMorphyDense` is useless
-   for persistent storage — a rebuild is needed on every run.
+1. ~~**Serializing `Alphabet` into the `.dat` and support in `Open()`**~~
+   — DONE 2026-09-19, see "What's implemented" above.
 2. **`fuzzy.go`** — still assumes the DAWG's bytes are UTF-8; disabled
    for dense dictionaries (returns `nil`), not rethought for fixed
    width (item 3 of the read-path complexity above).

@@ -99,9 +99,11 @@ left is in
 [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md).
 A short summary of what remains, in priority order:
 
-1. Serializing `Alphabet` into `.dat` + support in `Open()` — without
-   this, a dense dictionary must be rebuilt on every run
-   (`OpenPyMorphyDense` gives no persistent storage).
+1. ~~Serializing `Alphabet` into `.dat` + support in `Open()`~~ — DONE
+   2026-09-19: a new `"alphabet"` section, written/read like the
+   optional `probability` section; `OpenPyMorphyDense` -> `SaveTo` ->
+   `Open` now round-trips with identical `Parse`/`Lemma` results. See
+   [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md).
 2. `fuzzy.go` — doesn't work for dense dictionaries (`nil`); the
    traversal needs to be rethought for fixed width.
 3. `Prediction`/`Probability` DAWGs — not investigated under a dense

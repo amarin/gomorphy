@@ -523,6 +523,47 @@ func DecodeParadigms(data []byte) ([]Paradigm, error) {
 	return out, nil
 }
 
+// denseAlphabetKind is EncodeAlphabet's kind byte for *DenseAlphabet — the
+// only Alphabet implementation with an on-disk representation today.
+const denseAlphabetKind = 0
+
+// EncodeAlphabet serializes a into the "alphabet" section's bytes: 1 byte
+// kind (denseAlphabetKind), 1 byte width, then every rune in code order
+// (code 2 first) written as a UTF-8 string. Returns an error for any
+// Alphabet implementation other than *DenseAlphabet (IdentityAlphabet
+// needs no section at all — callers write "alphabet" only when
+// Dictionary.Alphabet is non-nil, mirroring the "probability" section's
+// conditional pattern in save.go).
+func EncodeAlphabet(a Alphabet) ([]byte, error) {
+	da, ok := a.(*DenseAlphabet)
+	if !ok {
+		return nil, fmt.Errorf("internal: EncodeAlphabet: unsupported Alphabet type %T", a)
+	}
+	var buf bytes.Buffer
+	buf.WriteByte(denseAlphabetKind)
+	buf.WriteByte(byte(da.width))
+	buf.WriteString(string(da.runeOf))
+	return buf.Bytes(), nil
+}
+
+// DecodeAlphabet reconstructs the Alphabet written by EncodeAlphabet.
+func DecodeAlphabet(data []byte) (Alphabet, error) {
+	if len(data) < 2 {
+		return nil, wrap(ErrMalformedFile, "alphabet")
+	}
+	kind := data[0]
+	if kind != denseAlphabetKind {
+		return nil, wrap(ErrMalformedFile, fmt.Sprintf("alphabet: unknown kind %d", kind))
+	}
+	width := int(data[1])
+	runes := []rune(string(data[2:]))
+	a, err := newDenseAlphabetFromRunes(width, runes)
+	if err != nil {
+		return nil, wrap(ErrMalformedFile, "alphabet: "+err.Error())
+	}
+	return a, nil
+}
+
 func writeU16String(buf *bytes.Buffer, s string) {
 	var b [2]byte
 	binary.LittleEndian.PutUint16(b[:], uint16(len(s)))

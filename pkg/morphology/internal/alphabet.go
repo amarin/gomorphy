@@ -111,6 +111,35 @@ func NewDenseAlphabet(width int, corpus []string) (*DenseAlphabet, error) {
 	return &DenseAlphabet{width: width, codeOf: codeOf, runeOf: runeOf}, nil
 }
 
+// newDenseAlphabetFromRunes builds a DenseAlphabet directly from an
+// already-ordered rune slice (code 2 assigned to runes[0], code 3 to
+// runes[1], and so on), instead of deriving the order by scanning a
+// corpus (NewDenseAlphabet's job). Used by DecodeAlphabet to reconstruct
+// an alphabet exactly as it was written, without re-sorting. Rejects
+// duplicate runes and a rune count exceeding width's capacity, the same
+// invariants NewDenseAlphabet enforces.
+func newDenseAlphabetFromRunes(width int, runes []rune) (*DenseAlphabet, error) {
+	if width != 1 && width != 2 {
+		return nil, fmt.Errorf("internal: DenseAlphabet width must be 1 or 2, got %d", width)
+	}
+	if max := maxCodesForWidth(width); len(runes) > max {
+		return nil, fmt.Errorf("internal: %d runes exceeds %d-byte alphabet's capacity of %d", len(runes), width, max)
+	}
+
+	codeOf := make(map[rune]uint16, len(runes))
+	runeOf := make([]rune, len(runes))
+	for i, r := range runes {
+		if _, dup := codeOf[r]; dup {
+			return nil, fmt.Errorf("internal: duplicate rune %q in alphabet data", r)
+		}
+		code := uint16(2 + i)
+		codeOf[r] = code
+		runeOf[i] = r
+	}
+
+	return &DenseAlphabet{width: width, codeOf: codeOf, runeOf: runeOf}, nil
+}
+
 func (a *DenseAlphabet) Name() string {
 	return fmt.Sprintf("dense-%d", a.width)
 }

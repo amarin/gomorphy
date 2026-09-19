@@ -198,5 +198,13 @@ func parseContainer(cont *internal.Container) (*internal.Dictionary, error) {
 		d.Info = info
 	}
 
+	if alphabetData, _, err := cont.Section("alphabet"); err == nil {
+		alphabet, err := internal.DecodeAlphabet(alphabetData)
+		if err != nil {
+			return nil, err
+		}
+		d.Alphabet = alphabet
+	}
+
 	return d, nil
 }

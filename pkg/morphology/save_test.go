@@ -198,13 +198,13 @@ func TestSaveToCreatesMissingDir(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestSaveToRejectsDenseAlphabet verifies a finding from the final review: a
-// dictionary with a non-nil Alphabet (OpenPyMorphyDense) must not be
-// saveable via SaveTo — Alphabet has no on-disk representation, and a
-// saved-and-reopened dictionary would silently mis-decode (see
-// docs/en/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md,
-// non-goals).
-func TestSaveToRejectsDenseAlphabet(t *testing.T) {
+// TestSaveToDenseAlphabetRoundtrip verifies that a dictionary with a
+// non-nil Alphabet (OpenPyMorphyDense) round-trips through SaveTo/Open
+// with identical Parse/Lemma results. Fuzzy/FuzzyTop must keep returning
+// nil on the reopened dictionary — the same pre-existing limitation a
+// freshly built dense dictionary already has (see fuzzy.go's doc
+// comments), not a new one introduced by persisting Alphabet.
+func TestSaveToDenseAlphabetRoundtrip(t *testing.T) {
 	words := map[string]uint32{}
 	stdWords(words)
 	dir := buildFixtureDir(t, words, nil, nil)
@@ -213,11 +213,23 @@ func TestSaveToRejectsDenseAlphabet(t *testing.T) {
 	require.NoError(t, err)
 
 	out := filepath.Join(t.TempDir(), "dense.dat")
-	err = dense.SaveTo(out)
-	require.Error(t, err)
+	require.NoError(t, dense.SaveTo(out))
 
-	_, statErr := os.Stat(out)
-	assert.True(t, os.IsNotExist(statErr), "SaveTo не должна создавать файл при отказе")
+	got, err := morphology.Open(out)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, got.Close()) }()
+
+	cmpSnapshots(t,
+		readingsSnapshot(dense, "кот", "кота", "мышь", "мыши", "код"),
+		readingsSnapshot(got, "кот", "кота", "мышь", "мыши", "код"),
+	)
+
+	before := dense.Lemma("кота")
+	after := got.Lemma("кота")
+	assert.Equal(t, before, after)
+
+	assert.Nil(t, got.Fuzzy("кот", 1), "reopened dense dictionaries must keep Fuzzy's existing nil limitation")
+	assert.Nil(t, got.FuzzyTop("кот", 3), "reopened dense dictionaries must keep FuzzyTop's existing nil limitation")
 }
 
 // TestSaveToNilAlphabetStillWorks is a regression test: a regular (non-dense)

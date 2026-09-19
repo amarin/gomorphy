@@ -123,6 +123,67 @@ func TestDenseAlphabetEncodedBytesNeverReserved(t *testing.T) {
 	}
 }
 
+func TestEncodeDecodeAlphabetRoundtrip(t *testing.T) {
+	corpus := []string{"кот", "кота", "мышь", "дом", "яснее"}
+	for _, width := range []int{1, 2} {
+		t.Run(fmt.Sprintf("width=%d", width), func(t *testing.T) {
+			a, err := NewDenseAlphabet(width, corpus)
+			require.NoError(t, err)
+
+			data, err := EncodeAlphabet(a)
+			require.NoError(t, err)
+
+			decoded, err := DecodeAlphabet(data)
+			require.NoError(t, err)
+
+			da, ok := decoded.(*DenseAlphabet)
+			require.True(t, ok)
+			assert.Equal(t, a.Name(), da.Name())
+			assert.Equal(t, a.codeOf, da.codeOf)
+
+			for _, s := range corpus {
+				enc, err := a.Encode(s)
+				require.NoError(t, err)
+				dec, err := da.Decode(enc)
+				require.NoError(t, err)
+				assert.Equal(t, s, dec)
+			}
+		})
+	}
+}
+
+func TestEncodeAlphabetRejectsUnsupportedType(t *testing.T) {
+	_, err := EncodeAlphabet(IdentityAlphabet{})
+	assert.Error(t, err)
+}
+
+func TestDecodeAlphabetRejectsMalformedInput(t *testing.T) {
+	_, err := DecodeAlphabet(nil)
+	assert.Error(t, err)
+
+	_, err = DecodeAlphabet([]byte{0}) // missing width byte
+	assert.Error(t, err)
+
+	_, err = DecodeAlphabet([]byte{7, 1, 'a'}) // unknown kind
+	assert.Error(t, err)
+}
+
+func TestDecodeAlphabetRejectsDuplicateRunes(t *testing.T) {
+	// kind=0 (DenseAlphabet), width=1, runes "aa" (duplicate 'a').
+	_, err := DecodeAlphabet([]byte{0, 1, 'a', 'a'})
+	assert.Error(t, err)
+}
+
+func TestDecodeAlphabetRejectsCapacityOverflow(t *testing.T) {
+	// kind=0, width=1 (capacity 254), 255 distinct runes.
+	data := []byte{0, 1}
+	for r := rune(0x400); r < 0x400+255; r++ {
+		data = append(data, []byte(string(r))...)
+	}
+	_, err := DecodeAlphabet(data)
+	assert.Error(t, err)
+}
+
 func TestDenseAlphabetDecodeRejectsReservedOrOutOfRangeCode(t *testing.T) {
 	a1, err := NewDenseAlphabet(1, []string{"кот"})
 	require.NoError(t, err)
