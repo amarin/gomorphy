@@ -7,8 +7,14 @@ import (
 	"github.com/amarin/gomorphy/internal/mmapx"
 	"github.com/amarin/gomorphy/pkg/morphology/importers/opencorpora"
 	"github.com/amarin/gomorphy/pkg/morphology/importers/pymorphy2"
+	"github.com/amarin/gomorphy/pkg/morphology/importers/unimorph"
 	"github.com/amarin/gomorphy/pkg/morphology/internal"
 )
+
+// UniMorphOptions configures CompileFromUniMorph/CompileFromUniMorphFile
+// (and their Dense variants) — an alias for unimorph.Options so callers
+// don't need to import pkg/morphology/importers/unimorph directly.
+type UniMorphOptions = unimorph.Options
 
 // OpenPyMorphy loads a pymorphy2 dictionary from a directory (a direct read
 // of pymorphy2-format files) into an immutable Dictionary.
@@ -77,6 +83,57 @@ func CompileFromXMLFileDense(path string, progress opencorpora.Progress) (*Dicti
 	}
 	defer func() { _ = f.Close() }()
 	return CompileFromXMLDense(f, progress)
+}
+
+// CompileFromUniMorph compiles a UniMorph dictionary from a TSV stream
+// (lemma<TAB>wordform<TAB>bundle). See unimorph.Options and
+// docs/en/implementation/stage-16-import-unimorph.md.
+func CompileFromUniMorph(r interface{ Read([]byte) (int, error) }, opts UniMorphOptions) (*Dictionary, error) {
+	d, err := unimorph.CompileFromTSV(r, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &Dictionary{d: d}, nil
+}
+
+// CompileFromUniMorphFile opens path (a UniMorph TSV) and calls
+// CompileFromUniMorph.
+func CompileFromUniMorphFile(path string, opts UniMorphOptions) (*Dictionary, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("morphology: open %s: %w", path, err)
+	}
+	defer func() { _ = f.Close() }()
+	return CompileFromUniMorph(f, opts)
+}
+
+// CompileFromUniMorphDense is like CompileFromUniMorph, but recompiles
+// every shard's words.dawg to one dense 1-byte alphabet shared across
+// the whole dictionary before wrapping it into a Dictionary (see
+// internal.RecompileDense and
+// docs/en/implementation/pymorphy2-dense-alphabet.md — the same
+// source-agnostic mechanism CompileFromXMLDense and OpenPyMorphyDense
+// use).
+func CompileFromUniMorphDense(r interface{ Read([]byte) (int, error) }, opts UniMorphOptions) (*Dictionary, error) {
+	d, err := unimorph.CompileFromTSV(r, opts)
+	if err != nil {
+		return nil, err
+	}
+	if err := internal.RecompileDense(d); err != nil {
+		return nil, fmt.Errorf("morphology: compile dense: %w", err)
+	}
+	return &Dictionary{d: d}, nil
+}
+
+// CompileFromUniMorphFileDense opens path (a UniMorph TSV) and calls
+// CompileFromUniMorphDense.
+func CompileFromUniMorphFileDense(path string, opts UniMorphOptions) (*Dictionary, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("morphology: open %s: %w", path, err)
+	}
+	defer func() { _ = f.Close() }()
+	return CompileFromUniMorphDense(f, opts)
 }
 
 // Language returns the dictionary's language code.
