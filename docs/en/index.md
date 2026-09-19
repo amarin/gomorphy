@@ -45,10 +45,11 @@
 - [info section: dictionary build metadata](implementation/info-section.md)
 - [Pre-1.0.0 code review: findings triage + both critical bugs](implementation/code-review-pre-1.0-triage.md)
 - [Multi-dict: `morphology.MultiDictionary`](implementation/multi-dict.md)
-- [Dense 1-byte DAWG alphabet for pymorphy2](implementation/pymorphy2-dense-alphabet.md)
+- [Dense 1-byte DAWG alphabet (pymorphy2, then OpenCorpora)](implementation/pymorphy2-dense-alphabet.md)
 - [pymorphy2 source (`pkg/pymorphy`) and integration into the `gomorphy` CLI](implementation/pymorphy-source-and-cli.md)
 - [Universal tag mapping between dictionaries (`pkg/morphology/tagmap`)](implementation/tag-mapping.md)
 - [Stage 18. Finalization: documentation, tests (planned)](implementation/stage-18-finalize.md)
+- [Path to version 1.0.0 (release checklist history)](implementation/path-to-1.0.md)
 - [Stage 19. Topical dictionaries: TSV import, CLI batches, skills, MCP decision](todo.md)
 - [Stage 20. Synonym database: groups, tags, sidecar file](todo.md)
 

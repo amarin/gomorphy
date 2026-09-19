@@ -4,11 +4,11 @@ Stages 0-15 are done. Details for each stage are in
 [implementation.md](implementation.md) and the individual files under
 [implementation/](implementation/); the same place holds the storage
 redesign rationale (stages 11-18: CSR-trie + exact-hash + pairs ->
-paradigms + DAWG) and unplanned but significant findings and features
+paradigms + DAWG), unplanned but significant findings and features
 discovered along the way (DAWG build speedup, DAWG minimization fix,
 critical pre-1.0 review bugs, multi-dict, the dense DAWG alphabet for
-pymorphy2, the pymorphy2 source in the CLI, tag mapping between
-dictionaries).
+pymorphy2 and OpenCorpora, the pymorphy2 source in the CLI, tag mapping
+between dictionaries), and the full path-to-1.0.0 release history.
 
 This file (`todo.md`) is only what's still ahead: the current path to
 version 1.0.0, unfinished/future stages, and open ideas. Everything
@@ -64,83 +64,28 @@ Import a UniMorph dictionary from TSV. Full plan in
 (ready to implement, the plan hasn't changed). Not on the path to 1.0.0
 (see below) — prioritized after release.
 
-### Stage 17 — remainder: zstd compression + two candidates from the format analysis
+### Stage 17 — remainder: zstd compression + a tagset encoding candidate
 
-Narrowing ID types, format groundwork for compression, and the density
-analysis of DAWG packing/`tagset` encoding are already done (see the
-table above,
-[docs/research/0001-dawg-alphabet-density.md](research/0001-dawg-alphabet-density.md)
-and [docs/research/0002-paradigm-tagset-binary-encoding.md](research/0002-paradigm-tagset-binary-encoding.md)).
+Narrowing ID types, format groundwork for compression, the density
+analysis of DAWG packing/`tagset` encoding, and the dense 1-byte
+`words.dawg` alphabet (for both pymorphy2 and OpenCorpora) are already
+done (see the table above,
+[docs/research/0001-dawg-alphabet-density.md](research/0001-dawg-alphabet-density.md),
+[docs/research/0002-paradigm-tagset-binary-encoding.md](research/0002-paradigm-tagset-binary-encoding.md),
+and [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md)).
 What's left — separate future tasks, **not blocking 1.0.0**, in priority
 order:
 
 1. zstd for the cold suffixes/prefixes/tagset/paradigms sections
    (`klauspost/compress`, maximum compression level).
-2. ~~A dense one-byte label alphabet for `words.dawg`~~ — DONE
-   2026-09-19 for both sources: implemented for pymorphy2 first (see
-   [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md)
-   and "Dense alphabet backlog" below), then generalized
-   (`internal.RecompileDense`, source-agnostic, handles any shard count)
-   and wired into `morphology.CompileFromXMLDense`/
-   `CompileFromXMLFileDense` and `gomorphy build opencorpora` for
-   OpenCorpora — one alphabet shared across all shards, per the same
-   "Agreed design decisions" item 1.
-3. A grammeme dictionary + index lists instead of JSON for the `tagset`
+2. A grammeme dictionary + index lists instead of JSON for the `tagset`
    section — found a ~78.2% effect on the section (~1.09% of the whole
    file) on a real dictionary, with no change to the hot read path.
-   Smaller effect than item 2, but with no open applicability
-   questions — a low-risk implementation. Details in
+   Low-risk implementation, no open applicability questions. Details in
    [implementation/stage-17-optimize.md](implementation/stage-17-optimize.md#tagset-encoding-analysis--done-a-backlog-candidate-exists).
 
 Details and what's already done are in
 [implementation/stage-17-optimize.md](implementation/stage-17-optimize.md).
-
-### Dense alphabet backlog (closed 2026-09-19)
-
-For pymorphy2 `words.dawg`, the dense 1-byte alphabet is implemented
-and its backlog is closed (see the table above). Full history in
-[implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md).
-What was tracked here, in priority order:
-
-1. ~~Serializing `Alphabet` into `.dat` + support in `Open()`~~ — DONE
-   2026-09-19: a new `"alphabet"` section, written/read like the
-   optional `probability` section; `OpenPyMorphyDense` -> `SaveTo` ->
-   `Open` now round-trips with identical `Parse`/`Lemma` results. See
-   [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md).
-2. ~~`fuzzy.go`~~ — DONE 2026-09-19: the traversal now decodes
-   `Dictionary.Alphabet.Width()` bytes at a time instead of assuming
-   raw UTF-8; `Fuzzy`/`FuzzyTop` on a dense dictionary now give the
-   same matches as the same dictionary without a dense alphabet. See
-   [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md).
-3. ~~`Prediction`/`Probability` DAWGs~~ — INVESTIGATED 2026-09-19, no
-   bug found: `RecompileDense` never touches them (they stay raw UTF-8),
-   and the code already queries them without the dense alphabet by
-   design. Closed with a regression test
-   (`TestOpenPyMorphyDense_PredictionAndProbability`) covering both the
-   predict path and probability-based sorting, before and after a
-   `SaveTo`/`Open` round-trip. See
-   [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md).
-4. ~~A 2-byte alphabet in the read path~~ — CLOSED 2026-09-19, not
-   planned: no consumer needs it. `fuzzy.go` itself is width-agnostic
-   (item 2), but `Open`/`Parse`/`Lemma` still don't carry a 2-byte
-   alphabet through the pipeline (`RecompileDense` only ever builds
-   width 1) — deliberately dropped rather than deferred, since it would
-   only matter for a real multilingual consumer for whom multi-dict
-   (see [implementation/multi-dict.md](implementation/multi-dict.md))
-   somehow doesn't fit, and none exists. Revisit only if such a
-   consumer actually shows up.
-5. ~~CLI (`gomorphy`)~~ — DONE 2026-09-19: `gomorphy build pymorphy`
-   always recompiles under a dense 1-byte alphabet, no opt-out flag —
-   this was already an agreed design decision (see
-   [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md),
-   "Agreed design decisions", item 2) that just hadn't been implemented
-   yet. The raw/non-dense variant is Go-API-only
-   (`morphology.OpenPyMorphy`). `gomorphy build opencorpora` now defaults
-   to a dense alphabet too, the same day (see Stage 17 remainder item 2
-   above) — both CLI build commands are dense-by-default, no flags,
-   consistently.
-
-All five items are now closed — the dense-alphabet backlog is done.
 
 ### Universal tag mapping: remaining backlog (not blocking 1.0.0)
 
@@ -183,50 +128,18 @@ Recommended order if this work is picked up:
 
 ## Path to version 1.0.0
 
-Release order (fixed on 2026-09-14, extended on 2026-09-15/16):
+Every item on the release checklist fixed on 2026-09-14 is done; the
+full history (format groundwork, the pre-1.0.0 code review, the
+comparative-degree fix, multi-dict, the dense alphabet rollout, the CLI
+redesign, Stage 18) is in
+[implementation/path-to-1.0.md](implementation/path-to-1.0.md).
 
-1. ~~Format: groundwork for extensible compression + info section~~ — DONE.
-2. ~~Pre-1.0.0 code review + findings triage + both critical bugs
-   (suffix overflow via sharding, corrupted OpenCorpora wordform tags
-   including the paradigm dedup bug)~~ —
-   DONE, see [implementation/code-review-pre-1.0-triage.md](implementation/code-review-pre-1.0-triage.md).
-3. ~~Fix for the root-in-suffix issue with the comparative degree
-   (`Cmp2`/"по-") + a rune-safe `lcp()`~~ — DONE, see
-   [docs/research/0003-comparative-paradigms-not-merging.md](research/0003-comparative-paradigms-not-merging.md),
-   [docs/superpowers/specs/2026-09-15-comparative-prefix-split-design.md](superpowers/specs/2026-09-15-comparative-prefix-split-design.md),
-   [docs/superpowers/plans/2026-09-15-comparative-prefix-split.md](superpowers/plans/2026-09-15-comparative-prefix-split.md).
-   Real effect: shard 0's paradigms shrank from 17,934 to 3,245, the
-   dictionary now fits in 1 shard instead of 2, and the share of
-   invalid UTF-8 suffixes dropped from 61.7% to 0%.
-4. ~~Support for several dictionaries open at once (multi-dict)~~ —
-   DONE 2026-09-16, see [implementation/multi-dict.md](implementation/multi-dict.md).
-5. ~~Production rollout of the dense 1-byte DAWG alphabet~~ — for
-   pymorphy2 `words.dawg`, DONE 2026-09-16, see
-   [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md).
-   The remainder (`.dat` serialization of the alphabet, `fuzzy.go`,
-   `Prediction`/`Probability`) is backlog, not blocking 1.0.0, see
-   "Dense alphabet: remaining backlog" above.
-6. ~~CLI grooming + redesign~~ — DONE 2026-09-16 — a single cobra-based
-   `gomorphy` binary (`cmd/gomorphy_build` removed), commands
-   `lookup`/`lemmas`/`fuzzy`/`top`/`cli`/`download`/`unpack`/`build`/`update`/
-   `version`/`merge`(stub)/`split`(stub), `-d/--dictionary` always
-   goes through `MultiDictionary`, `$GOMORPHY_DICTIONARY`, `-v/-l`
-   logging. See
-   `docs/superpowers/specs/2026-09-16-cli-redesign-design.md`,
-   `docs/superpowers/plans/2026-09-16-cli-redesign.md`, and
-   [implementation/pymorphy-source-and-cli.md](implementation/pymorphy-source-and-cli.md).
-7. ~~Stage 18 (documentation, tests, metrics)~~ — DONE 2026-09-17,
-   see [implementation/stage-18-finalize.md](implementation/stage-18-finalize.md).
-   The CLI part was closed earlier, in item 6. The agent skill and
-   `examples/` were deliberately split out of this stage, see "Dictionary
-   usage skill + examples" below.
-8. **Release 1.0.0 — the next step, nothing blocks it.**
+**Release 1.0.0 — the next step, nothing blocks it.**
 
 Everything else (the zstd implementation from Stage 17, Stage 16, Stage
-19, Stage 20, the remaining dense-alphabet work, the remaining tag-mapping
-work, dictionary export, the skill + examples, Universal Dependencies) is
-backlog after 1.0.0, to be prioritized and refined separately before each
-task starts.
+19, Stage 20, the remaining tag-mapping work, dictionary export, the
+skill + examples, Universal Dependencies) is backlog after 1.0.0, to be
+prioritized and refined separately before each task starts.
 
 ### Dictionary usage skill + `examples/` — NOT STARTED
 
