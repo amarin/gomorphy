@@ -30,7 +30,7 @@
 - [Stage 9. FT6 fuzzy search](implementation/stage-9-fuzzy.md)
 - [Stage 10. Finalization](implementation/stage-10-finalize.md)
 
-## Stages of the new implementation (paradigm + DAWG; 11-15 done, 17 partial, 16/18 planned)
+## Stages of the new implementation (paradigm + DAWG; 11-16, 18 done, 17 partial)
 
 - [Storage redesign rationale](implementation/redesign-rationale.md)
 - [Stage 11. Internal format: TagSet + Paradigm + DAWG reader](implementation/stage-11-internal-format.md)
@@ -38,7 +38,7 @@
 - [Stage 13. Public API: Parse, Lemma, Fuzzy](implementation/stage-13-public-api.md)
 - [Stage 14. Serialization: unified on-disk format](implementation/stage-14-serialization.md)
 - [Stage 15. OpenCorpora import](implementation/stage-15-import-opencorpora.md)
-- [Stage 16. UniMorph import (planned)](implementation/stage-16-import-unimorph.md)
+- [Stage 16. UniMorph import](implementation/stage-16-import-unimorph.md)
 - [DAWG build speedup (free-list)](implementation/dawg-freelist-optimization.md)
 - [DAWG minimization fix (chainSig bug)](implementation/dawg-minimization-fix.md)
 - [Stage 17. Narrowing ID types + format groundwork for compression](implementation/stage-17-optimize.md)
@@ -48,7 +48,7 @@
 - [Dense 1-byte DAWG alphabet (pymorphy2, then OpenCorpora)](implementation/pymorphy2-dense-alphabet.md)
 - [pymorphy2 source (`pkg/pymorphy`) and integration into the `gomorphy` CLI](implementation/pymorphy-source-and-cli.md)
 - [Universal tag mapping between dictionaries (`pkg/morphology/tagmap`)](implementation/tag-mapping.md)
-- [Stage 18. Finalization: documentation, tests (planned)](implementation/stage-18-finalize.md)
+- [Stage 18. Finalization: documentation, tests](implementation/stage-18-finalize.md)
 - [Path to version 1.0.0 (release checklist history)](implementation/path-to-1.0.md)
 - [Stage 19. Topical dictionaries: TSV import, CLI batches, skills, MCP decision](todo.md)
 - [Stage 20. Synonym database: groups, tags, sidecar file](todo.md)

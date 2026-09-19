@@ -113,6 +113,7 @@ TAB — command autocompletion (`lookup`, `lemmas`, `fuzzy`, `top`, `exit`,
 ```bash
 gomorphy download opencorpora
 gomorphy download pymorphy
+gomorphy download unimorph
 ```
 
 ### `unpack` — unpack an already-downloaded archive
@@ -120,7 +121,13 @@ gomorphy download pymorphy
 ```bash
 gomorphy unpack opencorpora
 gomorphy unpack pymorphy
+gomorphy unpack unimorph
 ```
+
+`unpack unimorph` is a no-op that just confirms the download exists —
+UniMorph's downloaded file is already the usable TSV, there's no
+archive to extract. Kept only so all three source types go through the
+same `download`/`unpack`/`build`/`update` shape.
 
 ### `build` — compile a source into `.dat`
 
@@ -131,15 +138,19 @@ network access).
 ```bash
 gomorphy build opencorpora -i dict.xml -o out.dat
 gomorphy build pymorphy -i /path/to/unpacked/dir -o out.dat
+gomorphy build unimorph -i rus.tsv -o out.dat
 ```
 
 Both `build pymorphy` and `build opencorpora` always recompile
 `words.dawg` under a dense 1-byte alphabet — there's no flag to opt out.
 This is an agreed default (see
-[implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md)).
+[implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md)),
+and `build unimorph` follows the same default (see
+[implementation/stage-16-import-unimorph.md](implementation/stage-16-import-unimorph.md)).
 Embedding a raw (non-dense) dictionary is Go-API-only: call
-`morphology.OpenPyMorphy` or `morphology.CompileFromXML`/
-`CompileFromXMLFile` directly instead of going through the CLI.
+`morphology.OpenPyMorphy`, `morphology.CompileFromXML`/
+`CompileFromXMLFile`, or `morphology.CompileFromUniMorph`/
+`CompileFromUniMorphFile` directly instead of going through the CLI.
 
 Flags:
 
@@ -147,15 +158,17 @@ Flags:
 |------|----------|
 | `-i, --input <path>` | compile this path directly, bypassing the loader |
 | `-o, --output <path>` | path to the output `.dat` file (default `.data/<type>/<type>.dat`) |
+| `--lang <code>` | `unimorph` only; the language to build (default `ru`, currently the only accepted value) |
 
 ### `update` — download + unpack + build in one command
 
 ```bash
 gomorphy update opencorpora
 gomorphy update pymorphy -o /tmp/pymorphy.dat
+gomorphy update unimorph --lang ru
 ```
 
-Flags: `-o, --output <path>` — same as `build`.
+Flags: `-o, --output <path>`, `--lang <code>` — same as `build`.
 
 ### `merge` / `split` — not yet implemented
 

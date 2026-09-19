@@ -12,6 +12,7 @@ type source struct {
 var sources = map[string]source{
 	"opencorpora":     {tokenize: tokenizeOpenCorpora, table: openCorporaTable},
 	"opencorpora-int": {tokenize: tokenizeOpenCorporaInt, table: openCorporaIntTable},
+	"unimorph":        {tokenize: tokenizeUniMorph, table: unimorphTable},
 }
 
 // Map normalizes tag (as found in a Dictionary's TagSet, i.e. a value

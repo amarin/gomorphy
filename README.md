@@ -16,7 +16,7 @@ at runtime; native Windows mmap support is tracked in `docs/en/todo.md`.
 - **Fuzzy search** — Levenshtein automaton over a paradigm/DAWG trie, rune-level metrics
 - **Nearest-N** — iterative distance widening to find the true N closest words
 - **Multiple dictionaries at once** — `MultiDictionary` aggregates Parse/Lemma/Fuzzy across several open dictionaries
-- **Multiple sources** — pymorphy2 (as-is or recompiled with a dense alphabet) and OpenCorpora `dict.xml`
+- **Multiple sources** — pymorphy2, OpenCorpora `dict.xml`, and UniMorph TSV (all dense-1-byte-alphabet by default)
 - **Compact binary format** — sectioned, mmap-backed: ~13 MB for the full OpenCorpora dictionary (source `dict.xml` is ~400 MB)
 
 ## Quick start
@@ -66,12 +66,13 @@ A feature/architecture comparison against these is tracked in
 
 ```
 cmd/gomorphy               CLI: lookup, lemmas, fuzzy, top, cli, download, unpack, build, update
-pkg/morphology              public API (Open, OpenPyMorphy, CompileFromXML, Parse, Lemma, Fuzzy, MultiDictionary)
+pkg/morphology              public API (Open, OpenPyMorphy, CompileFromXML, CompileFromUniMorph, Parse, Lemma, Fuzzy, MultiDictionary)
 pkg/morphology/internal     TagSet + Paradigm + DAWG + sectioned binary format (not for direct use)
 pkg/morphology/tagmap       native tag -> universal (UniMorph) feature bundle normalizer
-pkg/morphology/importers    pymorphy2 and OpenCorpora dict.xml importers
+pkg/morphology/importers    pymorphy2, OpenCorpora dict.xml, and UniMorph TSV importers
 pkg/opencorpora             OpenCorpora dict.xml download/unpack
 pkg/pymorphy                pymorphy2-dicts-ru (PyPI) download/unpack
+pkg/unimorph                UniMorph TSV download (github.com/unimorph/<iso>)
 internal/xmlscan            streaming dict.xml parser
 internal/mmapx              mmap reader
 ```

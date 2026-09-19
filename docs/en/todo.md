@@ -54,15 +54,9 @@ A short status with links to details — the write-ups themselves live in
 | — pymorphy2 source (`pkg/pymorphy`) + integration into the `gomorphy` CLI | DONE | [implementation/pymorphy-source-and-cli.md](implementation/pymorphy-source-and-cli.md) |
 | — Universal tag mapping between dictionaries (`pkg/morphology/tagmap`, native -> universal) | DONE (partial, see remaining backlog below) | [implementation/tag-mapping.md](implementation/tag-mapping.md) |
 | — Stage 18 (documentation + tests + godoc audit; the CLI part was closed separately, see above) | DONE 2026-09-17 | [implementation/stage-18-finalize.md](implementation/stage-18-finalize.md) |
+| 16. UniMorph import (importer, loader, public API, CLI, dense by default) | DONE 2026-09-19 | [implementation/stage-16-import-unimorph.md](implementation/stage-16-import-unimorph.md) |
 
 ## Unfinished/future stages
-
-### Stage 16. UniMorph import — NOT STARTED
-
-Import a UniMorph dictionary from TSV. Full plan in
-[implementation/stage-16-import-unimorph.md](implementation/stage-16-import-unimorph.md)
-(ready to implement, the plan hasn't changed). Not on the path to 1.0.0
-(see below) — prioritized after release.
 
 ### Stage 17 — remainder: zstd compression + a tagset encoding candidate
 
@@ -105,6 +99,14 @@ DONE 2026-09-19: `Dictionary.TagSetName()`/
 give `tagmap.Map`'s `dictName` directly, without out-of-band knowledge
 of which importer built a dictionary.
 
+~~A `tagmap` `"unimorph"` source table~~ — DONE 2026-09-19: turned out
+exactly as trivial as expected (see
+[implementation/tag-mapping.md](implementation/tag-mapping.md)'s "The
+UniMorph table"), with one real finding along the way — the real rus
+data doesn't carry animacy/gender for every noun paradigm slot the way
+OpenCorpora's tags do, a genuine data-coverage gap rather than a
+mapping bug.
+
 ### Dictionary export: pymorphy2 / OpenCorpora — NOT STARTED, feasibility assessed
 
 Feasibility assessment (no implementation) —
@@ -135,8 +137,8 @@ redesign, Stage 18) is in
 
 **Release 1.0.0 — the next step, nothing blocks it.**
 
-Everything else (the zstd implementation from Stage 17, Stage 16, Stage
-19, Stage 20, the remaining tag-mapping work, dictionary export, the
+Everything else (the zstd implementation from Stage 17, Stage 19,
+Stage 20, the remaining tag-mapping work, dictionary export, the
 skill + examples, Universal Dependencies) is backlog after 1.0.0, to be
 prioritized and refined separately before each task starts.
 

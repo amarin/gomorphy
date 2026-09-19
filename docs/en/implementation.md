@@ -30,7 +30,7 @@ plan in [todo.md](todo.md).
 - [x] [Stage 13. Public API: Parse, Lemma, Fuzzy](implementation/stage-13-public-api.md) — DONE
 - [x] [Stage 14. Serialization: a unified on-disk format](implementation/stage-14-serialization.md) — DONE
 - [x] [Stage 15. OpenCorpora import](implementation/stage-15-import-opencorpora.md) — DONE
-- [ ] [Stage 16. UniMorph import](implementation/stage-16-import-unimorph.md)
+- [x] [Stage 16. UniMorph import](implementation/stage-16-import-unimorph.md) — DONE
 - [ ] [Stage 17. Narrowing ID types and zstd](implementation/stage-17-optimize.md)
 - [ ] [Stage 18. Finalization: CLI, documentation, tests](implementation/stage-18-finalize.md)
 - [ ] [Stage 19. Thematic dictionaries: TSV import, CLI batches, skills, MCP decision](todo.md)

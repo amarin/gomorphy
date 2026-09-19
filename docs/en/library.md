@@ -12,7 +12,7 @@ use.
 
 ## Opening a dictionary
 
-Six entry points, all returning `*morphology.Dictionary`:
+Entry points, all returning `*morphology.Dictionary`:
 
 ```go
 func Open(path string) (*Dictionary, error)
@@ -22,6 +22,10 @@ func CompileFromXML(r io.Reader, progress opencorpora.Progress) (*Dictionary, er
 func CompileFromXMLFile(path string, progress opencorpora.Progress) (*Dictionary, error)
 func CompileFromXMLDense(r io.Reader, progress opencorpora.Progress) (*Dictionary, error)
 func CompileFromXMLFileDense(path string, progress opencorpora.Progress) (*Dictionary, error)
+func CompileFromUniMorph(r io.Reader, opts UniMorphOptions) (*Dictionary, error)
+func CompileFromUniMorphFile(path string, opts UniMorphOptions) (*Dictionary, error)
+func CompileFromUniMorphDense(r io.Reader, opts UniMorphOptions) (*Dictionary, error)
+func CompileFromUniMorphFileDense(path string, opts UniMorphOptions) (*Dictionary, error)
 ```
 
 - **`Open(path)`** — loads an already-compiled unified format
@@ -50,6 +54,18 @@ func CompileFromXMLFileDense(path string, progress opencorpora.Progress) (*Dicti
   never do). Same guarantees as `OpenPyMorphyDense`: identical readings,
   round-trips through `SaveTo`/`Open`. This is what `gomorphy build
   opencorpora` uses by default.
+- **`CompileFromUniMorph`/`CompileFromUniMorphFile`** — compiles a
+  UniMorph dictionary from a `lemma<TAB>wordform<TAB>bundle` TSV file
+  (e.g. `unimorph/rus`). `opts` (`UniMorphOptions`, an alias for
+  `unimorph.Options`) requires `Language: "ru"` — currently the only
+  accepted value. See
+  [implementation/stage-16-import-unimorph.md](implementation/stage-16-import-unimorph.md).
+- **`CompileFromUniMorphDense`/`CompileFromUniMorphFileDense`** — like
+  `CompileFromUniMorph`/`CompileFromUniMorphFile`, but rebuilds every
+  shard's `words.dawg` under one dense 1-byte alphabet shared across
+  the whole dictionary. Same guarantees as `CompileFromXMLDense`:
+  identical readings, round-trips through `SaveTo`/`Open`. This is
+  what `gomorphy build unimorph` uses by default.
 
 ```go
 d, err := morphology.Open(".data/opencorpora/opencorpora.dat")
@@ -66,8 +82,9 @@ unconditionally.
 ### Fetching source data
 
 For the CLI utility (`gomorphy download`/`unpack`/`update`, see
-[cli.md](cli.md)), fetching sources is done by `pkg/opencorpora.Loader` and
-`pkg/pymorphy.Loader` — the same API is also available from the library:
+[cli.md](cli.md)), fetching sources is done by `pkg/opencorpora.Loader`,
+`pkg/pymorphy.Loader`, and `pkg/unimorph.Loader` — the same API is also
+available from the library:
 
 ```go
 loader := pymorphy.NewLoader("") // "" — default path, .data/pymorphy
@@ -80,6 +97,21 @@ d, err := morphology.OpenPyMorphy(loader.UnpackedDirPath())
 `opencorpora.Loader` — the same for `dict.xml`
 (`loader.UnpackedFilePath()` instead of `UnpackedDirPath()`, then
 `morphology.CompileFromXMLFile`).
+
+`unimorph.Loader` — the same for a UniMorph TSV, but `NewLoader`
+returns an error (unsupported `language` is rejected up front rather
+than surfacing later from `Sync`):
+
+```go
+loader, err := unimorph.NewLoader("ru", "") // "" — default path, .data/unimorph/ru
+if err != nil {
+    log.Fatal(err)
+}
+if err := loader.Sync(false); err != nil {
+    log.Fatal(err)
+}
+d, err := morphology.CompileFromUniMorphFile(loader.UnpackedFilePath(), morphology.UniMorphOptions{Language: "ru"})
+```
 
 ## Exact wordform lookup
 

@@ -51,17 +51,21 @@ convention as metadata, but did nothing to eliminate it.
 
 - `tagmap.Bundle`/`tagmap.Feature`/`tagmap.Dimension` — the data model.
 - `tokenizeOpenCorpora`/`openCorporaTable`,
-  `tokenizeOpenCorporaInt`/`openCorporaIntTable` — tokenizers and
-  mapping tables for the two sources; a representative subset of
-  grammemes (part of speech, animacy, case, number, gender, tense,
-  aspect, mood, voice, person) — not exhaustive coverage, growing as
-  uncovered tokens are found.
+  `tokenizeOpenCorporaInt`/`openCorporaIntTable`,
+  `tokenizeUniMorph`/`unimorphTable` (added 2026-09-19, see below) —
+  tokenizers and mapping tables for the three sources; a representative
+  subset of grammemes (part of speech, animacy, case, number, gender,
+  tense, aspect, mood, voice, person) — not exhaustive coverage,
+  growing as uncovered tokens are found.
 - `tagmap.Map(dictName, tag string) (Bundle, bool)` — the sole public
   entry point.
 - An integration test against real dictionaries (OpenCorpora `dict.xml`
   + a real pymorphy2 dictionary): the word "кот" (NOUN, nominative,
   singular) normalizes to an identical `Bundle.Features` from both
-  tables, with no uncovered tokens.
+  tables, with no uncovered tokens. A second integration test does the
+  same for the real UniMorph rus TSV against OpenCorpora, on the
+  features UniMorph's own data actually carries — see "The UniMorph
+  table" below.
 
 ## A known gap, found by the final review — CLOSED 2026-09-19
 
@@ -84,6 +88,28 @@ against real dictionaries — both sources report exactly the `dictName`
 (`TestDictionary_TagSetName`, `TestMultiDictionary_DictTagSetName`,
 `pkg/morphology/tagsetname_test.go`).
 
+## The UniMorph table — DONE 2026-09-19
+
+`tokenizeUniMorph`/`unimorphTable` (`TagSet.Name == "unimorph"`,
+splitting a bundle on `;`) turned out exactly as trivial as expected:
+UniMorph *is* the target schema, so the table is a near-identity map,
+sorting each token into its `Dimension` rather than translating it.
+Left deliberately unmapped (no existing `Dimension` fits): the real
+rus data's compound POS markers `V.PTCP` (participle), `V.CVB`
+(converb/gerund), the `NFIN` form marker, and language-specific
+features (`LGSPEC1`, the rus reflexive "-ся" marker).
+
+A real-data integration test
+(`TestMapUniMorphAgreesOnSharedFeaturesWithRealOpenCorpora`) surfaced
+a genuine data gap, not a mapping bug: the real rus TSV's tag for
+"кот"'s nominative singular is bare `N;NOM;SG` — no animacy or gender
+token at all — while OpenCorpora's tag for the same word carries both
+(`NOUN,anim,masc,sing,nomn`). So this table's coverage can't be
+verified the same way `opencorpora`/`opencorpora-int` are (full
+`Bundle.Features` equality) — the test instead checks that
+OpenCorpora's bundle is a superset of UniMorph's on the dimensions
+UniMorph's own data actually populates.
+
 ## What's left (separate future tasks, not part of this increment)
 
 1. **`Unmap` (universal -> native)** — needed to export dictionaries
@@ -96,9 +122,6 @@ against real dictionaries — both sources report exactly the `dictName`
    exporter to design against would mean guessing at the ambiguity
    resolution, with real rework risk once dictionary export actually
    starts (see `todo.md`, "Dictionary export").
-2. **A table for the UniMorph importer (Stage 16)** — trivial (its
-   bundle is already in the target schema), but not written since the
-   importer itself doesn't exist yet.
-3. **`Dimension.String()`** — for readable diagnostic messages when
+2. **`Dimension.String()`** — for readable diagnostic messages when
    tags diverge between dictionaries (`Dimension` currently prints as
    a `uint8`).

@@ -35,6 +35,26 @@ func TestMapUnmappedTokenPassesThrough(t *testing.T) {
 	assert.Equal(t, []string{"Slng"}, b.Unmapped)
 }
 
+func TestMapUniMorphKnownTag(t *testing.T) {
+	b, ok := tagmap.Map("unimorph", "N;NOM;SG")
+	require.True(t, ok)
+
+	assert.Equal(t, []tagmap.Feature{
+		{Dim: tagmap.DimPartOfSpeech, Value: "N"},
+		{Dim: tagmap.DimCase, Value: "NOM"},
+		{Dim: tagmap.DimNumber, Value: "SG"},
+	}, b.Features)
+	assert.Nil(t, b.Unmapped)
+}
+
+func TestMapUniMorphUnmappedToken(t *testing.T) {
+	b, ok := tagmap.Map("unimorph", "V;NFIN")
+	require.True(t, ok)
+
+	assert.Equal(t, []tagmap.Feature{{Dim: tagmap.DimPartOfSpeech, Value: "V"}}, b.Features)
+	assert.Equal(t, []string{"NFIN"}, b.Unmapped)
+}
+
 func TestMapOpenCorporaAndOpenCorporaIntAgree(t *testing.T) {
 	// The real documented example (docs/en/todo.md's tag-mapping section):
 	// same word "кот", same grammatical meaning, two different native
