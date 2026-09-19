@@ -49,6 +49,7 @@ Minimal Russian subset (installation/CLI/library basics only):
 | CLI: lookup, lemmas, fuzzy, top, download, build, update | [docs/en/cli.md](docs/en/cli.md) | [docs/ru/cli.md](docs/ru/cli.md) |
 | Programmatic use: opening a dictionary, lookups, MultiDictionary | [docs/en/library.md](docs/en/library.md) | [docs/ru/library.md](docs/ru/library.md) |
 | Why there's no built-in MCP server | [docs/en/mcp.md](docs/en/mcp.md) | [docs/ru/mcp.md](docs/ru/mcp.md) |
+| Comparison with other Go morphological analyzers | [docs/en/comparison.md](docs/en/comparison.md) | — (English only) |
 | Roadmap, implementation history, research, design specs | [docs/en/todo.md](docs/en/todo.md) | — (English only) |
 
 ## Related projects
@@ -59,8 +60,8 @@ Other Go implementations of Russian morphological analysis:
 - [AlexMaxy/gomorphy](https://github.com/AlexMaxy/gomorphy)
 - [SteosOfficial/SteosMorphy](https://github.com/SteosOfficial/SteosMorphy)
 
-A feature/architecture comparison against these is tracked in
-[docs/en/todo.md](docs/en/todo.md).
+A full feature/architecture/license comparison against these is in
+[docs/en/comparison.md](docs/en/comparison.md).
 
 ## Project structure
 

@@ -58,6 +58,7 @@
 - [CLI: gomorphy](cli.md)
 - [Programmatic library usage](library.md)
 - [Installation](installation.md)
+- [Comparison with other Go morphological analyzers](comparison.md)
 
 ## Review and findings
 

@@ -183,22 +183,20 @@ see above).
 The research's open questions (Q1-Q5) are moot — not being revisited
 unless UD is reconsidered from scratch in the future.
 
-### Comparison with alternative Go implementations — NOT STARTED
-
-There are at least three other Go projects for Russian morphological
-analysis:
-
-- [jus1d/gomorphy](https://github.com/jus1d/gomorphy)
-- [AlexMaxy/gomorphy](https://github.com/AlexMaxy/gomorphy)
-- [SteosOfficial/SteosMorphy](https://github.com/SteosOfficial/SteosMorphy)
-
-Task: analyze these implementations (architecture, dictionary data
-source, API coverage — exact lookup/lemmas/fuzzy/prediction, storage
-format and its size, performance if benchmarks exist, maintenance
-activity, license) and produce a pros/cons/differences comparison
-against gomorphy. Result: a table/section in the README and/or a
-separate document (`docs/en/comparison.md`?), which the README's
-"Related projects" section already links to.
+~~Comparison with alternative Go implementations~~ — DONE 2026-09-19:
+[docs/en/comparison.md](comparison.md) — architecture, dictionary
+sourcing, API coverage, storage size (measured, not just claimed),
+performance, license, and maintenance activity against
+[jus1d/gomorphy](https://github.com/jus1d/gomorphy),
+[AlexMaxy/gomorphy](https://github.com/AlexMaxy/gomorphy), and
+[SteosOfficial/SteosMorphy](https://github.com/SteosOfficial/SteosMorphy).
+Findings worth flagging: none of the three alternatives implement
+fuzzy search or multiple open dictionaries; two of the three
+(AlexMaxy, SteosMorphy) implement word inflection/generation, which
+gomorphy doesn't; gomorphy is the only one of the four that doesn't
+embed dictionary data (a real trade-off, not a strict win — no
+download/build step needed for the alternatives, but also no
+CC BY-SA/data-license obligation inherited by gomorphy itself).
 
 ## Stage 19. Thematic dictionaries: TSV import, CLI batches, skills, MCP decision — PLANNED
 
