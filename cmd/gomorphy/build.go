@@ -33,19 +33,20 @@ func runBuild(cmd *cobra.Command, typ, input, output string) error {
 			return fmt.Errorf("build opencorpora: %w", openErr)
 		}
 		defer func() { _ = f.Close() }()
-		d, err = morphology.CompileFromXML(f, progress)
+		// The CLI always builds a dense 1-byte alphabet, no opt-out flag —
+		// an agreed design decision (see
+		// docs/en/implementation/pymorphy2-dense-alphabet.md, "Agreed
+		// design decisions", item 2), same as the "pymorphy" case below.
+		// The raw/non-dense variant (morphology.CompileFromXML) is
+		// Go-API-only, for embedders who want it directly.
+		d, err = morphology.CompileFromXMLDense(f, progress)
 		defaultOut = common.DomainFilePath(opencorpora.DomainName, "opencorpora.dat")
 	case "pymorphy":
 		dir := input
 		if dir == "" {
 			dir = pymorphy.NewLoader("").UnpackedDirPath()
 		}
-		// The CLI always builds a dense 1-byte alphabet, no opt-out flag —
-		// an agreed design decision (see
-		// docs/en/implementation/pymorphy2-dense-alphabet.md, "Agreed
-		// design decisions", item 2). The raw/non-dense variant
-		// (morphology.OpenPyMorphy) is Go-API-only, for embedders who want
-		// it directly.
+		// Same dense-by-default policy as "opencorpora" above.
 		d, err = morphology.OpenPyMorphyDense(dir)
 		defaultOut = common.DomainFilePath(pymorphy.DomainName, "pymorphy.dat")
 	default:

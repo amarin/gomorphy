@@ -50,7 +50,7 @@ A short status with links to details — the write-ups themselves live in
 | 17. Narrowing ID types + format groundwork for compression + `info` section | PARTIAL (see below) | [implementation/stage-17-optimize.md](implementation/stage-17-optimize.md), [implementation/info-section.md](implementation/info-section.md) |
 | — Pre-1.0.0 code review: findings triage + both critical bugs (suffix overflow, corrupted wordform tags) | DONE | [implementation/code-review-pre-1.0-triage.md](implementation/code-review-pre-1.0-triage.md) |
 | — Multi-dict: `morphology.MultiDictionary` | DONE | [implementation/multi-dict.md](implementation/multi-dict.md) |
-| — Dense 1-byte DAWG alphabet for pymorphy2 `words.dawg` | DONE (`.dat` serialization, `fuzzy.go`, Prediction/Probability, and the CLI default all closed 2026-09-19; the 2-byte read-path item was dropped, no consumer) | [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md) |
+| — Dense 1-byte DAWG alphabet for `words.dawg` (pymorphy2, then generalized to OpenCorpora) | DONE (`.dat` serialization, `fuzzy.go`, Prediction/Probability, and the CLI default all closed 2026-09-19; the 2-byte read-path item was dropped, no consumer) | [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md) |
 | — pymorphy2 source (`pkg/pymorphy`) + integration into the `gomorphy` CLI | DONE | [implementation/pymorphy-source-and-cli.md](implementation/pymorphy-source-and-cli.md) |
 | — Universal tag mapping between dictionaries (`pkg/morphology/tagmap`, native -> universal) | DONE (partial, see remaining backlog below) | [implementation/tag-mapping.md](implementation/tag-mapping.md) |
 | — Stage 18 (documentation + tests + godoc audit; the CLI part was closed separately, see above) | DONE 2026-09-17 | [implementation/stage-18-finalize.md](implementation/stage-18-finalize.md) |
@@ -76,11 +76,15 @@ order:
 
 1. zstd for the cold suffixes/prefixes/tagset/paradigms sections
    (`klauspost/compress`, maximum compression level).
-2. A dense one-byte label alphabet for `words.dawg` (instead of
-   per-byte UTF-8) — already implemented for pymorphy2 as a separate
-   feature, see [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md)
-   and "Dense alphabet: remaining backlog" below — not started for the
-   OpenCorpora build.
+2. ~~A dense one-byte label alphabet for `words.dawg`~~ — DONE
+   2026-09-19 for both sources: implemented for pymorphy2 first (see
+   [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md)
+   and "Dense alphabet backlog" below), then generalized
+   (`internal.RecompileDense`, source-agnostic, handles any shard count)
+   and wired into `morphology.CompileFromXMLDense`/
+   `CompileFromXMLFileDense` and `gomorphy build opencorpora` for
+   OpenCorpora — one alphabet shared across all shards, per the same
+   "Agreed design decisions" item 1.
 3. A grammeme dictionary + index lists instead of JSON for the `tagset`
    section — found a ~78.2% effect on the section (~1.09% of the whole
    file) on a real dictionary, with no change to the hot read path.
@@ -131,9 +135,10 @@ What was tracked here, in priority order:
    [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md),
    "Agreed design decisions", item 2) that just hadn't been implemented
    yet. The raw/non-dense variant is Go-API-only
-   (`morphology.OpenPyMorphy`). `build opencorpora` is untouched — dense
-   alphabet support for OpenCorpora builds remains a separate,
-   not-started task (Stage 17 remainder item 2).
+   (`morphology.OpenPyMorphy`). `gomorphy build opencorpora` now defaults
+   to a dense alphabet too, the same day (see Stage 17 remainder item 2
+   above) — both CLI build commands are dense-by-default, no flags,
+   consistently.
 
 All five items are now closed — the dense-alphabet backlog is done.
 

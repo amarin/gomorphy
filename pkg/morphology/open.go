@@ -52,6 +52,33 @@ func CompileFromXMLFile(path string, progress opencorpora.Progress) (*Dictionary
 	return CompileFromXML(f, progress)
 }
 
+// CompileFromXMLDense is like CompileFromXML, but recompiles every
+// shard's words.dawg to one dense 1-byte alphabet shared across the whole
+// dictionary before wrapping it into a Dictionary (see
+// internal.RecompileDense and
+// docs/en/implementation/pymorphy2-dense-alphabet.md).
+func CompileFromXMLDense(r interface{ Read([]byte) (int, error) }, progress opencorpora.Progress) (*Dictionary, error) {
+	d, err := opencorpora.CompileFromXML(r, progress)
+	if err != nil {
+		return nil, err
+	}
+	if err := internal.RecompileDense(d); err != nil {
+		return nil, fmt.Errorf("morphology: compile dense: %w", err)
+	}
+	return &Dictionary{d: d}, nil
+}
+
+// CompileFromXMLFileDense opens path (dict.xml) and calls
+// CompileFromXMLDense.
+func CompileFromXMLFileDense(path string, progress opencorpora.Progress) (*Dictionary, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("morphology: open %s: %w", path, err)
+	}
+	defer func() { _ = f.Close() }()
+	return CompileFromXMLDense(f, progress)
+}
+
 // Language returns the dictionary's language code.
 func (x *Dictionary) Language() string { return x.d.Language }
 

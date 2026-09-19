@@ -59,3 +59,30 @@ func TestCLIEndToEnd(t *testing.T) {
 	require.NoError(t, err, "fuzzy: %s", fuzzy)
 	require.Contains(t, string(fuzzy), "dict#0")
 }
+
+// TestCLIEndToEnd_OpenCorpora mirrors TestCLIEndToEnd for "build
+// opencorpora": confirms it defaults to a dense alphabet too (same policy
+// as "pymorphy", see internal.RecompileDense), not just that lookup
+// still works.
+func TestCLIEndToEnd_OpenCorpora(t *testing.T) {
+	xmlPath := filepath.Join(t.TempDir(), "dict.xml")
+	require.NoError(t, os.WriteFile(xmlPath, []byte(exampleDictXML), 0o644))
+	bin := buildCLI(t)
+	out := filepath.Join(t.TempDir(), "opencorpora.dat")
+
+	build, err := exec.Command(bin, "build", "opencorpora", "-i", xmlPath, "-o", out).CombinedOutput()
+	require.NoError(t, err, "build: %s", build)
+	require.Contains(t, string(build), "saved")
+
+	raw, err := os.ReadFile(out)
+	require.NoError(t, err)
+	cont, err := internal.OpenContainer(raw)
+	require.NoError(t, err)
+	_, _, err = cont.Section("alphabet")
+	require.NoError(t, err, "gomorphy build opencorpora must produce a dense (alphabet-section) .dat by default")
+
+	lookup, err := exec.Command(bin, "lookup", "-d", out, "кота").CombinedOutput()
+	require.NoError(t, err, "lookup: %s", lookup)
+	require.Contains(t, string(lookup), "кот")
+	require.Contains(t, string(lookup), "NOUN,anim,masc,sing,gent")
+}

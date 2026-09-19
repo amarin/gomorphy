@@ -12,7 +12,7 @@ use.
 
 ## Opening a dictionary
 
-Four entry points, all returning `*morphology.Dictionary`:
+Six entry points, all returning `*morphology.Dictionary`:
 
 ```go
 func Open(path string) (*Dictionary, error)
@@ -20,6 +20,8 @@ func OpenPyMorphy(dir string) (*Dictionary, error)
 func OpenPyMorphyDense(dir string) (*Dictionary, error)
 func CompileFromXML(r io.Reader, progress opencorpora.Progress) (*Dictionary, error)
 func CompileFromXMLFile(path string, progress opencorpora.Progress) (*Dictionary, error)
+func CompileFromXMLDense(r io.Reader, progress opencorpora.Progress) (*Dictionary, error)
+func CompileFromXMLFileDense(path string, progress opencorpora.Progress) (*Dictionary, error)
 ```
 
 - **`Open(path)`** — loads an already-compiled unified format
@@ -41,6 +43,13 @@ func CompileFromXMLFile(path string, progress opencorpora.Progress) (*Dictionary
   dictionary from `dict.xml`. `progress` is an optional callback
   `func(processed, total int)` for tracking compilation progress (`nil`
   can be passed).
+- **`CompileFromXMLDense`/`CompileFromXMLFileDense`** — like
+  `CompileFromXML`/`CompileFromXMLFile`, but rebuilds every shard's
+  `words.dawg` under one dense 1-byte alphabet shared across the whole
+  dictionary (OpenCorpora imports can have several shards; pymorphy2's
+  never do). Same guarantees as `OpenPyMorphyDense`: identical readings,
+  round-trips through `SaveTo`/`Open`. This is what `gomorphy build
+  opencorpora` uses by default.
 
 ```go
 d, err := morphology.Open(".data/opencorpora/opencorpora.dat")

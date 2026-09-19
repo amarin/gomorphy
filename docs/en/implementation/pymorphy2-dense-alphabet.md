@@ -195,9 +195,67 @@ session on 2026-09-19:
    is Go-API-only (call `morphology.OpenPyMorphy` directly). Verified
    end to end through the actual compiled binary
    (`TestCLIEndToEnd`, `pkg/morphology/cli_integration_test.go` —
-   asserts the built `.dat` carries an `"alphabet"` section). `build
-   opencorpora` is untouched — OpenCorpora has no dense-alphabet
-   recompile path at all yet (see Stage 17 remainder item 2 in
-   `docs/en/todo.md`), a separate, larger, not-started task.
+   asserts the built `.dat` carries an `"alphabet"` section). `gomorphy
+   build opencorpora` got the same default the same day — see
+   "Generalized to OpenCorpora" below.
 
 All five backlog items are now closed.
+
+## Generalized to OpenCorpora (2026-09-19)
+
+The recompile logic turned out to need no OpenCorpora-specific rework at
+all: OpenCorpora's DAWG key is also just the wordform's literal text
+(`prefix+stem+suffix`, asserted equal to the source form text at
+`import.go:320-322`), and `Suffixes`/`Prefixes` are separate small string
+tables keyed by id, never derived from decoding the DAWG's own bytes —
+the exact same situation as pymorphy2. The "read-path complexity" risk
+flagged in this document's original 2026-09-15/16 discussion (item 2,
+`TrimPrefix`/`TrimSuffix` desyncing from a dense-encoded key) turned out
+to apply to a different, more invasive strategy (encoding during import)
+that was never pursued — not to the walk-then-rebuild strategy
+(`DAWG.Walk`) `RecompileDense` actually uses, which only ever touches
+`Words`, never `Suffixes`/`Prefixes`/`Paradigms`.
+
+The one genuine difference: OpenCorpora dictionaries can have several
+shards (see
+[2026-09-14-suffix-sharding-design.md](../superpowers/specs/2026-09-14-suffix-sharding-design.md)),
+where pymorphy2 imports are always exactly one. The recompile logic was
+generalized accordingly:
+
+- **`internal.RecompileDense(d *Dictionary) error`** (new,
+  `pkg/morphology/internal/dense_recompile.go`) — walks every shard,
+  collects the union of all shards' wordforms, builds **one**
+  `DenseAlphabet` shared across the whole dictionary (not per-shard, per
+  "Agreed design decisions" item 1), then re-encodes and rebuilds each
+  shard's DAWG with it. Source-agnostic: works for any shard count,
+  including one.
+- **`pymorphy2.RecompileDense`** (`pkg/morphology/importers/pymorphy2/recompile.go`)
+  is now a thin wrapper: `ImportFromDir` + `internal.RecompileDense`.
+  Its public signature and behavior are unchanged; its own existing
+  tests pass unmodified.
+- **`morphology.CompileFromXMLDense`/`CompileFromXMLFileDense`** (new,
+  `pkg/morphology/open.go`) mirror `OpenPyMorphyDense` for the OpenCorpora
+  path: `opencorpora.CompileFromXML`/`CompileFromXMLFile` +
+  `internal.RecompileDense`.
+- **`gomorphy build opencorpora`** now calls `CompileFromXMLDense`
+  instead of `CompileFromXML` — the same dense-by-default, no-flag
+  policy as `build pymorphy`, so both CLI build commands now behave
+  identically. Verified end to end through the compiled binary
+  (`TestCLIEndToEnd_OpenCorpora`, `pkg/morphology/cli_integration_test.go`).
+
+Test coverage: a hand-built multi-shard dictionary at the `internal`
+level (`TestRecompileDenseMultiShard`) proves the shared-alphabet
+mechanics directly; a real 65,536-unique-suffix import forced through
+actual sharding (`TestRecompileDenseAcrossRealShards`,
+`pkg/morphology/importers/opencorpora/recompile_test.go`, the same
+technique `TestImportFromXMLShardsOnSuffixOverflow` uses) confirms every
+sampled word across every shard is still findable after the recompile;
+`TestCompileFromXMLDense_MatchesRawParse` and
+`TestCompileFromXMLDense_SaveOpenRoundtrip` (`pkg/morphology/dense_test.go`)
+cover the public API and the `.dat` round-trip.
+
+Not extended by this work: `fuzzy.go`'s Prediction/Probability-adjacent
+questions were pymorphy2-specific investigations (backlog item 3, closed
+2026-09-19) and weren't re-examined for OpenCorpora — OpenCorpora imports
+don't populate `Prediction` at all today, and `Probability` was never
+checked for either source.

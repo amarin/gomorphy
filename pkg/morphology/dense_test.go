@@ -1,7 +1,9 @@
 package morphology_test
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/amarin/gomorphy/pkg/morphology"
@@ -98,4 +100,54 @@ func TestOpenPyMorphyDense_PredictionAndProbability(t *testing.T) {
 
 	assert.Equal(t, rawPredicted, reopened.Parse("котёнка"))
 	assert.Equal(t, rawKot, reopened.Parse("кот"))
+}
+
+// TestCompileFromXMLDense_MatchesRawParse mirrors
+// TestOpenPyMorphyDense_MatchesRawParse for OpenCorpora: gomorphy's other
+// dense-alphabet entry point must produce identical readings to the
+// non-dense compile.
+func TestCompileFromXMLDense_MatchesRawParse(t *testing.T) {
+	raw, err := morphology.CompileFromXML(strings.NewReader(exampleDictXML), nil)
+	require.NoError(t, err)
+	dense, err := morphology.CompileFromXMLDense(strings.NewReader(exampleDictXML), nil)
+	require.NoError(t, err)
+
+	for _, word := range []string{"кот", "кота", "код"} {
+		rawReadings := raw.Parse(word)
+		denseReadings := dense.Parse(word)
+		require.Equal(t, len(rawReadings), len(denseReadings), "word %q: reading count differs", word)
+		for i := range rawReadings {
+			assert.Equal(t, rawReadings[i].Word, denseReadings[i].Word, "word %q reading %d: Word", word, i)
+			assert.Equal(t, rawReadings[i].Normal, denseReadings[i].Normal, "word %q reading %d: Normal", word, i)
+			assert.Equal(t, rawReadings[i].Tag, denseReadings[i].Tag, "word %q reading %d: Tag", word, i)
+		}
+	}
+}
+
+func TestCompileFromXMLFileDense(t *testing.T) {
+	xmlPath := filepath.Join(t.TempDir(), "dict.xml")
+	require.NoError(t, os.WriteFile(xmlPath, []byte(exampleDictXML), 0o644))
+
+	d, err := morphology.CompileFromXMLFileDense(xmlPath, nil)
+	require.NoError(t, err)
+	require.NotEmpty(t, d.Parse("кота"))
+}
+
+// TestCompileFromXMLDense_SaveOpenRoundtrip confirms a dense OpenCorpora
+// dictionary round-trips through SaveTo/Open exactly like a dense
+// pymorphy2 dictionary already does (TestSaveToDenseAlphabetRoundtrip,
+// save_test.go) — the "alphabet" section and Open()'s support for it are
+// source-agnostic.
+func TestCompileFromXMLDense_SaveOpenRoundtrip(t *testing.T) {
+	dense, err := morphology.CompileFromXMLDense(strings.NewReader(exampleDictXML), nil)
+	require.NoError(t, err)
+
+	out := filepath.Join(t.TempDir(), "dense.dat")
+	require.NoError(t, dense.SaveTo(out))
+
+	got, err := morphology.Open(out)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, got.Close()) }()
+
+	assert.Equal(t, dense.Parse("кота"), got.Parse("кота"))
 }
