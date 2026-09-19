@@ -85,7 +85,8 @@ encoding in sync:
 4. An unresolved open question: does the dense alphabet extend to
    `prediction-N.dawg`/`probability.dawg`? For OpenCorpora, `Prediction`
    currently isn't populated at all (probably not relevant);
-   `Probability` wasn't checked.
+   `Probability` wasn't checked. **Resolved 2026-09-19: no, and it
+   doesn't need to** — see "Remaining backlog" item 3 below.
 
 ## Discussed, but not adopted as the only path: a full pymorphy2 recompiler
 
@@ -163,8 +164,21 @@ see above):
    remaining fallback: a non-nil `Alphabet` with `Width() == 0`
    (variable-width — not produced by anything in this codebase) still
    makes `Fuzzy`/`FuzzyTop` return `nil`, the same fail-safe as before.
-3. **`Prediction`/`Probability` DAWGs** — not investigated (a different
-   key format: word suffixes and `"word:tag"` with ASCII grammemes), item 4 above.
+3. ~~**`Prediction`/`Probability` DAWGs**~~ — INVESTIGATED 2026-09-19,
+   no bug found, no code change needed: `RecompileDense` deliberately
+   never touches `Prediction`/`Probability` (see its doc comment) — they
+   stay raw UTF-8 regardless of `Words[0]`'s alphabet — and
+   `predictForPrefix` (`parse.go`) already always queries `Prediction`
+   with a `nil` alphabet by explicit design (see its own doc comment,
+   pointing at this file's non-goals). `Probability.Find` is likewise
+   called with the already-decoded human-readable word text
+   (`SimilarItems`'s `Item.Key`), not raw DAWG bytes, so it was never
+   alphabet-dependent either. Closed with a regression test proving this
+   holds end to end — `Parse()`'s predict path and probability-based
+   sorting on a dense dictionary now have fixture coverage, both via
+   `OpenPyMorphyDense` directly and after a full `SaveTo`/`Open`
+   round-trip (`TestOpenPyMorphyDense_PredictionAndProbability`) — where
+   there was none before.
 4. **The 2-byte alphabet in the read path** — `fuzzy.go` itself is now
    width-agnostic (see item 2), but `Open`/`Parse`/`Lemma` still don't
    carry a 2-byte alphabet through the pipeline (`RecompileDense` only

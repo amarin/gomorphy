@@ -109,8 +109,14 @@ A short summary of what remains, in priority order:
    raw UTF-8; `Fuzzy`/`FuzzyTop` on a dense dictionary now give the
    same matches as the same dictionary without a dense alphabet. See
    [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md).
-3. `Prediction`/`Probability` DAWGs — not investigated under a dense
-   alphabet.
+3. ~~`Prediction`/`Probability` DAWGs~~ — INVESTIGATED 2026-09-19, no
+   bug found: `RecompileDense` never touches them (they stay raw UTF-8),
+   and the code already queries them without the dense alphabet by
+   design. Closed with a regression test
+   (`TestOpenPyMorphyDense_PredictionAndProbability`) covering both the
+   predict path and probability-based sorting, before and after a
+   `SaveTo`/`Open` round-trip. See
+   [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md).
 4. A 2-byte alphabet in the read path — `fuzzy.go` itself is
    width-agnostic now, but `Open`/`Parse`/`Lemma` still don't carry a
    2-byte alphabet through the pipeline (`RecompileDense` only ever
