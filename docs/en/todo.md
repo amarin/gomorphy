@@ -117,11 +117,15 @@ A short summary of what remains, in priority order:
    predict path and probability-based sorting, before and after a
    `SaveTo`/`Open` round-trip. See
    [implementation/pymorphy2-dense-alphabet.md](implementation/pymorphy2-dense-alphabet.md).
-4. A 2-byte alphabet in the read path — `fuzzy.go` itself is
-   width-agnostic now, but `Open`/`Parse`/`Lemma` still don't carry a
-   2-byte alphabet through the pipeline (`RecompileDense` only ever
-   builds width 1); only needed by a real multilingual consumer for
-   whom multi-dict (see [implementation/multi-dict.md](implementation/multi-dict.md)) doesn't fit.
+4. ~~A 2-byte alphabet in the read path~~ — CLOSED 2026-09-19, not
+   planned: no consumer needs it. `fuzzy.go` itself is width-agnostic
+   (item 2), but `Open`/`Parse`/`Lemma` still don't carry a 2-byte
+   alphabet through the pipeline (`RecompileDense` only ever builds
+   width 1) — deliberately dropped rather than deferred, since it would
+   only matter for a real multilingual consumer for whom multi-dict
+   (see [implementation/multi-dict.md](implementation/multi-dict.md))
+   somehow doesn't fit, and none exists. Revisit only if such a
+   consumer actually shows up.
 5. CLI (`gomorphy`) — a dense dictionary can only be obtained via the Go API.
 
 ### Universal tag mapping: remaining backlog (not blocking 1.0.0)

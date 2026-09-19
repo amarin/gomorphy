@@ -179,11 +179,13 @@ see above):
    `OpenPyMorphyDense` directly and after a full `SaveTo`/`Open`
    round-trip (`TestOpenPyMorphyDense_PredictionAndProbability`) — where
    there was none before.
-4. **The 2-byte alphabet in the read path** — `fuzzy.go` itself is now
-   width-agnostic (see item 2), but `Open`/`Parse`/`Lemma` still don't
-   carry a 2-byte alphabet through the pipeline (`RecompileDense` only
-   ever builds width 1); see item 7 above — only relevant if a real
-   multilingual consumer shows up for whom multi-dict (see
-   [multi-dict.md](multi-dict.md)) somehow doesn't fit.
+4. ~~**The 2-byte alphabet in the read path**~~ — CLOSED 2026-09-19, not
+   planned: no consumer needs it, deliberately dropped rather than left
+   open. `fuzzy.go` itself is width-agnostic (see item 2), but
+   `Open`/`Parse`/`Lemma` still don't carry a 2-byte alphabet through
+   the pipeline (`RecompileDense` only ever builds width 1); see item 7
+   above — it would only matter for a real multilingual consumer for
+   whom multi-dict (see [multi-dict.md](multi-dict.md)) somehow doesn't
+   fit, and none exists today. Revisit only if one does.
 5. **CLI** (`gomorphy`) is untouched — this was a Go-API-only increment;
    there's no way to get a dense dictionary from the CLI without writing code.
