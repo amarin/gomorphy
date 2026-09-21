@@ -31,10 +31,16 @@ type BuildOptions struct {
 	TagSetName string
 
 	// Progress reports building progress, when non-nil, with cumulative
-	// (processed, total) counts across all shards (total = the combined
-	// number of DAWG keys, after dedup; after the last key, a final call
-	// reports processed=total with total=0, mirroring
-	// BuildDAWGWithValuesProgress's convention).
+	// (processed, total) counts in DAWG-key units: processed is the
+	// number of keys accounted for so far, aggregated across shard
+	// boundaries, and total is the combined number of keys across all
+	// shards (after per-shard dedup). The pair is informational only —
+	// there is no total==0 end-of-run marker, and processed is not
+	// guaranteed to reach total (each shard's DAWG-compile phase
+	// rescales node counts onto the key axis, so the final reported
+	// pair can be below (total, total), and intermediate values are not
+	// monotonic). Treat the successful return of
+	// BuildDictionaryFromEntries as the completion signal.
 	Progress func(processed, total int)
 }
 

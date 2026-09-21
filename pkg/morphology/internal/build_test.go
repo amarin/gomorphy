@@ -209,3 +209,29 @@ func TestBuildDictionaryFromEntriesParadigmLimit(t *testing.T) {
 	assert.True(t, strings.Contains(err.Error(), "unique paradigms"),
 		"error %q should mention the unique-paradigms cap", err)
 }
+
+func TestBuildDictionaryFromEntriesProgress(t *testing.T) {
+	entries := []BuildEntry{
+		{Word: "кошка", Lemma: "кошка", Tag: "NOUN,anim,femn,sing,nomn"},
+		{Word: "кошки", Lemma: "кошка", Tag: "NOUN,anim,femn,sing,gent"},
+		{Word: "кошке", Lemma: "кошка", Tag: "NOUN,anim,femn,sing,datv"},
+		{Word: "кошкой", Lemma: "кошка", Tag: "NOUN,anim,femn,sing,ablt"},
+		{Word: "дело", Lemma: "дело", Tag: "NOUN,inan,neut,sing,nomn"},
+		{Word: "делом", Lemma: "дело", Tag: "NOUN,inan,neut,sing,ablt"},
+	}
+
+	var calls [][2]int
+	_, err := BuildDictionaryFromEntries(BuildOptions{
+		Progress: func(processed, total int) {
+			calls = append(calls, [2]int{processed, total})
+		},
+	}, entries)
+	require.NoError(t, err)
+
+	require.NotEmpty(t, calls)
+	for _, c := range calls {
+		assert.Equal(t, len(entries), c[1],
+			"total is always the combined entry count, never a 0 marker")
+		assert.LessOrEqual(t, c[0], c[1])
+	}
+}
