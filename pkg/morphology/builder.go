@@ -29,7 +29,8 @@ type BuilderOptions struct {
 	Language string
 
 	// Source fills BuildInfo.Source; defaults to "builder" (TSV import
-	// overrides with "tsv"). Should reflect what the entries came from.
+	// defaults to "tsv" when empty). Should reflect what the entries came
+	// from.
 	Source string
 }
 

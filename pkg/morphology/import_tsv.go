@@ -31,12 +31,14 @@ const tsvTagSetName = "tsv"
 // "" — matching Builder.AddForm. Any other column count — 1, or more than
 // 3 — is an error naming the offending line number.
 //
-// The resulting dictionary always reports Source "tsv", regardless of what
-// the caller puts in opts.Source (mirroring how Builder defaults Source to
-// "builder"). Input is never lower-cased and tags are never normalized; one
-// entry per line is fully general.
+// The resulting dictionary reports Source "tsv" when the caller leaves
+// opts.Source empty (mirroring how Builder defaults Source to "builder"); a
+// caller-supplied opts.Source is honored as-is. Input is never lower-cased
+// and tags are never normalized; one entry per line is fully general.
 func ImportTSV(r io.Reader, opts BuilderOptions) (*Dictionary, error) {
-	opts.Source = "tsv"
+	if opts.Source == "" {
+		opts.Source = "tsv"
+	}
 
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20) // 1MB max line: compound/hyphenated tokens

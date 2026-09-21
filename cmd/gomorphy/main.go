@@ -25,7 +25,7 @@ func main() {
 		newCLICommand(),
 		newLookupCommand(), newLemmasCommand(), newFuzzyCommand(), newTopCommand(),
 		newDownloadCommand(), newUnpackCommand(), newBuildCommand(), newUpdateCommand(),
-		newMergeCommand(), newSplitCommand(),
+		newImportCommand(), newMergeCommand(), newSplitCommand(),
 		newVersionCommand(),
 	)
 
