@@ -259,9 +259,9 @@ func TestBuildDAWGManyKeysAndSortingStress(t *testing.T) {
 func TestBuildDAWGWithValuesBytesRoundtrip(t *testing.T) {
 	keys := []string{"ка", "ши", "ба", "да"}
 	values := [][]byte{
-		{0x00, 0x01, 0x02, 0x03, 0x04, 0x05},      // 6-byte prediction-shaped payload
-		{0xff},                                     // 1-byte
-		{0x00, 0x01},                               // 2-byte
+		{0x00, 0x01, 0x02, 0x03, 0x04, 0x05}, // 6-byte prediction-shaped payload
+		{0xff},                               // 1-byte
+		{0x00, 0x01},                         // 2-byte
 		{0xde, 0xad, 0xbe, 0xef, 0x00, 0x01, 0x02}, // 7-byte
 	}
 
