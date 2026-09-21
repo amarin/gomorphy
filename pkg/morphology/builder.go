@@ -1,0 +1,137 @@
+package morphology
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/amarin/gomorphy/pkg/morphology/internal"
+)
+
+// Sentinel errors of the public Builder API.
+var (
+	// ErrNoEntries is returned by Builder.Build when no entries have been
+	// registered.
+	ErrNoEntries = errors.New("morphology: builder: no entries")
+
+	// ErrBuilderClosed is returned by Builder.AddForm (and repeated Build
+	// calls) once the Builder has been consumed by a Build.
+	ErrBuilderClosed = errors.New("morphology: builder is closed")
+)
+
+// builderTagSetName is the default TagSet name for dictionaries built
+// through the public Builder.
+const builderTagSetName = "builder"
+
+// BuilderOptions — optional dictionary-level metadata for a built dictionary.
+type BuilderOptions struct {
+	// Language code for the dictionary's "meta" section (default "ru").
+	Language string
+
+	// Source fills BuildInfo.Source; defaults to "builder" (TSV import
+	// overrides with "tsv"). Should reflect what the entries came from.
+	Source string
+}
+
+// Builder accumulates (word, lemma, tag) triples and builds an immutable
+// *Dictionary via Build. A Builder is single-use: once Build is called,
+// further AddForm calls are rejected with ErrBuilderClosed.
+type Builder struct {
+	opts    BuilderOptions
+	entries []internal.BuildEntry // insertion order, deduped
+	seen    map[internal.BuildEntry]bool
+	closed  bool
+}
+
+// NewBuilder returns a Builder that accumulates wordform entries.
+func NewBuilder(opts BuilderOptions) *Builder {
+	if opts.Language == "" {
+		opts.Language = "ru"
+	}
+	if opts.Source == "" {
+		opts.Source = "builder"
+	}
+	return &Builder{opts: opts}
+}
+
+// AddForm registers one entry: wordform text "word", its lemma "lemma",
+// and an opaque grammeme tag "tag". tag may be "" (a reading with no
+// grammemes). An empty word is an error (as are whitespace-only words, per
+// the TSV trim rule). An empty lemma means the wordform is its own lemma
+// (auto-lemma). Case is left to the caller, matching the importers.
+func (b *Builder) AddForm(word, lemma, tag string) error {
+	if b.closed {
+		return ErrBuilderClosed
+	}
+	if strings.TrimSpace(word) == "" {
+		return fmt.Errorf("morphology: builder: word must not be empty")
+	}
+	if lemma == "" {
+		lemma = word
+	}
+	entry := internal.BuildEntry{Word: word, Lemma: lemma, Tag: tag}
+	if b.seen == nil {
+		b.seen = make(map[internal.BuildEntry]bool)
+	}
+	if b.seen[entry] {
+		return nil
+	}
+	b.seen[entry] = true
+	b.entries = append(b.entries, entry)
+	return nil
+}
+
+// AddLemma is sugar for AddForm(normal, normal, tag): the lemma is also a
+// wordform of itself.
+func (b *Builder) AddLemma(normal, tag string) error {
+	return b.AddForm(normal, normal, tag)
+}
+
+// Build assembles the dictionary from all registered entries, deduplicating
+// (word, lemma, tag) triples by insertion order and rebuilding prediction.
+// The result is a fully functional *Dictionary (Parse, Lemma, Fuzzy,
+// prediction) usable directly or Savable via SaveTo. Build is not
+// idempotent-friendly: it consumes the Builder (further AddForm calls after
+// Build are rejected with ErrBuilderClosed).
+func (b *Builder) Build() (*Dictionary, error) {
+	if b == nil || len(b.entries) == 0 {
+		return nil, ErrNoEntries
+	}
+	if b.closed {
+		return nil, ErrBuilderClosed
+	}
+	b.closed = true
+	return buildFromEntries(b.opts, b.entries, builderTagSetName)
+}
+
+// buildFromEntries assembles an immutable *Dictionary from wordform entries
+// through the shared internal pipeline — BuildDictionaryFromEntries (raw),
+// BuildPrediction, RecompileDense (dense by default) — and stamps the
+// BuildInfo. It is the shared post-process helper underneath
+// Builder.Build, ImportTSV, and Merge.
+func buildFromEntries(opts BuilderOptions, entries []internal.BuildEntry, tagSetName string) (*Dictionary, error) {
+	d, err := internal.BuildDictionaryFromEntries(internal.BuildOptions{
+		Language:   opts.Language,
+		CharPolicy: nil,
+		TagSetName: tagSetName,
+	}, entries)
+	if err != nil {
+		return nil, fmt.Errorf("morphology: build: %w", err)
+	}
+
+	if err := internal.BuildPrediction(d, productive); err != nil {
+		return nil, fmt.Errorf("morphology: build prediction: %w", err)
+	}
+
+	if err := internal.RecompileDense(d); err != nil {
+		return nil, fmt.Errorf("morphology: compile dense: %w", err)
+	}
+
+	source := opts.Source
+	if source == "" {
+		source = tagSetName
+	}
+	d.Info = &internal.BuildInfo{Source: source}
+
+	return &Dictionary{d: d}, nil
+}
