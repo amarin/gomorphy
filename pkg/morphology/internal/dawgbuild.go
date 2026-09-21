@@ -37,23 +37,42 @@ func BuildDAWG(keys []string) (*DAWG, error) {
 
 // BuildDAWGWithValues builds a minimal DAWG (dawgdic format) from
 // (key, value) pairs and encapsulates each value as payload: every key in
-// the DAWG turns into key + PayloadSeparator + base64(value).
+// the DAWG turns into key + PayloadSeparator + base64(value), with value
+// encoded as a 4-byte big-endian uint32 (the words.dawg payload shape).
+//
+// Thin wrapper over BuildDAWGWithValuesBytes so the payload-encapsulation
+// rule lives in exactly one place. Returns (*DAWG, error).
+func BuildDAWGWithValues(keys []string, values []uint32) (*DAWG, error) {
+	if len(keys) != len(values) {
+		return nil, fmt.Errorf("dawg: keys and values must have same length")
+	}
+
+	valuesBytes := make([][]byte, len(values))
+	for i, v := range values {
+		b := make([]byte, 4)
+		binary.BigEndian.PutUint32(b, v)
+		valuesBytes[i] = b
+	}
+	return BuildDAWGWithValuesBytes(keys, valuesBytes)
+}
+
+// BuildDAWGWithValuesBytes builds a minimal DAWG (dawgdic format) from
+// (key, value) pairs where each value is an arbitrary-length byte payload:
+// every key in the DAWG turns into key + PayloadSeparator + base64(value) —
+// the exact shape SimilarItems/ValuesForIndex decode.
 //
 // The algorithm fully follows BuildDAWG, but the keys are modified before
 // assembly. Returns (*DAWG, error).
-func BuildDAWGWithValues(keys []string, values []uint32) (*DAWG, error) {
+func BuildDAWGWithValuesBytes(keys []string, values [][]byte) (*DAWG, error) {
 	if len(keys) != len(values) {
 		return nil, fmt.Errorf("dawg: keys and values must have same length")
 	}
 
 	payloadKeys := make([]string, len(keys))
 	for i, k := range keys {
-		b := make([]byte, 4)
-		binary.BigEndian.PutUint32(b, values[i])
-		payloadKeys[i] = k + string([]byte{PayloadSeparator}) + base64.StdEncoding.EncodeToString(b)
+		payloadKeys[i] = k + string([]byte{PayloadSeparator}) + base64.StdEncoding.EncodeToString(values[i])
 	}
 
-	// Reuse buildDAWGKeys with payload keys.
 	return buildDAWGWithPayload(payloadKeys)
 }
 

@@ -251,3 +251,64 @@ func TestBuildDAWGManyKeysAndSortingStress(t *testing.T) {
 		assert.False(t, d.Contains(k))
 	}
 }
+
+// TestBuildDAWGWithValuesBytesRoundtrip checks the arbitrary-length byte
+// payload builder: every key resolves via SimilarItems to exactly the
+// payload bytes it was built with (1, 2, 6 and 7 bytes — nothing
+// uint32-shaped, so a leftover 4-byte assumption would corrupt them).
+func TestBuildDAWGWithValuesBytesRoundtrip(t *testing.T) {
+	keys := []string{"ка", "ши", "ба", "да"}
+	values := [][]byte{
+		{0x00, 0x01, 0x02, 0x03, 0x04, 0x05},      // 6-byte prediction-shaped payload
+		{0xff},                                     // 1-byte
+		{0x00, 0x01},                               // 2-byte
+		{0xde, 0xad, 0xbe, 0xef, 0x00, 0x01, 0x02}, // 7-byte
+	}
+
+	d, err := BuildDAWGWithValuesBytes(keys, values)
+	require.NoError(t, err)
+	require.NotNil(t, d)
+
+	for i, k := range keys {
+		items := d.SimilarItems(k, nil, nil)
+		require.Len(t, items, 1, "key %q", k)
+		assert.Equal(t, k, items[0].Key)
+		require.Len(t, items[0].Values, 1, "key %q", k)
+		assert.Equal(t, values[i], items[0].Values[0], "key %q payload", k)
+	}
+}
+
+// TestBuildDAWGWithValuesBytesSeparatePayloadLeaves verifies homonym-style
+// payloads: one key carrying several distinct payloads lands as several
+// separate payload leaves under that key, and a lone key keeps exactly one.
+func TestBuildDAWGWithValuesBytesSeparatePayloadLeaves(t *testing.T) {
+	keys := []string{"кот", "кот", "кот", "мост"}
+	values := [][]byte{
+		{0, 0, 0, 0},
+		{0, 1, 0, 0},
+		{0, 2, 0, 0},
+		{9, 9, 9, 9},
+	}
+
+	d, err := BuildDAWGWithValuesBytes(keys, values)
+	require.NoError(t, err)
+
+	items := d.SimilarItems("кот", nil, nil)
+	require.Len(t, items, 1)
+	assert.Equal(t, "кот", items[0].Key)
+	require.Len(t, items[0].Values, 3, "same key with distinct payloads must yield one leaf per payload")
+
+	// Payload enumeration order follows trie order, so compare as a set.
+	got := make(map[string]bool, len(items[0].Values))
+	for _, v := range items[0].Values {
+		got[string(v)] = true
+	}
+	for _, want := range values[:3] {
+		assert.True(t, got[string(want)], "payload %v must be present", want)
+	}
+
+	items = d.SimilarItems("мост", nil, nil)
+	require.Len(t, items, 1)
+	require.Len(t, items[0].Values, 1)
+	assert.Equal(t, []byte{9, 9, 9, 9}, items[0].Values[0])
+}
