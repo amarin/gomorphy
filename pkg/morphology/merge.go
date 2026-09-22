@@ -1,172 +1,145 @@
 package morphology
 
 import (
+	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/amarin/gomorphy/pkg/morphology/internal"
+	"github.com/amarin/gomorphy/pkg/morphology/tagmap"
 )
 
-// mergeTagSetName is the TagSet name for dictionaries produced by Merge.
-const mergeTagSetName = "merge"
-
-// MergeMode controls how Merge combines a base dictionary with overlays.
+// MergeMode is the word-level conflict policy Merge applies to every
+// overlay. Overlays are applied in order, as a fold:
+// Merge(b, [o1, o2], m) equals Merge(Merge(b, [o1], m), [o2], m). A word
+// is identified by its exact stored form (no е/ё substitution).
 type MergeMode int
 
 const (
-	// MergeAdd appends overlay readings only to words that are absent
-	// from the base dictionary: a word present in the base keeps all of
-	// its base readings, its union with an overlay contributes nothing.
-	// Words unique to an overlay are added with all of their readings.
+	// MergeAdd takes an overlay word only if it is absent from the base
+	// and from every earlier overlay; words already present keep their
+	// readings untouched.
 	MergeAdd MergeMode = iota
 
-	// MergeReplace replaces the base readings of any word the overlays
-	// provide: a word present in both keeps the overlay's readings
-	// instead of the base's, while words present only in the base (or
-	// only in an overlay) carry over unchanged. When several overlays
-	// cover the same word, the first overlay's readings win and later
-	// overlays append their readings for that word.
+	// MergeReplace lets an overlay word's readings fully replace whatever
+	// the word had so far — the base's or an earlier overlay's. The last
+	// overlay that has the word wins.
 	MergeReplace
 )
 
-// Merge combines the base dictionary with the given overlays into a new,
-// fully functional *Dictionary (Parse, Lemma, Fuzzy, prediction), dense
-// and Savable like any Builder-built dictionary. The inputs are read-only
-// and never mutated.
-//
-// Merge is deterministic: given the same inputs and mode, it produces the
-// same output, byte for byte, run to run. Words are emitted in ascending
-// lexicographic order; a word's readings keep the order in which they were
-// accumulated — the base dictionary's shards first, then the overlays in
-// the order they are supplied.
-//
-// The output dictionary inherits the base dictionary's language and
-// CharPolicy, and carries BuildInfo{Source: "merge"} with the base
-// dictionary's SourceVersion and Description, when present.
-//
-// Merge returns an error (wrapping ErrNoEntries) if the combined entry set
-// is empty — which is only reachable with a degenerate empty base
-// dictionary and no overlays — and rejects nil inputs and unknown modes.
+// ErrIncompatibleDictionaries is returned by Merge when an overlay's
+// language differs from the base's, or when base and overlay use two
+// different tag vocabularies that pkg/morphology/tagmap both knows
+// (e.g. "opencorpora-int" and "unimorph") and so cannot share one TagSet.
+var ErrIncompatibleDictionaries = errors.New("morphology: merge: incompatible dictionaries")
+
+// ErrPredictionSharded is returned by MergeWithOptions when
+// RebuildPrediction is set but the merged dictionary has more than one
+// shard.
+var ErrPredictionSharded = internal.ErrPredictionSharded
+
+// MergeOptions configures MergeWithOptions.
+type MergeOptions struct {
+	// Mode is the conflict policy (default MergeAdd).
+	Mode MergeMode
+
+	// RebuildPrediction replaces the base's prediction with one rebuilt
+	// from every word of the merged dictionary, overlays included. By
+	// default the base's prediction is carried over unchanged (overlay
+	// words don't feed it) — the right choice for a large base such as
+	// pymorphy2. Requires a single-shard result (ErrPredictionSharded).
+	RebuildPrediction bool
+}
+
+// Merge is MergeWithOptions(base, overlays, MergeOptions{Mode: mode}).
 func Merge(base *Dictionary, overlays []*Dictionary, mode MergeMode) (*Dictionary, error) {
-	if base == nil {
+	return MergeWithOptions(base, overlays, MergeOptions{Mode: mode})
+}
+
+// MergeWithOptions merges overlays into base and returns a new, dense,
+// Savable dictionary. The merge is structural: the base's tag set,
+// paradigms and suffixes keep their ids, overlay paradigms are remapped
+// into them, and only the parts that changed are rebuilt. So the result
+// keeps everything the base had:
+//
+//   - reading order and probabilities (p(tag|word)) of untouched words,
+//     plus the probabilities an overlay carries for the words it adds;
+//   - prediction for out-of-dictionary words (see RebuildPrediction);
+//   - the base's TagSet name, so pkg/morphology/tagmap keeps working.
+//     Overlay tags are appended verbatim.
+//
+// A replaced word loses all of its base readings and base probabilities.
+// Inputs are never mutated, and the result shares no memory with them:
+// it stays valid after the inputs are closed. The result reports
+// BuildInfo{Source: "merge"} with the base's SourceVersion and
+// Description, and the base's language and CharPolicy.
+//
+// Errors: ErrIncompatibleDictionaries (language or tag vocabulary
+// mismatch), ErrPredictionSharded, ErrNoEntries (the result has no
+// words), and nil-input / unknown-mode errors.
+func MergeWithOptions(base *Dictionary, overlays []*Dictionary, opts MergeOptions) (*Dictionary, error) {
+	if base == nil || base.d == nil {
 		return nil, fmt.Errorf("morphology: merge: base dictionary is nil")
 	}
-	for i, overlay := range overlays {
-		if overlay == nil {
+	if opts.Mode != MergeAdd && opts.Mode != MergeReplace {
+		return nil, fmt.Errorf("morphology: merge: unknown mode %d", int(opts.Mode))
+	}
+	ins := make([]*internal.Dictionary, len(overlays))
+	for i, o := range overlays {
+		if o == nil || o.d == nil {
 			return nil, fmt.Errorf("morphology: merge: overlay %d is nil", i)
 		}
-	}
-	if mode != MergeAdd && mode != MergeReplace {
-		return nil, fmt.Errorf("morphology: merge: unknown mode %d", int(mode))
-	}
-
-	baseEntries, err := collectEntries(base)
-	if err != nil {
-		return nil, fmt.Errorf("morphology: merge: base: %w", err)
-	}
-	baseSet := make(map[string]bool, len(baseEntries))
-	for word := range baseEntries {
-		baseSet[word] = true
-	}
-
-	merged := baseEntries
-	replaced := make(map[string]bool)
-	for _, overlay := range overlays {
-		overlayEntries, err := collectEntries(overlay)
-		if err != nil {
-			return nil, fmt.Errorf("morphology: merge: overlay: %w", err)
+		if err := checkMergeCompatible(base.d, o.d); err != nil {
+			return nil, fmt.Errorf("morphology: merge: overlay %d: %w", i, err)
 		}
-		for word, readings := range overlayEntries {
-			switch mode {
-			case MergeAdd:
-				if baseSet[word] {
-					continue
-				}
-			case MergeReplace:
-				if baseSet[word] && !replaced[word] {
-					merged[word] = readings
-					replaced[word] = true
-					continue
-				}
-			}
-			merged[word] = append(merged[word], readings...)
-		}
+		ins[i] = o.d
 	}
 
-	words := make([]string, 0, len(merged))
-	for word := range merged {
-		words = append(words, word)
-	}
-	slices.Sort(words)
-
-	var entries []internal.BuildEntry
-	for _, word := range words {
-		entries = append(entries, merged[word]...)
-	}
-	if len(entries) == 0 {
-		return nil, fmt.Errorf("morphology: merge: %w", ErrNoEntries)
-	}
-
-	out, err := buildFromEntries(BuilderOptions{
-		Language: base.d.Language,
-		Source:   "merge",
-	}, entries, mergeTagSetName)
+	d, err := internal.MergeDictionaries(base.d, ins, internal.MergeOptions{
+		Mode:              internal.MergeMode(opts.Mode),
+		RebuildPrediction: opts.RebuildPrediction,
+		Productive:        productive,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("morphology: merge: %w", err)
 	}
+	if dictionaryEmpty(d) {
+		return nil, fmt.Errorf("morphology: merge: %w", ErrNoEntries)
+	}
 
-	// buildFromEntries cannot express a CharPolicy override or a richer
-	// BuildInfo, so carry both over here: the output behaves exactly like
-	// the base dictionary except for its "merge" provenance.
-	out.d.CharPolicy = base.d.CharPolicy
 	info := &internal.BuildInfo{Source: "merge"}
 	if base.d.Info != nil {
 		info.SourceVersion = base.d.Info.SourceVersion
 		info.Description = base.d.Info.Description
 	}
-	out.d.Info = info
-
-	return out, nil
+	d.Info = info
+	return &Dictionary{d: d}, nil
 }
 
-// collectEntries enumerates every wordform reading of one dictionary as
-// raw (Word, Lemma, Tag) build entries, keyed by the wordform text. A
-// word's readings may span several shards (each homonym reading landed in
-// the shard that held its suffix/tag ids at build time); shards are walked
-// in order, so readings accumulate in a deterministic order.
-func collectEntries(d *Dictionary) (map[string][]internal.BuildEntry, error) {
-	if d == nil || d.d == nil {
-		return nil, fmt.Errorf("dictionary is nil")
+// checkMergeCompatible rejects overlays that can't share the base's
+// language or tag vocabulary.
+func checkMergeCompatible(base, overlay *internal.Dictionary) error {
+	if base.Language != overlay.Language {
+		return fmt.Errorf("%w: language %q differs from the base's %q", ErrIncompatibleDictionaries, overlay.Language, base.Language)
 	}
-	entries := make(map[string][]internal.BuildEntry)
-	for shard := range d.d.Words {
-		if d.d.Words[shard] == nil {
-			continue
-		}
-		var walkErr error
-		d.d.Words[shard].Walk(func(key string, values [][]byte) {
-			word := key
-			if d.d.Alphabet != nil {
-				decoded, err := d.d.Alphabet.Decode([]byte(key))
-				if err != nil {
-					if walkErr == nil {
-						walkErr = fmt.Errorf("decode DAWG key: %w", err)
-					}
-					return
-				}
-				word = decoded
-			}
-			for _, value := range values {
-				r, ok := d.reading(shard, word, value)
-				if !ok {
-					continue
-				}
-				entries[word] = append(entries[word], internal.BuildEntry{Word: r.Word, Lemma: r.Normal, Tag: r.Tag})
-			}
-		})
-		if walkErr != nil {
-			return nil, walkErr
+	bn, on := tagSetNameOf(base), tagSetNameOf(overlay)
+	if bn != on && tagmap.Known(bn) && tagmap.Known(on) {
+		return fmt.Errorf("%w: tag set %q cannot be mixed into the base's %q", ErrIncompatibleDictionaries, on, bn)
+	}
+	return nil
+}
+
+func tagSetNameOf(d *internal.Dictionary) string {
+	if d.TagSet == nil {
+		return ""
+	}
+	return d.TagSet.Name
+}
+
+func dictionaryEmpty(d *internal.Dictionary) bool {
+	for _, w := range d.Words {
+		if !w.Empty() {
+			return false
 		}
 	}
-	return entries, nil
+	return true
 }
