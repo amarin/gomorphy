@@ -52,3 +52,52 @@ func TestWordReadingsDecodesDenseKeys(t *testing.T) {
 	assert.Len(t, rs["кота"], 1)
 	assert.Equal(t, uint16(1), rs["кота"][0].form)
 }
+
+func TestPlaceRemapsIntoBaseIDSpace(t *testing.T) {
+	base := engineDict(t, e("кот", "кот", "N,nomn"), e("кота", "кот", "N,gent"))
+	baseTags := append([]string(nil), base.TagSet.Tags...)
+	baseSuffixes := append([]string(nil), base.Suffixes[0]...)
+	nBase := len(base.Paradigms[0])
+
+	o := engineDict(t, e("кит", "кит", "N,nomn"), e("кита", "кит", "N,gent"), e("ура", "ура", "INTJ"))
+	rs, err := wordReadings(o)
+	require.NoError(t, err)
+
+	m := newMerger(base)
+	loc, err := m.place(0, o, rs["кита"][0])
+	require.NoError(t, err)
+	assert.Equal(t, paraLoc{shard: 0, para: 0}, loc, "a paradigm shaped like base paradigm 0 dedups onto it")
+	assert.Len(t, m.shards[0].paradigms, nBase)
+
+	again, err := m.place(0, o, rs["кит"][0])
+	require.NoError(t, err)
+	assert.Equal(t, loc, again, "same overlay paradigm → cached location")
+
+	loc2, err := m.place(0, o, rs["ура"][0])
+	require.NoError(t, err)
+	assert.Equal(t, paraLoc{shard: 0, para: uint16(nBase)}, loc2, "a new shape is appended")
+
+	assert.Equal(t, baseTags, m.tagSet.Tags[:len(baseTags)], "base tag ids are stable")
+	assert.Contains(t, m.tagSet.Tags, "INTJ")
+	assert.Equal(t, baseSuffixes, m.shards[0].suffixes[:len(baseSuffixes)], "base suffix ids are stable")
+	assert.Equal(t, baseTags, base.TagSet.Tags, "the base TagSet is not mutated")
+	assert.Equal(t, baseSuffixes, base.Suffixes[0], "the base suffixes are not mutated")
+}
+
+func TestPlaceOpensNewShardOnSuffixOverflow(t *testing.T) {
+	old := mergeSuffixLimit
+	mergeSuffixLimit = 2
+	t.Cleanup(func() { mergeSuffixLimit = old })
+
+	base := engineDict(t, e("кот", "кот", "N"), e("кота", "кот", "G"))   // suffixes "", "а"
+	o := engineDict(t, e("стол", "стол", "N"), e("столом", "стол", "I")) // needs new suffix "ом"
+	rs, err := wordReadings(o)
+	require.NoError(t, err)
+
+	m := newMerger(base)
+	loc, err := m.place(0, o, rs["столом"][0])
+	require.NoError(t, err)
+	assert.Equal(t, 1, loc.shard)
+	assert.Len(t, m.shards, 2)
+	assert.Nil(t, m.shards[1].base, "an appended shard has no base DAWG")
+}

@@ -3,6 +3,7 @@ package internal
 import (
 	"encoding/binary"
 	"fmt"
+	"slices"
 )
 
 // MergeMode is MergeDictionaries' word-level conflict policy; values
@@ -136,4 +137,235 @@ func shardHasWord(w *DAWG, a Alphabet, word string) bool {
 	}
 	idx := w.Follow(key, 0)
 	return idx != 0 && w.HasPayloadChild(idx)
+}
+
+// mergeSuffixLimit caps a merge target shard's suffix count before a new
+// shard is opened. A var (not suffixShardLimit directly) so tests can
+// lower it.
+var mergeSuffixLimit = suffixShardLimit
+
+// mergeShard is one output shard under construction: the base shard's
+// suffixes/paradigms verbatim (ids stable) plus whatever the overlays
+// append, and the overlay readings placed into it.
+type mergeShard struct {
+	suffixes  []string
+	suffixIdx map[string]uint16 // lazily built text → id
+	paradigms []Paradigm
+	paraIdx   map[string]uint16 // lazily built paradigm data key → id
+	base      *DAWG             // the base shard's words DAWG; nil for an appended shard
+	placed    []WordValue       // overlay readings targeting this shard
+	dirty     bool              // the words DAWG must be rebuilt
+}
+
+type paraRef struct {
+	overlay, shard int
+	para           uint16
+}
+
+type paraLoc struct {
+	shard int
+	para  uint16
+}
+
+// merger holds the output id spaces while overlay paradigms are remapped
+// into them.
+type merger struct {
+	tagSet    *TagSet
+	prefixes  []string
+	prefixIdx map[string]uint16
+	shards    []*mergeShard
+	cache     map[paraRef]paraLoc
+}
+
+func newMerger(base *Dictionary) *merger {
+	m := &merger{
+		tagSet:    cloneTagSet(base.TagSet),
+		prefixes:  slices.Clone(base.Prefixes),
+		prefixIdx: make(map[string]uint16, len(base.Prefixes)),
+		cache:     make(map[paraRef]paraLoc),
+	}
+	if len(m.prefixes) == 0 {
+		m.prefixes = []string{""}
+	}
+	for i, p := range m.prefixes {
+		if _, ok := m.prefixIdx[p]; !ok {
+			m.prefixIdx[p] = uint16(i)
+		}
+	}
+	for i, w := range base.Words {
+		s := &mergeShard{base: w}
+		if i < len(base.Suffixes) {
+			s.suffixes = slices.Clone(base.Suffixes[i])
+		}
+		if i < len(base.Paradigms) {
+			s.paradigms = slices.Clone(base.Paradigms[i])
+		}
+		m.shards = append(m.shards, s)
+	}
+	if len(m.shards) == 0 {
+		m.shards = []*mergeShard{{}}
+	}
+	return m
+}
+
+func cloneTagSet(t *TagSet) *TagSet {
+	if t == nil {
+		return NewTagSet("")
+	}
+	out := NewTagSet(t.Name)
+	out.Tags = slices.Clone(t.Tags)
+	for i, name := range out.Tags {
+		if _, ok := out.Index[name]; !ok {
+			out.Index[name] = uint16(i)
+		}
+	}
+	return out
+}
+
+func (s *mergeShard) suffixIndex() map[string]uint16 {
+	if s.suffixIdx == nil {
+		s.suffixIdx = make(map[string]uint16, len(s.suffixes))
+		for i, text := range s.suffixes {
+			if _, ok := s.suffixIdx[text]; !ok {
+				s.suffixIdx[text] = uint16(i)
+			}
+		}
+	}
+	return s.suffixIdx
+}
+
+func (s *mergeShard) internSuffix(text string) (uint16, error) {
+	idx := s.suffixIndex()
+	if id, ok := idx[text]; ok {
+		return id, nil
+	}
+	if len(s.suffixes) >= suffixShardLimit {
+		return 0, fmt.Errorf("shard exceeded %d unique suffixes", suffixShardLimit)
+	}
+	id := uint16(len(s.suffixes))
+	s.suffixes = append(s.suffixes, text)
+	idx[text] = id
+	return id, nil
+}
+
+func (s *mergeShard) paradigmIndex() map[string]uint16 {
+	if s.paraIdx == nil {
+		s.paraIdx = make(map[string]uint16, len(s.paradigms))
+		for i, p := range s.paradigms {
+			k := string(encodeU16s(p.Data()))
+			if _, ok := s.paraIdx[k]; !ok {
+				s.paraIdx[k] = uint16(i)
+			}
+		}
+	}
+	return s.paraIdx
+}
+
+func (m *merger) internPrefix(text string) (uint16, error) {
+	if id, ok := m.prefixIdx[text]; ok {
+		return id, nil
+	}
+	if len(m.prefixes) >= 1<<16 {
+		return 0, fmt.Errorf("too many prefixes (max %d)", 1<<16)
+	}
+	id := uint16(len(m.prefixes))
+	m.prefixes = append(m.prefixes, text)
+	m.prefixIdx[text] = id
+	return id, nil
+}
+
+// targetShard returns the shard a paradigm with the given suffix texts
+// goes to: the last shard while it has room, otherwise a new empty one.
+func (m *merger) targetShard(sufTexts []string) int {
+	last := len(m.shards) - 1
+	t := m.shards[last]
+	idx := t.suffixIndex()
+	fresh := make(map[string]bool)
+	for _, s := range sufTexts {
+		if _, ok := idx[s]; !ok {
+			fresh[s] = true
+		}
+	}
+	if len(t.suffixes)+len(fresh) <= mergeSuffixLimit && len(t.paradigms) < paradigmLimit {
+		return last
+	}
+	m.shards = append(m.shards, &mergeShard{})
+	return last + 1
+}
+
+// place remaps the overlay paradigm behind r into the output id spaces
+// (form-for-form: suffix text, prefix text and tag name → output ids),
+// deduplicating against the target shard's paradigms, and returns where
+// it landed. The form index is preserved.
+func (m *merger) place(oi int, o *Dictionary, r overlayReading) (paraLoc, error) {
+	ref := paraRef{overlay: oi, shard: r.shard, para: r.para}
+	if loc, ok := m.cache[ref]; ok {
+		return loc, nil
+	}
+	if r.shard >= len(o.Paradigms) || int(r.para) >= len(o.Paradigms[r.shard]) {
+		return paraLoc{}, fmt.Errorf("overlay %d: shard %d: paradigm %d out of range", oi, r.shard, r.para)
+	}
+	p := o.Paradigms[r.shard][r.para]
+	var oSuffixes []string
+	if r.shard < len(o.Suffixes) {
+		oSuffixes = o.Suffixes[r.shard]
+	}
+
+	n := p.Len()
+	sufTexts := make([]string, n)
+	tagIDs := make([]uint16, n)
+	prefIDs := make([]uint16, n)
+	for i := 0; i < n; i++ {
+		sufTexts[i] = stringAt(oSuffixes, p.Suffix(i))
+		tag := ""
+		if o.TagSet != nil {
+			tag = o.TagSet.TagName(p.Tag(i))
+		}
+		tid, err := m.tagSet.Add(tag)
+		if err != nil {
+			return paraLoc{}, err
+		}
+		tagIDs[i] = tid
+		pid, err := m.internPrefix(stringAt(o.Prefixes, p.Prefix(i)))
+		if err != nil {
+			return paraLoc{}, err
+		}
+		prefIDs[i] = pid
+	}
+
+	shard := m.targetShard(sufTexts)
+	t := m.shards[shard]
+	sufIDs := make([]uint16, n)
+	for i, text := range sufTexts {
+		id, err := t.internSuffix(text)
+		if err != nil {
+			return paraLoc{}, fmt.Errorf("shard %d: %w", shard, err)
+		}
+		sufIDs[i] = id
+	}
+
+	para := NewParadigm(sufIDs, tagIDs, prefIDs)
+	key := string(encodeU16s(para.Data()))
+	idx := t.paradigmIndex()
+	id, ok := idx[key]
+	if !ok {
+		if len(t.paradigms) >= paradigmLimit {
+			return paraLoc{}, fmt.Errorf("shard %d exceeded %d unique paradigms", shard, paradigmLimit)
+		}
+		id = uint16(len(t.paradigms))
+		t.paradigms = append(t.paradigms, para)
+		idx[key] = id
+	}
+	loc := paraLoc{shard: shard, para: id}
+	m.cache[ref] = loc
+	return loc, nil
+}
+
+// stringAt returns ar[i], or "" when i is out of range (mirrors the
+// engine's strAt in pkg/morphology/parse.go).
+func stringAt(ar []string, i uint16) string {
+	if int(i) < len(ar) {
+		return ar[i]
+	}
+	return ""
 }
