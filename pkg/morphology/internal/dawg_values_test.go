@@ -122,6 +122,8 @@ func TestBuildIntDAWGErrors(t *testing.T) {
 	assert.Error(t, err, "duplicate key")
 	_, err = BuildIntDAWG([]string{"a"}, []uint32{1 << 31})
 	assert.Error(t, err, "value out of range")
+	_, err = BuildIntDAWG([]string{""}, []uint32{1})
+	assert.Error(t, err, "empty key")
 }
 
 func TestWalkValuesPymorphyIntDAWG(t *testing.T) {

@@ -88,6 +88,9 @@ func BuildIntDAWG(keys []string, values []uint32) (*DAWG, error) {
 	order := make([]int, len(keys))
 	for i := range order {
 		order[i] = i
+		if keys[i] == "" {
+			return nil, fmt.Errorf("dawg: empty key cannot be stored")
+		}
 		if values[i] >= isLeafBit {
 			return nil, fmt.Errorf("dawg: value %d for key %q exceeds 31 bits", values[i], keys[i])
 		}

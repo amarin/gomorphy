@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"encoding/binary"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -181,6 +182,92 @@ func readingsOf(d *Dictionary, word string) [][]byte {
 		}
 	}
 	return out
+}
+
+// shardValue is one raw words.dawg reading located to the shard it came
+// from, so its (para, form) can be resolved against that shard's
+// out.Paradigms.
+type shardValue struct {
+	shard int
+	value []byte
+}
+
+// readingsWithShard is readingsOf, but keeping track of which shard each
+// value came from (readingsOf alone can't tell, since a replaced word may
+// move to a different shard than the base held it in).
+func readingsWithShard(d *Dictionary, word string) []shardValue {
+	var out []shardValue
+	for si, w := range d.Words {
+		for _, it := range w.SimilarItems(word, nil, d.Alphabet) {
+			if it.Key == word {
+				for _, v := range it.Values {
+					out = append(out, shardValue{shard: si, value: v})
+				}
+			}
+		}
+	}
+	return out
+}
+
+// tagOf decodes a raw words.dawg value (para<<16|form) against out's
+// paradigms/tag set for the shard it was found in.
+func tagOf(t *testing.T, out *Dictionary, sv shardValue) string {
+	t.Helper()
+	require.GreaterOrEqual(t, len(sv.value), 4)
+	val := binary.BigEndian.Uint32(sv.value[:4])
+	para, form := uint16(val>>16), uint16(val)
+	require.Less(t, int(para), len(out.Paradigms[sv.shard]))
+	p := out.Paradigms[sv.shard][para]
+	require.Less(t, int(form), p.Len())
+	return out.TagSet.TagName(p.Tag(int(form)))
+}
+
+func TestMergeDictionariesZeroShardBaseRebuildPrediction(t *testing.T) {
+	base := &Dictionary{Language: "ru", TagSet: NewTagSet("x")}
+
+	var out *Dictionary
+	var err error
+	assert.NotPanics(t, func() {
+		out, err = MergeDictionaries(base, nil, MergeOptions{RebuildPrediction: true, Productive: allProductive})
+	}, "a zero-shard base with RebuildPrediction must not panic on base.Words[0]")
+
+	if err == nil {
+		require.NotNil(t, out)
+		require.Len(t, out.Words, 1)
+		require.Len(t, out.Prediction, 1)
+	}
+}
+
+func TestMergeDictionariesReplaceWordInNonTargetShard(t *testing.T) {
+	base := twoShardBase(t)
+	over := engineDict(t, e("кота", "кота", "X"))
+	out, err := MergeDictionaries(base, []*Dictionary{over}, MergeOptions{Mode: MergeReplace})
+	require.NoError(t, err)
+
+	vals := readingsWithShard(out, "кота")
+	require.Len(t, vals, 1, "the base reading of a replaced word must be gone")
+	assert.Equal(t, "X", tagOf(t, out, vals[0]), "the surviving reading is the overlay's")
+
+	assert.NotEmpty(t, readingsOf(out, "кот"), "an untouched word in the same shard survives")
+	assert.NotEmpty(t, readingsOf(out, "мыши"), "the target shard's own word survives")
+	assert.NotEqual(t, base.Words[0].Bytes(), out.Words[0].Bytes(), "shard 0 (where the replaced word lived) was rebuilt")
+}
+
+func TestMergeDictionariesAlphabetChangeCleanShard(t *testing.T) {
+	base := twoShardBase(t)
+	over := engineDict(t, e("wifi", "wifi", "N"))
+	out, err := MergeDictionaries(base, []*Dictionary{over}, MergeOptions{Mode: MergeAdd})
+	require.NoError(t, err)
+	assert.NotSame(t, base.Alphabet, out.Alphabet, "the alphabet must be rebuilt to cover \"wifi\"")
+
+	want := map[string]string{"кот": "N", "кота": "G", "мышь": "N", "мыши": "G", "wifi": "N"}
+	for word, wantTag := range want {
+		vals := readingsWithShard(out, word)
+		require.NotEmpty(t, vals, word)
+		for _, sv := range vals {
+			assert.Equal(t, wantTag, tagOf(t, out, sv), word)
+		}
+	}
 }
 
 func TestMergeDictionariesReusesCleanShard(t *testing.T) {

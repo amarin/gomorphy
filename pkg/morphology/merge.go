@@ -30,7 +30,7 @@ const (
 // language differs from the base's, or when base and overlay use two
 // different tag vocabularies that pkg/morphology/tagmap both knows
 // (e.g. "opencorpora-int" and "unimorph") and so cannot share one TagSet.
-var ErrIncompatibleDictionaries = errors.New("morphology: merge: incompatible dictionaries")
+var ErrIncompatibleDictionaries = errors.New("incompatible dictionaries")
 
 // ErrPredictionSharded is returned by MergeWithOptions when
 // RebuildPrediction is set but the merged dictionary has more than one
@@ -68,8 +68,9 @@ func Merge(base *Dictionary, overlays []*Dictionary, mode MergeMode) (*Dictionar
 //     Overlay tags are appended verbatim.
 //
 // A replaced word loses all of its base readings and base probabilities.
-// Inputs are never mutated, and the result shares no memory with them:
-// it stays valid after the inputs are closed. The result reports
+// Inputs are never mutated. DAWGs and arrays are deep-copied so the
+// result stays valid after the inputs are closed; immutable values
+// (alphabet, CharPolicy) may be shared. The result reports
 // BuildInfo{Source: "merge"} with the base's SourceVersion and
 // Description, and the base's language and CharPolicy.
 //

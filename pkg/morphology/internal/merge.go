@@ -393,8 +393,9 @@ var ErrPredictionSharded = errors.New("prediction rebuild needs a single-shard o
 // (tags, prefixes, per-shard suffixes and paradigms) are kept verbatim
 // and only grow, overlay readings are remapped into them, and only the
 // words DAWGs of changed shards are rebuilt. The base's prediction and
-// probability therefore stay valid. The result shares no memory with
-// the inputs and has no Info.
+// probability therefore stay valid. DAWGs and arrays are deep-copied so
+// the result stays valid after the inputs are closed; immutable values
+// (alphabet, CharPolicy) may be shared. The result has no Info.
 func MergeDictionaries(base *Dictionary, overlays []*Dictionary, opts MergeOptions) (*Dictionary, error) {
 	if base == nil {
 		return nil, errors.New("merge: nil base")
@@ -456,6 +457,7 @@ func MergeDictionaries(base *Dictionary, overlays []*Dictionary, opts MergeOptio
 		Alphabet:   alphabet,
 	}
 	var shard0 []WordValue
+	shard0Collected := false // whether shard0 was actually populated below (vs. shard 0 reused verbatim)
 	for i, s := range m.shards {
 		out.Suffixes = append(out.Suffixes, s.suffixes)
 		out.Paradigms = append(out.Paradigms, s.paradigms)
@@ -470,6 +472,7 @@ func MergeDictionaries(base *Dictionary, overlays []*Dictionary, opts MergeOptio
 		pairs = append(pairs, s.placed...)
 		if i == 0 {
 			shard0 = pairs
+			shard0Collected = true
 		}
 		w, err := buildWordsDAWG(pairs, alphabet)
 		if err != nil {
@@ -479,9 +482,13 @@ func MergeDictionaries(base *Dictionary, overlays []*Dictionary, opts MergeOptio
 	}
 
 	if opts.RebuildPrediction {
-		if shard0 == nil { // shard 0 was reused verbatim
-			if shard0, err = shardPairs(base.Words[0], base.Alphabet, nil); err != nil {
-				return nil, err
+		if !shard0Collected { // shard 0 was reused verbatim
+			if len(base.Words) > 0 {
+				if shard0, err = shardPairs(base.Words[0], base.Alphabet, nil); err != nil {
+					return nil, err
+				}
+			} else {
+				shard0 = nil
 			}
 		}
 		pred, err := BuildPredictionFrom(shard0, out.Paradigms[0], out.TagSet, opts.Productive)
