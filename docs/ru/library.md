@@ -70,6 +70,86 @@ d, err := morphology.OpenPyMorphy(loader.UnpackedDirPath())
 (`loader.UnpackedFilePath()` вместо `UnpackedDirPath()`, дальше —
 `morphology.CompileFromXMLFile`).
 
+## Сборка словаря с нуля
+
+Конструкторы выше компилируют уже существующий источник (OpenCorpora
+XML, pymorphy2, UniMorph). Чтобы собрать словарь из собственных
+словоформ — тематический словарь, список имён, небольшой
+пользовательский лексикон — используйте `Builder`, `ImportTSV` или
+`Merge`. Все три дают тот же внутренний формат, что и
+`CompileFrom*Dense` (плотный 1-байтовый алфавит), и проходят
+round-trip через `SaveTo`/`Open`. `Builder` и `ImportTSV` пересобирают
+prediction из своих собственных слов; `Merge`, наоборот, сохраняет
+prediction базового словаря (см. «`Merge` — объединение
+скомпилированных словарей» ниже).
+
+### `Builder` — регистрация словоформ программно
+
+```go
+b := morphology.NewBuilder(morphology.BuilderOptions{Language: "ru"})
+b.AddLemma("кот", "NOUN,anim,masc,sing,nomn")           // начальная форма -> сама себе
+b.AddForm("кота", "кот", "NOUN,anim,masc,sing,gent")    // словоформа -> лемма
+d, err := b.Build()
+```
+
+- `BuilderOptions{Language, Source}` — `Language` используется
+  конвейером сборки; `Source` заполняет `BuildInfo.Source` (по
+  умолчанию `"builder"`).
+- Теги — непрозрачные строки, хранятся как есть и регистрируются
+  автоматически как граммемы — без привязки к набору OpenCorpora.
+- Пустая лемма делает словоформу леммой самой себе (auto-lemma).
+- Повторяющиеся одинаковые записи `(word, lemma, tag)` дедуплицируются.
+- `Builder` одноразовый: `Build()` его закрывает. `ErrNoEntries`
+  возвращается, если `Build` вызван без зарегистрированных записей.
+
+### `ImportTSV` — словоформы из TSV-потока или файла
+
+```go
+d, err := morphology.ImportTSV(r, morphology.BuilderOptions{Language: "ru"})
+```
+
+Читает строки `lemma<TAB>wordform[<TAB>tags]` из `io.Reader` по тем же
+правилам, что и `Builder` (непрозрачные теги, auto-lemma, дедуп).
+Пустые строки и комментарии `#` пропускаются, поля обрезаются, ошибки
+строк указывают номер строки. Вариант для файла не предоставляется —
+оберните путь самостоятельно.
+
+### `Merge` — объединение скомпилированных словарей
+
+```go
+merged, err := morphology.Merge(base, overlays, morphology.MergeAdd)
+
+merged, err = morphology.MergeWithOptions(base, overlays, morphology.MergeOptions{
+    Mode:              morphology.MergeReplace,
+    RebuildPrediction: true,
+})
+```
+
+Объединяет уже скомпилированные словари (например, базовый `.dat` плюс
+overlay-словари), не изменяя входные данные. Слияние структурное: база
+сохраняет свои парадигмы, имя набора тегов (так что
+`pkg/morphology/tagmap` продолжает работать), вероятности и prediction
+для слов вне словаря; слова overlay добавляются в эту структуру.
+
+- `MergeAdd` (значение `MergeOptions.Mode` по умолчанию) — слово
+  overlay, которое уже есть в базе (или в более раннем overlay),
+  пропускается; новые слова добавляются.
+- `MergeReplace` — разборы слова из overlay заменяют существующие
+  разборы этого слова; при нескольких overlay побеждает последний.
+- `MergeOptions.RebuildPrediction` — пересобрать prediction из всех
+  объединённых слов (полезно при слиянии тематических словарей друг с
+  другом); по умолчанию сохраняется prediction базы, и слова overlay в
+  него не попадают. Требует результат с одним шардом (иначе
+  `ErrPredictionSharded`).
+- Входные словари должны совпадать по языку в точности (словарь с
+  пустым языком отклоняется против базы `"ru"`); два разных известных
+  словаря тегов (например, `opencorpora-int` и `unimorph`) также
+  отклоняются (`ErrIncompatibleDictionaries`).
+- Выходной `BuildInfo.Source` — `"merge"`; язык базы, `SourceVersion`
+  и `Description` переносятся без изменений.
+
+См. ExampleMerge и ExampleMergeWithOptions.
+
 ## Точный поиск словоформы
 
 `Parse` возвращает все грамматические разборы слова, отсортированные
@@ -247,9 +327,31 @@ if err := d.SaveTo("opencorpora.dat"); err != nil {
 
 ## Ошибки
 
-Пакет не определяет собственных экспортируемых ошибок (`Err...`) —
-все функции возвращают обёрнутые (`fmt.Errorf("...: %w", err)`) ошибки
-нижележащего слоя (файловая система, разбор формата и т.п.). Проверяйте
-`err != nil` и, если нужно отличить конкретную причину, разворачивайте
-через `errors.Is`/`errors.As` на известные ошибки стандартной
-библиотеки (например, `os.ErrNotExist`).
+Пакет определяет четыре экспортируемые сигнальные ошибки:
+
+```go
+var (
+    ErrNoEntries                // Builder.Build без зарегистрированных записей
+    ErrBuilderClosed            // Builder использован после Build
+    ErrIncompatibleDictionaries // Merge: язык или набор тегов overlay
+                                 // нельзя разделить с базой
+    ErrPredictionSharded        // MergeWithOptions: задан RebuildPrediction,
+                                 // но у объединённого словаря больше
+                                 // одного шарда
+)
+```
+
+Проверяйте их через `errors.Is`:
+
+```go
+d, err := b.Build()
+if errors.Is(err, morphology.ErrNoEntries) {
+    // ничего не зарегистрировано
+}
+```
+
+Остальные функции возвращают обёрнутые (`fmt.Errorf("...: %w", err)`)
+ошибки нижележащего слоя (файловая система, разбор формата и т.п.).
+Проверяйте `err != nil` и, если нужно отличить конкретную причину,
+разворачивайте через `errors.Is`/`errors.As` на известные ошибки
+стандартной библиотеки (например, `os.ErrNotExist`).
