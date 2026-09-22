@@ -2,8 +2,11 @@ package internal
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"slices"
+	"sort"
+	"strings"
 )
 
 // MergeMode is MergeDictionaries' word-level conflict policy; values
@@ -368,4 +371,281 @@ func stringAt(ar []string, i uint16) string {
 		return ar[i]
 	}
 	return ""
+}
+
+// MergeOptions configures MergeDictionaries.
+type MergeOptions struct {
+	Mode MergeMode
+	// RebuildPrediction replaces the base's prediction DAWGs with a single
+	// prefix-0 DAWG rebuilt from the merged shard 0. Requires a
+	// single-shard output (ErrPredictionSharded otherwise) and Productive.
+	RebuildPrediction bool
+	// Productive filters prediction tags (the engine's productive()).
+	Productive func(tag string) bool
+}
+
+// ErrPredictionSharded is returned when RebuildPrediction is requested
+// but the merged dictionary has more than one shard: the engine resolves
+// prediction against shard 0 only.
+var ErrPredictionSharded = errors.New("prediction rebuild needs a single-shard output")
+
+// MergeDictionaries merges overlays into base structurally: base ids
+// (tags, prefixes, per-shard suffixes and paradigms) are kept verbatim
+// and only grow, overlay readings are remapped into them, and only the
+// words DAWGs of changed shards are rebuilt. The base's prediction and
+// probability therefore stay valid. The result shares no memory with
+// the inputs and has no Info.
+func MergeDictionaries(base *Dictionary, overlays []*Dictionary, opts MergeOptions) (*Dictionary, error) {
+	if base == nil {
+		return nil, errors.New("merge: nil base")
+	}
+	winners, err := decideOverlays(base, overlays, opts.Mode)
+	if err != nil {
+		return nil, err
+	}
+	words := make([]string, 0, len(winners))
+	for w := range winners {
+		words = append(words, w)
+	}
+	sort.Strings(words)
+
+	m := newMerger(base)
+	for _, w := range words {
+		win := winners[w]
+		for _, r := range win.readings {
+			loc, err := m.place(win.overlay, overlays[win.overlay], r)
+			if err != nil {
+				return nil, err
+			}
+			s := m.shards[loc.shard]
+			s.placed = append(s.placed, WordValue{Word: w, Value: uint32(loc.para)<<16 | uint32(r.form)})
+			s.dirty = true
+		}
+	}
+	if opts.RebuildPrediction {
+		if len(m.shards) != 1 {
+			return nil, ErrPredictionSharded
+		}
+		if opts.Productive == nil {
+			return nil, errors.New("merge: Productive is required to rebuild prediction")
+		}
+	}
+
+	removed := make(map[string]bool)
+	if opts.Mode == MergeReplace {
+		for _, w := range words {
+			for i, s := range m.shards {
+				if i < len(base.Words) && shardHasWord(base.Words[i], base.Alphabet, w) {
+					removed[w] = true
+					s.dirty = true
+				}
+			}
+		}
+	}
+
+	alphabet, changed, err := mergeAlphabet(base, words)
+	if err != nil {
+		return nil, err
+	}
+
+	out := &Dictionary{
+		Language:   base.Language,
+		TagSet:     m.tagSet,
+		Prefixes:   m.prefixes,
+		CharPolicy: base.CharPolicy,
+		Alphabet:   alphabet,
+	}
+	var shard0 []WordValue
+	for i, s := range m.shards {
+		out.Suffixes = append(out.Suffixes, s.suffixes)
+		out.Paradigms = append(out.Paradigms, s.paradigms)
+		if !s.dirty && !changed && s.base != nil {
+			out.Words = append(out.Words, s.base.Clone())
+			continue
+		}
+		pairs, err := shardPairs(s.base, base.Alphabet, removed)
+		if err != nil {
+			return nil, err
+		}
+		pairs = append(pairs, s.placed...)
+		if i == 0 {
+			shard0 = pairs
+		}
+		w, err := buildWordsDAWG(pairs, alphabet)
+		if err != nil {
+			return nil, fmt.Errorf("merge: shard %d: %w", i, err)
+		}
+		out.Words = append(out.Words, w)
+	}
+
+	if opts.RebuildPrediction {
+		if shard0 == nil { // shard 0 was reused verbatim
+			if shard0, err = shardPairs(base.Words[0], base.Alphabet, nil); err != nil {
+				return nil, err
+			}
+		}
+		pred, err := BuildPredictionFrom(shard0, out.Paradigms[0], out.TagSet, opts.Productive)
+		if err != nil {
+			return nil, fmt.Errorf("merge: prediction: %w", err)
+		}
+		out.Prediction = []*DAWG{pred}
+	} else {
+		for _, p := range base.Prediction {
+			out.Prediction = append(out.Prediction, p.Clone())
+		}
+	}
+
+	if out.Probability, err = mergeProbability(base, overlays, winners, removed); err != nil {
+		return nil, fmt.Errorf("merge: probability: %w", err)
+	}
+	return out, nil
+}
+
+// mergeAlphabet picks the output's dense alphabet: the base's when it
+// can encode every overlay word (changed=false), otherwise a new one over
+// the base runes (or all base words for a non-dense base) plus the
+// overlay words — width 1, falling back to width 2.
+func mergeAlphabet(base *Dictionary, newWords []string) (Alphabet, bool, error) {
+	if da, ok := base.Alphabet.(*DenseAlphabet); ok {
+		fits := true
+		for _, w := range newWords {
+			if _, err := da.Encode(w); err != nil {
+				fits = false
+				break
+			}
+		}
+		if fits {
+			return da, false, nil
+		}
+		a, err := denseAlphabetFor(append([]string{string(da.Runes())}, newWords...))
+		return a, true, err
+	}
+	corpus := slices.Clone(newWords)
+	for _, w := range base.Words {
+		if w == nil {
+			continue
+		}
+		var walkErr error
+		w.Walk(func(key string, _ [][]byte) {
+			word, err := decodeKey(base.Alphabet, key)
+			if err != nil && walkErr == nil {
+				walkErr = err
+			}
+			corpus = append(corpus, word)
+		})
+		if walkErr != nil {
+			return nil, false, walkErr
+		}
+	}
+	a, err := denseAlphabetFor(corpus)
+	return a, true, err
+}
+
+func denseAlphabetFor(corpus []string) (*DenseAlphabet, error) {
+	if a, err := NewDenseAlphabet(1, corpus); err == nil {
+		return a, nil
+	}
+	return NewDenseAlphabet(2, corpus)
+}
+
+// shardPairs returns a base shard's readings as plain-text pairs,
+// skipping removed words. nil w yields nil.
+func shardPairs(w *DAWG, a Alphabet, removed map[string]bool) ([]WordValue, error) {
+	if w == nil {
+		return nil, nil
+	}
+	var pairs []WordValue
+	var walkErr error
+	w.Walk(func(key string, vals [][]byte) {
+		if walkErr != nil {
+			return
+		}
+		word, err := decodeKey(a, key)
+		if err != nil {
+			walkErr = err
+			return
+		}
+		if removed[word] {
+			return
+		}
+		for _, v := range vals {
+			if len(v) >= 4 {
+				pairs = append(pairs, WordValue{Word: word, Value: binary.BigEndian.Uint32(v[:4])})
+			}
+		}
+	})
+	return pairs, walkErr
+}
+
+// buildWordsDAWG encodes pairs under a and builds a words DAWG.
+func buildWordsDAWG(pairs []WordValue, a Alphabet) (*DAWG, error) {
+	keys := make([]string, len(pairs))
+	vals := make([]uint32, len(pairs))
+	for i, p := range pairs {
+		k, ok := encodeKey(a, p.Word)
+		if !ok {
+			return nil, fmt.Errorf("encode %q", p.Word)
+		}
+		keys[i], vals[i] = k, p.Value
+	}
+	return BuildDAWGWithValues(keys, vals)
+}
+
+// mergeProbability carries the base's p(tag|word) DAWG (keys
+// "word:tag"): verbatim when nothing was removed and no overlay supplies
+// probability, otherwise filtered (replaced words dropped) and extended
+// with the winning overlays' entries, then rebuilt.
+func mergeProbability(base *Dictionary, overlays []*Dictionary, winners map[string]*winner, removed map[string]bool) (*DAWG, error) {
+	added := make(map[string]uint32)
+	for word, win := range winners {
+		o := overlays[win.overlay]
+		if o.Probability == nil {
+			continue
+		}
+		for _, r := range win.readings {
+			key := word + ":" + readingTag(o, r)
+			if v := o.Probability.Find(key); v > 0 {
+				added[key] = v
+			}
+		}
+	}
+	if len(added) == 0 && len(removed) == 0 {
+		return base.Probability.Clone(), nil
+	}
+
+	kv := make(map[string]uint32)
+	if base.Probability != nil {
+		base.Probability.WalkValues(func(key string, v uint32) {
+			if i := strings.LastIndexByte(key, ':'); i >= 0 && removed[key[:i]] {
+				return
+			}
+			kv[key] = v
+		})
+	}
+	for k, v := range added {
+		kv[k] = v
+	}
+	if len(kv) == 0 {
+		return nil, nil
+	}
+	keys := make([]string, 0, len(kv))
+	for k := range kv {
+		keys = append(keys, k)
+	}
+	vals := make([]uint32, len(keys))
+	for i, k := range keys {
+		vals[i] = kv[k]
+	}
+	return BuildIntDAWG(keys, vals)
+}
+
+func readingTag(o *Dictionary, r overlayReading) string {
+	if o.TagSet == nil || r.shard >= len(o.Paradigms) || int(r.para) >= len(o.Paradigms[r.shard]) {
+		return ""
+	}
+	p := o.Paradigms[r.shard][r.para]
+	if int(r.form) >= p.Len() {
+		return ""
+	}
+	return o.TagSet.TagName(p.Tag(int(r.form)))
 }

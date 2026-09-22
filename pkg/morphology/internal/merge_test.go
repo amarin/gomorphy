@@ -150,3 +150,134 @@ func TestPlaceOpensNewShardOnSuffixOverflow(t *testing.T) {
 	assert.Len(t, m.shards, 2)
 	assert.Nil(t, m.shards[1].base, "an appended shard has no base DAWG")
 }
+
+func allProductive(string) bool { return true }
+
+// twoShardBase glues two single-shard builds into one 2-shard dense
+// dictionary. Both builds register tags "N" then "G", so shard 1's tag
+// ids are valid under shard 0's TagSet.
+func twoShardBase(t *testing.T) *Dictionary {
+	t.Helper()
+	a, err := BuildDictionaryFromEntries(BuildOptions{}, []BuildEntry{e("кот", "кот", "N"), e("кота", "кот", "G")})
+	require.NoError(t, err)
+	b, err := BuildDictionaryFromEntries(BuildOptions{}, []BuildEntry{e("мышь", "мышь", "N"), e("мыши", "мышь", "G")})
+	require.NoError(t, err)
+	d := NewDictionary("ru", a.TagSet,
+		[][]string{a.Suffixes[0], b.Suffixes[0]}, a.Prefixes,
+		[][]Paradigm{a.Paradigms[0], b.Paradigms[0]},
+		[]*DAWG{a.Words[0], b.Words[0]}, RussianCharPolicy())
+	require.NoError(t, RecompileDense(d))
+	return d
+}
+
+// readingsOf returns word's raw values across all shards (exact key).
+func readingsOf(d *Dictionary, word string) [][]byte {
+	var out [][]byte
+	for _, w := range d.Words {
+		for _, it := range w.SimilarItems(word, nil, d.Alphabet) {
+			if it.Key == word {
+				out = append(out, it.Values...)
+			}
+		}
+	}
+	return out
+}
+
+func TestMergeDictionariesReusesCleanShard(t *testing.T) {
+	base := twoShardBase(t)
+	over := engineDict(t, e("шок", "шок", "N")) // letters already in the base alphabet
+	out, err := MergeDictionaries(base, []*Dictionary{over}, MergeOptions{Mode: MergeAdd})
+	require.NoError(t, err)
+
+	require.Len(t, out.Words, 2)
+	assert.Same(t, base.Alphabet, out.Alphabet, "alphabet reused when it covers the overlay")
+	assert.Equal(t, base.Words[0].Bytes(), out.Words[0].Bytes(), "clean shard 0 is reused byte-for-byte")
+	assert.NotSame(t, base.Words[0], out.Words[0], "…but cloned, not aliased")
+	assert.NotEmpty(t, readingsOf(out, "шок"), "overlay word lands in the target (last) shard")
+	assert.NotEmpty(t, readingsOf(out, "мыши"))
+}
+
+func TestMergeDictionariesExtendsAlphabet(t *testing.T) {
+	base := engineDict(t, e("кот", "кот", "N"))
+	over := engineDict(t, e("wifi", "wifi", "N"))
+	out, err := MergeDictionaries(base, []*Dictionary{over}, MergeOptions{Mode: MergeAdd})
+	require.NoError(t, err)
+	assert.NotSame(t, base.Alphabet, out.Alphabet)
+	assert.NotEmpty(t, readingsOf(out, "wifi"))
+	assert.NotEmpty(t, readingsOf(out, "кот"))
+}
+
+func TestMergeDictionariesReplaceAcrossShards(t *testing.T) {
+	base := twoShardBase(t)
+	over := engineDict(t, e("мыши", "мыши", "X"))
+	out, err := MergeDictionaries(base, []*Dictionary{over}, MergeOptions{Mode: MergeReplace})
+	require.NoError(t, err)
+	vals := readingsOf(out, "мыши")
+	require.Len(t, vals, 1, "all base readings of a replaced word are dropped")
+	assert.NotEmpty(t, readingsOf(out, "кот"))
+	assert.NotEmpty(t, readingsOf(out, "мышь"))
+}
+
+func withProbability(t *testing.T, d *Dictionary, kv map[string]uint32) *Dictionary {
+	t.Helper()
+	keys, vals := sortedKV(kv)
+	p, err := BuildIntDAWG(keys, vals)
+	require.NoError(t, err)
+	d.Probability = p
+	return d
+}
+
+func TestMergeDictionariesProbability(t *testing.T) {
+	newBase := func() *Dictionary {
+		return withProbability(t, engineDict(t, e("кот", "кот", "N"), e("кота", "кот", "G")),
+			map[string]uint32{"кот:N": 500, "кота:G": 300})
+	}
+
+	// Fast path: nothing removed, overlay without probability → verbatim copy.
+	base := newBase()
+	out, err := MergeDictionaries(base, []*Dictionary{engineDict(t, e("шок", "шок", "N"))}, MergeOptions{Mode: MergeAdd})
+	require.NoError(t, err)
+	assert.Equal(t, base.Probability.Bytes(), out.Probability.Bytes())
+	assert.NotSame(t, base.Probability, out.Probability)
+
+	// Overlay probability is carried for the words it wins.
+	over := withProbability(t, engineDict(t, e("шок", "шок", "N")), map[string]uint32{"шок:N": 900})
+	out, err = MergeDictionaries(newBase(), []*Dictionary{over}, MergeOptions{Mode: MergeAdd})
+	require.NoError(t, err)
+	assert.Equal(t, uint32(500), out.Probability.Find("кот:N"))
+	assert.Equal(t, uint32(900), out.Probability.Find("шок:N"))
+
+	// A replaced word loses its base probability entries.
+	out, err = MergeDictionaries(newBase(), []*Dictionary{engineDict(t, e("кот", "кот", "V"))}, MergeOptions{Mode: MergeReplace})
+	require.NoError(t, err)
+	assert.Equal(t, uint32(0), out.Probability.Find("кот:N"))
+	assert.Equal(t, uint32(300), out.Probability.Find("кота:G"))
+}
+
+func TestMergeDictionariesPrediction(t *testing.T) {
+	base := engineDictRaw(t, e("кот", "кот", "N"), e("кота", "кот", "G"))
+	require.NoError(t, BuildPrediction(base, allProductive))
+	require.NoError(t, RecompileDense(base))
+	over := engineDict(t, e("шок", "шок", "N"))
+
+	out, err := MergeDictionaries(base, []*Dictionary{over}, MergeOptions{Mode: MergeAdd})
+	require.NoError(t, err)
+	require.Len(t, out.Prediction, 1)
+	assert.Equal(t, base.Prediction[0].Bytes(), out.Prediction[0].Bytes(), "prediction carried verbatim by default")
+	assert.Empty(t, out.Prediction[0].SimilarItems("ок", nil, nil), "overlay words don't feed carried prediction")
+
+	out, err = MergeDictionaries(base, []*Dictionary{over}, MergeOptions{Mode: MergeAdd, RebuildPrediction: true, Productive: allProductive})
+	require.NoError(t, err)
+	assert.NotEmpty(t, out.Prediction[0].SimilarItems("ок", nil, nil), "rebuilt prediction covers overlay words")
+
+	_, err = MergeDictionaries(twoShardBase(t), []*Dictionary{over}, MergeOptions{Mode: MergeAdd, RebuildPrediction: true, Productive: allProductive})
+	assert.ErrorIs(t, err, ErrPredictionSharded)
+}
+
+// engineDictRaw is engineDict without the dense recompile.
+func engineDictRaw(t *testing.T, entries ...BuildEntry) *Dictionary {
+	t.Helper()
+	d, err := BuildDictionaryFromEntries(BuildOptions{}, entries)
+	require.NoError(t, err)
+	return d
+}
