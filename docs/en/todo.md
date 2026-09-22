@@ -58,6 +58,39 @@ A short status with links to details — the write-ups themselves live in
 
 ## Unfinished/future stages
 
+### Stage 19.1 — Structural merge — PRIORITY 0 (next up), PLANNED 2026-09-22
+
+**Why:** the Stage 19 `Merge` rebuilds its output from `(word, lemma,
+tag)` triples. A review on 2026-09-22 merged a 3-line overlay into the
+real dictionaries and found that on a real base it loses prediction
+(`бутявкающий` → no readings), probability (reading order changes:
+`стали` → `сталь` first) and the TagSet name (`merge`, so `tagmap` stops
+working). It also costs 138 s / 2.8 GB RSS / 16 → 41 MB. Multiple overlays
+don't behave as a fold, and the RU docs/README/CHANGELOG are stale.
+
+**What:** an id-preserving structural merge. The base's tags, prefixes,
+suffixes and paradigms keep their ids, overlay paradigms are remapped
+into them, and only changed shards' word DAWGs are rebuilt. The base
+prediction and probability therefore stay valid. Design:
+[2026-09-22-structural-merge-design.md](superpowers/specs/2026-09-22-structural-merge-design.md);
+plan: [2026-09-22-structural-merge.md](superpowers/plans/2026-09-22-structural-merge.md).
+
+Tasks (plan order; review finding # in brackets):
+
+- [ ] 0. Commit the pending `ImportTSV` empty-wordform fix
+- [ ] 1. `tagmap.Known` [#3]
+- [ ] 2. DAWG primitives: `BuildIntDAWG`, `WalkValues`, `Clone`, `Empty` [#1, #2]
+- [ ] 3. `DenseAlphabet.Runes`, `BuildPredictionFrom` [#1]
+- [ ] 4. Engine: overlay decision with fold semantics [#5]
+- [ ] 5. Engine: id-preserving paradigm remap, target shard [#1, #4]
+- [ ] 6. Engine: `MergeDictionaries` — shard reuse/rebuild, alphabet, prediction, probability [#1, #2, #4]
+- [ ] 7. Public `Merge`/`MergeWithOptions`, compatibility checks, tests [#1–#3, #5]
+- [ ] 8. CLI `merge --rebuild-prediction`
+- [ ] 9. Gated real-dictionary golden test and measurements (budget: pymorphy ≤ 40 s, ≤ 1.5 GB, size ≤ +2%) [#4]
+- [ ] 10. EN docs, godoc, `ExampleMergeWithOptions` [#6]
+- [ ] 11. RU docs (`cli.md`, `library.md`), README, CHANGELOG `[Unreleased]` [#6]
+- [ ] 12. Write-up and roadmap close-out
+
 ### Stage 17 — remainder: zstd compression + a tagset encoding candidate
 
 Narrowing ID types, format groundwork for compression, the density
@@ -296,6 +329,9 @@ the import report, the batch query modes, the skill, and the CLI
     `MergeAdd`/`MergeReplace`, inputs read-only, output dense with
     prediction rebuilt, `Source = "merge"`, base's
     `SourceVersion`/`Description`/language/CharPolicy inherited.
+    **Known broken on real bases** (loses prediction/probability/tagmap,
+    ×2.5–4 size): being replaced by the structural merge, Stage 19.1
+    (priority 0, above).
   - [x] **Prediction rebuilt** by the shared build pipeline (`Build`/
     `ImportTSV`/`Merge` all run `BuildPrediction` then `RecompileDense`)
     — for any result that stays single-shard (the typical thematic
