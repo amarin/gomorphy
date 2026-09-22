@@ -52,6 +52,11 @@ func runMerge(cmd *cobra.Command, args []string, output, mergeMode string) error
 	// read-only by morphology.Open and closed when Merge — the only
 	// consumer — has finished collecting their entries).
 	dicts := make([]*morphology.Dictionary, 0, len(args))
+	defer func() {
+		for _, d := range dicts {
+			_ = d.Close()
+		}
+	}()
 	for _, in := range args {
 		d, err := morphology.Open(in)
 		if err != nil {
@@ -59,11 +64,6 @@ func runMerge(cmd *cobra.Command, args []string, output, mergeMode string) error
 		}
 		dicts = append(dicts, d)
 	}
-	defer func() {
-		for _, d := range dicts {
-			_ = d.Close()
-		}
-	}()
 
 	merged, err := morphology.Merge(dicts[0], dicts[1:], mode)
 	if err != nil {
