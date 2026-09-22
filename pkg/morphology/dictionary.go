@@ -1,10 +1,33 @@
 // Package morphology is the public API for morphological analysis over
-// dictionaries in a single internal format. Dictionaries come from three
-// bundled importers — pymorphy2, OpenCorpora and UniMorph (see
-// docs/en/unimorph.md) — or are built from scratch: Builder accumulates
-// wordform entries, ImportTSV loads a wordform TSV, Merge combines
-// existing dictionaries, and the CompileFrom* helpers wrap an importer
-// in a single call.
+// dictionaries in a single internal format.
+//
+// # Quick start
+//
+// Install the gomorphy command (go install github.com/amarin/gomorphy/cmd/gomorphy),
+// fetch and compile a ready-made dictionary in one step, then look words up:
+//
+//	gomorphy update unimorph
+//	gomorphy lookup -d .data/unimorph/ru/unimorph.dat кота
+//
+// Self-contained runnable programs for every entry point of this package
+// live in the examples/ directory of the repository.
+//
+// # Creating a dictionary in code
+//
+// Dictionaries come from three bundled importers — pymorphy2, OpenCorpora
+// and UniMorph (the CompileFrom* helpers wrap one in a single call, see
+// also docs/en/unimorph.md) — or are built from scratch with [Builder]
+// (accumulates wordforms programmatically, see ExampleNewBuilder) and
+// [ImportTSV] (loads a lemma<TAB>wordform[<TAB>tags] stream, see
+// ExampleImportTSV). The CLI mirrors these as `gomorphy build` for the
+// importers and `gomorphy import tsv words.tsv -o out.dat` for TSV.
+//
+// # Merging dictionaries
+//
+// [Merge] combines already-compiled dictionaries into one — [MergeAdd]
+// keeps the base reading for words present in both, [MergeReplace] swaps
+// it for the overlay's (see ExampleMerge). The CLI equivalent is
+// `gomorphy merge --mode add -o merged.dat base.dat overlay.dat`.
 package morphology
 
 import (
