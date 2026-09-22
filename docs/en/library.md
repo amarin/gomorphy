@@ -118,7 +118,7 @@ d, err := b.Build()
 d, err := morphology.ImportTSV(r, morphology.BuilderOptions{Language: "ru"})
 ```
 
-Reads `lemma<TAB>wordform[<TAB>tags]` rows (`io.Reader` or a file) with the
+Reads `lemma<TAB>wordform[<TAB>tags]` rows from an `io.Reader` with the
 same rules as `Builder` (opaque tags, auto-lemma, dedup). Blank lines and
 `#` comments are skipped, fields trimmed, row errors name the offending
 line. A file variant is not provided — wrap the caller's path yourself.
