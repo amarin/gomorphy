@@ -239,8 +239,8 @@ func (s *mergeShard) internSuffix(text string) (uint16, error) {
 	if id, ok := idx[text]; ok {
 		return id, nil
 	}
-	if len(s.suffixes) >= suffixShardLimit {
-		return 0, fmt.Errorf("shard exceeded %d unique suffixes", suffixShardLimit)
+	if len(s.suffixes) >= mergeSuffixLimit {
+		return 0, fmt.Errorf("shard exceeded %d unique suffixes", mergeSuffixLimit)
 	}
 	id := uint16(len(s.suffixes))
 	s.suffixes = append(s.suffixes, text)

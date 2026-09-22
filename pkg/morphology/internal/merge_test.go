@@ -84,6 +84,55 @@ func TestPlaceRemapsIntoBaseIDSpace(t *testing.T) {
 	assert.Equal(t, baseSuffixes, base.Suffixes[0], "the base suffixes are not mutated")
 }
 
+// TestPlaceRemapsOverlayOnlyIDs uses an overlay paradigm whose tag/suffix
+// names are entirely new to the base (unlike TestPlaceRemapsIntoBaseIDSpace's
+// N,nomn/N,gent/"а" shapes, which the builder happens to assign identical
+// ids to in both base and overlay — a place() that copied overlay ids
+// verbatim would pass that test's assertions too). Here the overlay's own
+// local ids and the merged output ids are forced apart, so this test can
+// only pass if place() actually translates suffix/tag/prefix ids via their
+// names rather than copying them through.
+func TestPlaceRemapsOverlayOnlyIDs(t *testing.T) {
+	base := engineDict(t, e("кот", "кот", "N,nomn"), e("кота", "кот", "N,gent"))
+
+	// "два"/"двух": stem "дв", suffixes "а" (id0) and "ух" (id1); tags
+	// "NUM,nomn" (id0) and "NUM,gen" (id1) — none of these names exist in
+	// base, and even "а" (base's own suffix id1) lands at a different
+	// local id here (0), so every form's ids diverge from the output.
+	o := engineDict(t, e("два", "два", "NUM,nomn"), e("двух", "два", "NUM,gen"))
+	rs, err := wordReadings(o)
+	require.NoError(t, err)
+	r := rs["два"][0]
+
+	m := newMerger(base)
+	loc, err := m.place(0, o, r)
+	require.NoError(t, err)
+
+	op := o.Paradigms[r.shard][r.para]
+	outPara := m.shards[loc.shard].paradigms[loc.para]
+	require.Equal(t, op.Len(), outPara.Len())
+
+	diverged := false
+	for i := 0; i < op.Len(); i++ {
+		wantSuffix := stringAt(o.Suffixes[r.shard], op.Suffix(i))
+		gotSuffix := stringAt(m.shards[loc.shard].suffixes, outPara.Suffix(i))
+		assert.Equal(t, wantSuffix, gotSuffix, "form %d suffix text", i)
+
+		wantTag := o.TagSet.TagName(op.Tag(i))
+		gotTag := m.tagSet.TagName(outPara.Tag(i))
+		assert.Equal(t, wantTag, gotTag, "form %d tag name", i)
+
+		wantPrefix := stringAt(o.Prefixes, op.Prefix(i))
+		gotPrefix := stringAt(m.prefixes, outPara.Prefix(i))
+		assert.Equal(t, wantPrefix, gotPrefix, "form %d prefix text", i)
+
+		if op.Suffix(i) != outPara.Suffix(i) || op.Tag(i) != outPara.Tag(i) {
+			diverged = true
+		}
+	}
+	assert.True(t, diverged, "remapped ids must differ from the overlay's own local ids for at least one form — otherwise this test can't tell a real remap from a verbatim copy")
+}
+
 func TestPlaceOpensNewShardOnSuffixOverflow(t *testing.T) {
 	old := mergeSuffixLimit
 	mergeSuffixLimit = 2
