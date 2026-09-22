@@ -66,3 +66,12 @@ func TestMapOpenCorporaAndOpenCorporaIntAgree(t *testing.T) {
 
 	assert.Equal(t, oc.Features, pm.Features)
 }
+
+func TestKnown(t *testing.T) {
+	for _, name := range []string{"opencorpora", "opencorpora-int", "unimorph"} {
+		assert.True(t, tagmap.Known(name), name)
+	}
+	for _, name := range []string{"", "builder", "tsv", "merge"} {
+		assert.False(t, tagmap.Known(name), name)
+	}
+}

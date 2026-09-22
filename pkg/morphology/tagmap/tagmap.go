@@ -31,3 +31,11 @@ func Map(dictName, tag string) (Bundle, bool) {
 	}
 	return buildBundle(src.tokenize(tag), src.table), true
 }
+
+// Known reports whether dictName (a dictionary's TagSet.Name) is a
+// source this package can normalize — i.e. whether Map(dictName, …)
+// returns ok=true.
+func Known(dictName string) bool {
+	_, ok := sources[dictName]
+	return ok
+}
