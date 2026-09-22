@@ -55,10 +55,11 @@ A short status with links to details — the write-ups themselves live in
 | — Universal tag mapping between dictionaries (`pkg/morphology/tagmap`, native -> universal) | DONE (partial, see remaining backlog below) | [implementation/tag-mapping.md](implementation/tag-mapping.md) |
 | — Stage 18 (documentation + tests + godoc audit; the CLI part was closed separately, see above) | DONE 2026-09-17 | [implementation/stage-18-finalize.md](implementation/stage-18-finalize.md) |
 | 16. UniMorph import (importer, loader, public API, CLI, dense by default) | DONE 2026-09-19 | [implementation/stage-16-import-unimorph.md](implementation/stage-16-import-unimorph.md) |
+| 19.1. Structural merge (id-preserving `Merge`, replaces the entries-based one) | DONE 2026-09-23 | [implementation/stage-19-builder-tsv-merge.md](implementation/stage-19-builder-tsv-merge.md#structural-merge-2026-09-23) |
 
 ## Unfinished/future stages
 
-### Stage 19.1 — Structural merge — PRIORITY 0 (next up), PLANNED 2026-09-22
+### Stage 19.1 — Structural merge — DONE 2026-09-23
 
 **Why:** the Stage 19 `Merge` rebuilds its output from `(word, lemma,
 tag)` triples. A review on 2026-09-22 merged a 3-line overlay into the
@@ -77,19 +78,19 @@ plan: [2026-09-22-structural-merge.md](superpowers/plans/2026-09-22-structural-m
 
 Tasks (plan order; review finding # in brackets):
 
-- [ ] 0. Commit the pending `ImportTSV` empty-wordform fix
-- [ ] 1. `tagmap.Known` [#3]
-- [ ] 2. DAWG primitives: `BuildIntDAWG`, `WalkValues`, `Clone`, `Empty` [#1, #2]
-- [ ] 3. `DenseAlphabet.Runes`, `BuildPredictionFrom` [#1]
-- [ ] 4. Engine: overlay decision with fold semantics [#5]
-- [ ] 5. Engine: id-preserving paradigm remap, target shard [#1, #4]
-- [ ] 6. Engine: `MergeDictionaries` — shard reuse/rebuild, alphabet, prediction, probability [#1, #2, #4]
-- [ ] 7. Public `Merge`/`MergeWithOptions`, compatibility checks, tests [#1–#3, #5]
-- [ ] 8. CLI `merge --rebuild-prediction`
-- [ ] 9. Gated real-dictionary golden test and measurements (budget: pymorphy ≤ 40 s, ≤ 1.5 GB, size ≤ +2%) [#4]
-- [ ] 10. EN docs, godoc, `ExampleMergeWithOptions` [#6]
-- [ ] 11. RU docs (`cli.md`, `library.md`), README, CHANGELOG `[Unreleased]` [#6]
-- [ ] 12. Write-up and roadmap close-out
+- [x] 0. Commit the pending `ImportTSV` empty-wordform fix
+- [x] 1. `tagmap.Known` [#3]
+- [x] 2. DAWG primitives: `BuildIntDAWG`, `WalkValues`, `Clone`, `Empty` [#1, #2]
+- [x] 3. `DenseAlphabet.Runes`, `BuildPredictionFrom` [#1]
+- [x] 4. Engine: overlay decision with fold semantics [#5]
+- [x] 5. Engine: id-preserving paradigm remap, target shard [#1, #4]
+- [x] 6. Engine: `MergeDictionaries` — shard reuse/rebuild, alphabet, prediction, probability [#1, #2, #4]
+- [x] 7. Public `Merge`/`MergeWithOptions`, compatibility checks, tests [#1–#3, #5]
+- [x] 8. CLI `merge --rebuild-prediction`
+- [x] 9. Gated real-dictionary golden test and measurements (budget: pymorphy ≤ 40 s, ≤ 1.5× base build RSS, size ≤ +2%) [#4]
+- [x] 10. EN docs, godoc, `ExampleMergeWithOptions` [#6]
+- [x] 11. RU docs (`cli.md`, `library.md`), README, CHANGELOG `[Unreleased]` [#6]
+- [x] 12. Write-up and roadmap close-out
 
 ### Stage 17 — remainder: zstd compression + a tagset encoding candidate
 
@@ -113,6 +114,17 @@ order:
 
 Details and what's already done are in
 [implementation/stage-17-optimize.md](implementation/stage-17-optimize.md).
+
+### DAWG builder memory (post-1.0 backlog)
+
+Building or merging a full-size Russian dictionary (pymorphy/opencorpora,
+~5 M (word, value) pairs) peaks at **3.5–4.6 GB RSS**, dominated by
+`BuildDAWGWithValues`/`dawgBuilder.newNode` in `internal/`. `gomorphy
+build pymorphy` from source alone peaks at 3.5 GB/24.3 s (2026-09-23), and
+`merge` on the same base adds only ~1.3× on top of that floor (see
+[implementation/stage-19-builder-tsv-merge.md](implementation/stage-19-builder-tsv-merge.md#rss-budget-revised-2026-09-23)).
+Not blocking 1.0.0; worth revisiting (e.g. streaming/chunking the words-DAWG
+build) since it's the cost floor for both `build` and `merge`.
 
 ### Universal tag mapping: remaining backlog (not blocking 1.0.0)
 
@@ -326,12 +338,13 @@ the import report, the batch query modes, the skill, and the CLI
     without tags, warnings about diverging stems (LCP) and anomalously
     short paradigms) — still open.
   - [x] **Merge** (`merge.go`): `Merge(base, overlays, mode)` with
-    `MergeAdd`/`MergeReplace`, inputs read-only, output dense with
-    prediction rebuilt, `Source = "merge"`, base's
-    `SourceVersion`/`Description`/language/CharPolicy inherited.
-    **Known broken on real bases** (loses prediction/probability/tagmap,
-    ×2.5–4 size): being replaced by the structural merge, Stage 19.1
-    (priority 0, above).
+    `MergeAdd`/`MergeReplace`, inputs read-only, `Source = "merge"`,
+    base's `SourceVersion`/`Description`/language/CharPolicy inherited.
+    The original entries-based rebuild was replaced 2026-09-23 by an
+    id-preserving **structural merge** (base tags/prefixes/suffixes/
+    paradigms keep their ids; only changed shards' word DAWGs rebuild),
+    see Stage 19.1 above and
+    [implementation/stage-19-builder-tsv-merge.md](implementation/stage-19-builder-tsv-merge.md#structural-merge-2026-09-23).
   - [x] **Prediction rebuilt** by the shared build pipeline (`Build`/
     `ImportTSV`/`Merge` all run `BuildPrediction` then `RecompileDense`)
     — for any result that stays single-shard (the typical thematic
