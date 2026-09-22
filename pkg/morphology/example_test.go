@@ -332,6 +332,105 @@ func ExampleNewMultiDictionary() {
 	// 1 дом NOUN,inan,masc,sing,nomn
 }
 
+// ExampleNewBuilder shows creating a dictionary from scratch, entirely in
+// memory with no source files: register wordforms with AddForm/AddLemma,
+// then Build the dictionary. The wordform's tag is an opaque string stored
+// verbatim (no mapping onto the OpenCorpora grammeme set) — useful for
+// small thematic dictionaries.
+func ExampleNewBuilder() {
+	b := morphology.NewBuilder(morphology.BuilderOptions{Language: "ru"})
+	if err := b.AddLemma("кот", "NOUN,anim,masc,sing,nomn"); err != nil {
+		log.Fatal(err)
+	}
+	if err := b.AddForm("кота", "кот", "NOUN,anim,masc,sing,gent"); err != nil {
+		log.Fatal(err)
+	}
+
+	d, err := b.Build()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, r := range d.Parse("кота") {
+		fmt.Println(r.Normal, r.Tag)
+	}
+	// Output:
+	// кот NOUN,anim,masc,sing,gent
+}
+
+// ExampleImportTSV shows building a dictionary from a tab-separated stream
+// (lemma<TAB>wordform[<TAB>tags]) — the same format the `gomorphy import
+// tsv` CLI command reads. The third column is optional; tags are opaque and
+// registered automatically as grammemes.
+func ExampleImportTSV() {
+	tsv := "кот\tкот\tNOUN,anim,masc,sing,nomn\n" +
+		"кот\tкота\tNOUN,anim,masc,sing,gent\n" +
+		"мышь\tмыши\tNOUN,anim,femn,sing,gent\n"
+
+	d, err := morphology.ImportTSV(strings.NewReader(tsv), morphology.BuilderOptions{Language: "ru"})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, r := range d.Parse("кота") {
+		fmt.Println(r.Normal, r.Tag)
+	}
+	// Output:
+	// кот NOUN,anim,masc,sing,gent
+}
+
+// ExampleMerge shows combining two compiled dictionaries into one. The
+// base's readings win for words present in both (MergeAdd); words unique to
+// the overlay are added. Input dictionaries are never mutated.
+func ExampleMerge() {
+	base := mustCompileExampleDict()
+
+	overlay := morphology.NewBuilder(morphology.BuilderOptions{Language: "ru"})
+	if err := overlay.AddLemma("котёнок", "NOUN,anim,masc,sing,nomn"); err != nil {
+		log.Fatal(err)
+	}
+	overlayDict, err := overlay.Build()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	merged, err := morphology.Merge(base, []*morphology.Dictionary{overlayDict}, morphology.MergeAdd)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, r := range merged.Parse("котёнок") {
+		fmt.Println(r.Normal, r.Tag)
+	}
+	// Output:
+	// котёнок NOUN,anim,masc,sing,nomn
+}
+
+// ExampleMergeReplace shows merging in "replace" mode: for a word present
+// in both dictionaries the overlay readings fully replace the base's.
+func ExampleMergeReplace() {
+	overlay := morphology.NewBuilder(morphology.BuilderOptions{Language: "ru"})
+	// "кот" is in the base fixture too, but with different readings here.
+	if err := overlay.AddForm("кот", "кот", "VERB,impf,trans"); err != nil {
+		log.Fatal(err)
+	}
+	overlayDict, err := overlay.Build()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	merged, err := morphology.Merge(mustCompileExampleDict(), []*morphology.Dictionary{overlayDict}, morphology.MergeReplace)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, r := range merged.Parse("кот") {
+		fmt.Println(r.Normal, r.Tag)
+	}
+	// Output:
+	// кот VERB,impf,trans
+}
+
 // ExampleMultiDictionary_DictTagSetName shows combining a Reading from
 // MultiDictionary with pkg/morphology/tagmap to get a universal tag
 // comparable across dictionaries with different native tag syntax:

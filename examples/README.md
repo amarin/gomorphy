@@ -9,6 +9,9 @@ these examples are drawn from.
 | [opencorpora](opencorpora/main.go) | `CompileFromXML` | no — a tiny `dict.xml` fragment is inlined |
 | [unimorph](unimorph/main.go) | `CompileFromUniMorph` | no — a tiny TSV fragment is inlined |
 | [multidict](multidict/main.go) | `NewMultiDictionary` | no — two tiny `dict.xml` fragments are inlined |
+| [builder](builder/main.go) | `NewBuilder` | no — wordforms registered in code |
+| [importtsv](importtsv/main.go) | `ImportTSV` | no — a tiny TSV stream is inlined |
+| [merge](merge/main.go) | `Merge` | no — two tiny dictionaries are built in code |
 | [pymorphy](pymorphy/main.go) | `OpenPyMorphyDense` | yes — `gomorphy download pymorphy` first |
 | [open](open/main.go) | `Open` | yes — a compiled `.dat` (`gomorphy update <type>` first) |
 
@@ -18,6 +21,9 @@ Run any of them directly from the repository root:
 go run ./examples/opencorpora
 go run ./examples/unimorph
 go run ./examples/multidict
+go run ./examples/builder
+go run ./examples/importtsv
+go run ./examples/merge
 
 gomorphy download pymorphy
 go run ./examples/pymorphy -dir .data/pymorphy/data

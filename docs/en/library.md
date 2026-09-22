@@ -85,6 +85,60 @@ defer d.Close()
 (`OpenPyMorphy*`/`CompileFromXML*` don't use mmap), so it's safe to call
 unconditionally.
 
+## Building a dictionary from scratch
+
+The constructors above compile an existing source (OpenCorpora XML,
+pymorphy2, UniMorph). To build a dictionary from your own wordforms — a
+thematic dictionary, a name list, a small custom lexicon — use `Builder`,
+`ImportTSV`, or `Merge`. All three produce the same in-memory format as
+`CompileFrom*Dense`: dense 1-byte alphabet, prediction rebuilt, round-trips
+through `SaveTo`/`Open`.
+
+### `Builder` — register wordforms programmatically
+
+```go
+b := morphology.NewBuilder(morphology.BuilderOptions{Language: "ru"})
+b.AddLemma("кот", "NOUN,anim,masc,sing,nomn")           // normal form -> itself
+b.AddForm("кота", "кот", "NOUN,anim,masc,sing,gent")    // wordform -> lemma
+d, err := b.Build()
+```
+
+- `BuilderOptions{Language, Source}` — `Language` is used by the build
+  pipeline; `Source` populates `BuildInfo.Source` (default `"builder"`).
+- Tags are opaque strings, stored verbatim and registered automatically as
+  grammemes — no mapping onto the OpenCorpora set.
+- An empty lemma makes the wordform its own lemma (auto-lemma).
+- Repeated identical `(word, lemma, tag)` entries are deduplicated.
+- A `Builder` is single-use: `Build()` closes it. `ErrNoEntries` is
+  returned when `Build` is called with nothing registered.
+
+### `ImportTSV` — wordforms from a TSV stream or file
+
+```go
+d, err := morphology.ImportTSV(r, morphology.BuilderOptions{Language: "ru"})
+```
+
+Reads `lemma<TAB>wordform[<TAB>tags]` rows (`io.Reader` or a file) with the
+same rules as `Builder` (opaque tags, auto-lemma, dedup). Blank lines and
+`#` comments are skipped, fields trimmed, row errors name the offending
+line. A file variant is not provided — wrap the caller's path yourself.
+
+### `Merge` — combine compiled dictionaries
+
+```go
+merged, err := morphology.Merge(base, overlays, morphology.MergeAdd)
+```
+
+Combines already-compiled dictionaries (e.g. a base `.dat` plus overlay
+dictionaries) without mutating its inputs:
+
+- `MergeAdd` — a word present in the base keeps only the base's readings;
+  overlay-only words are added with their own readings.
+- `MergeReplace` — for a word present in both, the overlay's readings fully
+  replace the base's; words unique to either side are preserved.
+- Output `BuildInfo.Source` is `"merge"`; the base's language,
+  `SourceVersion` and `Description` carry over.
+
 ### Fetching source data
 
 For the CLI utility (`gomorphy download`/`unpack`/`update`, see
@@ -219,7 +273,7 @@ dictionary was built), or `nil` if it's absent (dictionaries not saved via
 type BuildInfo struct {
     BuiltAt        time.Time
     LibraryVersion string
-    Source         string // "pymorphy2" / "opencorpora"
+    Source         string // "pymorphy2" / "opencorpora" / "unimorph" / "builder" / "tsv" / "merge"
     SourceVersion  string
     Author         string
     Description    string
@@ -300,9 +354,26 @@ into its own `.dat` section and reconstructed on `Open`.
 
 ## Errors
 
-The package does not define its own exported errors (`Err...`) — every
-function returns wrapped (`fmt.Errorf("...: %w", err)`) errors from the
-underlying layer (filesystem, format parsing, etc.). Check `err != nil`
-and, if you need to distinguish a specific cause, unwrap via
-`errors.Is`/`errors.As` against known standard-library errors (e.g.
-`os.ErrNotExist`).
+The package defines two exported sentinel errors for the `Builder` API:
+
+```go
+var (
+    ErrNoEntries    // Builder.Build with no registered entries
+    ErrBuilderClosed // Builder used after Build
+)
+```
+
+Check them via `errors.Is`:
+
+```go
+d, err := b.Build()
+if errors.Is(err, morphology.ErrNoEntries) {
+    // nothing was registered
+}
+```
+
+Every other function returns wrapped
+(`fmt.Errorf("...: %w", err)`) errors from the underlying layer
+(filesystem, format parsing, etc.) — check `err != nil` and, if you need
+to distinguish a specific cause, unwrap via `errors.Is`/`errors.As`
+against known standard-library errors (e.g. `os.ErrNotExist`).
