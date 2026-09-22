@@ -76,6 +76,36 @@ func BuildDAWGWithValuesBytes(keys []string, values [][]byte) (*DAWG, error) {
 	return buildDAWGWithPayload(payloadKeys)
 }
 
+// BuildIntDAWG builds a dawgdic value DAWG (the IntDAWG layout pymorphy2
+// uses for p_t_given_w.intdawg): every key maps to a uint32 value stored
+// in its terminal node, read back with Find/WalkValues. keys must be
+// unique (any order); every value must be < 1<<31 (the top bit is the
+// dawgdic leaf flag).
+func BuildIntDAWG(keys []string, values []uint32) (*DAWG, error) {
+	if len(keys) != len(values) {
+		return nil, fmt.Errorf("dawg: keys and values must have same length")
+	}
+	order := make([]int, len(keys))
+	for i := range order {
+		order[i] = i
+		if values[i] >= isLeafBit {
+			return nil, fmt.Errorf("dawg: value %d for key %q exceeds 31 bits", values[i], keys[i])
+		}
+	}
+	sort.Slice(order, func(a, b int) bool { return keys[order[a]] < keys[order[b]] })
+	sk := make([]string, len(keys))
+	sv := make([]uint32, len(keys))
+	for i, j := range order {
+		sk[i], sv[i] = keys[j], values[j]
+		if i > 0 && sk[i] == sk[i-1] {
+			return nil, fmt.Errorf("dawg: duplicate key %q", sk[i])
+		}
+	}
+	b := newDawgBuilder()
+	b.insertKeyValues(sk, sv, nil)
+	return b.compile()
+}
+
 // buildDAWGWithPayload — shared code path for BuildDAWG and BuildDAWGWithValues.
 func buildDAWGWithPayload(keys []string) (*DAWG, error) {
 	sort.Strings(keys)
@@ -107,6 +137,13 @@ func newDawgBuilder() *dawgBuilder {
 // If onInserted is not nil, it is called after every insertion with the
 // 0-based index of the key just inserted — used for progress callbacks.
 func (b *dawgBuilder) insertKeys(keys []string, onInserted func(i int)) {
+	b.insertKeyValues(keys, nil, onInserted)
+}
+
+// insertKeyValues is like insertKeys, but additionally assigns each
+// terminal node the corresponding value from values (nil for payload
+// DAWGs, whose terminal values are always 0).
+func (b *dawgBuilder) insertKeyValues(keys []string, values []uint32, onInserted func(i int)) {
 	for i, k := range keys {
 		common := 0
 		for common < len(b.lastKey) && common < len(k) && b.lastKey[common] == k[common] {
@@ -117,6 +154,9 @@ func (b *dawgBuilder) insertKeys(keys []string, onInserted func(i int)) {
 			b.appendByte(k[j])
 		}
 		b.nodes[b.path[len(b.path)-1]].leaf = true
+		if values != nil {
+			b.nodes[b.path[len(b.path)-1]].value = values[i]
+		}
 		b.lastKey = k
 
 		if onInserted != nil {
@@ -145,9 +185,10 @@ type dawgBuilder struct {
 // the first child is nodes[first].
 type dbNode struct {
 	label byte
-	first int32 // first child (head of the chain); 0 — no children
-	next  int32 // next sibling in the parent's chain; 0 — none
-	leaf  bool  // the node is terminal (has a value)
+	first int32  // first child (head of the chain); 0 — no children
+	next  int32  // next sibling in the parent's chain; 0 — none
+	leaf  bool   // the node is terminal (has a value)
+	value uint32 // the terminal's value (BuildIntDAWG); 0 for payload DAWGs
 }
 
 func (b *dawgBuilder) newNode(label byte) int32 {
@@ -207,7 +248,14 @@ func (b *dawgBuilder) chainSig(n int32) string {
 		if b.nodes[n].next != 0 {
 			f |= 2
 		}
+		v := b.nodes[n].value
+		if v != 0 {
+			f |= 4
+		}
 		b.sigBuf = append(b.sigBuf, f)
+		if v != 0 {
+			b.sigBuf = append(b.sigBuf, byte(v>>24), byte(v>>16), byte(v>>8), byte(v))
+		}
 		child := b.nodes[n].first
 		b.sigBuf = append(b.sigBuf, byte(child>>24), byte(child>>16), byte(child>>8), byte(child))
 		n = b.nodes[n].next
@@ -277,11 +325,19 @@ type placer struct {
 
 	dic   []uint32
 	alloc *slotAllocator
-	link  map[int32]uint32
+	link  map[linkKey]uint32
 
 	processedNodes int32
 	progressEvery  int32
 	progress       func(processed, total int)
+}
+
+// linkKey identifies a reusable base: the shared first child plus the
+// value stored in the base's value unit (0 for payload DAWGs, so their
+// layout is unchanged).
+type linkKey struct {
+	first int32
+	value uint32
 }
 
 func newPlacer(b *dawgBuilder, totalNodes int32, progress func(processed, total int)) *placer {
@@ -294,7 +350,7 @@ func newPlacer(b *dawgBuilder, totalNodes int32, progress func(processed, total 
 		b:             b,
 		dic:           []uint32{0},
 		alloc:         newSlotAllocator(),
-		link:          make(map[int32]uint32),
+		link:          make(map[linkKey]uint32),
 		progressEvery: progressEvery,
 		progress:      progress,
 	}
@@ -306,9 +362,10 @@ func newPlacer(b *dawgBuilder, totalNodes int32, progress func(processed, total 
 func (p *placer) place(n int32, index uint32) bool {
 	node := &p.b.nodes[n]
 	first := node.first
+	lk := linkKey{first: first, value: node.value}
 
 	if first != 0 && p.b.merged[first] {
-		if base, ok := p.link[first]; ok && encodable(index^base) {
+		if base, ok := p.link[lk]; ok && encodable(index^base) {
 			setAt(&p.dic, index, unitAt(index^base, node.label, node.leaf))
 			p.tick()
 			return true
@@ -327,10 +384,10 @@ func (p *placer) place(n int32, index uint32) bool {
 
 	setAt(&p.dic, index, unitAt(index^base, node.label, node.leaf))
 	if node.leaf {
-		setAt(&p.dic, base, isLeafBit)
+		setAt(&p.dic, base, isLeafBit|node.value)
 	}
 	if first != 0 && p.b.merged[first] {
-		p.link[first] = base
+		p.link[lk] = base
 	}
 
 	for e := first; e != 0; e = p.b.nodes[e].next {
