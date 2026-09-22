@@ -431,6 +431,36 @@ func ExampleMergeReplace() {
 	// кот VERB,impf,trans
 }
 
+// ExampleMergeWithOptions merges two thematic dictionaries and rebuilds
+// prediction so the overlay's endings are predicted too.
+func ExampleMergeWithOptions() {
+	base := morphology.NewBuilder(morphology.BuilderOptions{})
+	_ = base.AddForm("кот", "кот", "NOUN,nomn")
+	_ = base.AddForm("кота", "кот", "NOUN,gent")
+	baseDict, err := base.Build()
+	if err != nil {
+		log.Fatal(err)
+	}
+	overlay := morphology.NewBuilder(morphology.BuilderOptions{})
+	_ = overlay.AddForm("мышь", "мышь", "NOUN,nomn")
+	_ = overlay.AddForm("мыши", "мышь", "NOUN,gent")
+	overlayDict, err := overlay.Build()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	merged, err := morphology.MergeWithOptions(baseDict, []*morphology.Dictionary{overlayDict},
+		morphology.MergeOptions{Mode: morphology.MergeAdd, RebuildPrediction: true})
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, r := range merged.Parse("мыши") {
+		fmt.Println(r.Normal, r.Tag)
+	}
+	// Output:
+	// мышь NOUN,gent
+}
+
 // ExampleMultiDictionary_DictTagSetName shows combining a Reading from
 // MultiDictionary with pkg/morphology/tagmap to get a universal tag
 // comparable across dictionaries with different native tag syntax:
