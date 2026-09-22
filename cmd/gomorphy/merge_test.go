@@ -157,3 +157,15 @@ func TestMergeCommand_OutputOverwritesInput(t *testing.T) {
 	err := root.Execute()
 	require.Error(t, err, "-o equal to an input .dat must be rejected, not silently overwrite it")
 }
+
+func TestMergeCommand_RebuildPrediction(t *testing.T) {
+	base := buildBuilderDat(t, [3]string{"кот", "кот", mergeCLIBaseTag})
+	overlay := buildBuilderDat(t, [3]string{"мыши", "мыши", mergeCLIOverlayTag})
+	out := filepath.Join(t.TempDir(), "merged.dat")
+
+	root := newTestRootCmd(newMergeCommand())
+	root.SetArgs([]string{"merge", "--mode", "add", "--rebuild-prediction", "-o", out, base, overlay})
+	require.NoError(t, root.Execute())
+
+	assert.Contains(t, openTags(t, out, "камыши"), mergeCLIOverlayTag, "rebuilt prediction covers overlay words")
+}
