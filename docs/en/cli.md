@@ -178,7 +178,7 @@ gomorphy import tsv words.tsv -o out.dat --source ships
 ```
 
 Reads a tab-separated wordform stream and builds a `.dat` (dense 1-byte
-alphabet, prediction rebuilt — same default as `build`). Used to make
+alphabet, prediction rebuilt, like the other self-built dictionaries). Used to make
 thematic dictionaries with no external resources (no internet, no base
 OpenCorpora dictionary): prepare a TSV, import it into a `.dat`.
 
