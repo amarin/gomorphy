@@ -11,74 +11,76 @@ const predictionMaxSuffix = 5
 // payload: the field is a uint16 in the on-disk format.
 const predictionMaxCount = 0xffff
 
-// BuildPrediction rebuilds the pymorphy2 KnownSuffixAnalyzer prediction DAWG
-// (d.Prediction) from the raw dictionary wordforms in d.Words[0].
-//
-// For every reading (wordform → paradigm, form) whose tag is productive, the
-// wordform's last 1..5 runes become suffix keys; readings sharing a
-// (suffix, paradigm, form) triple accumulate an attestation count. Each
-// distinct triple becomes one payload leaf: count(BE16) + para(BE16) +
-// form(BE16), attached to its suffix key via BuildDAWGWithValuesBytes — the
-// exact shape parse.go's predictForPrefix consumes.
-//
-// The dictionary must be unsharded and still raw (plain-text wordform keys),
-// so BuildPrediction has to run before RecompileDense; a sharded dictionary
-// (len(d.Words) != 1) is left untouched (no-op). productive is injected
-// because it lives in the engine package (pkg/morphology/parse.go) and
-// internal must not import it.
+// WordValue is one raw words.dawg reading: a plain-text wordform and its
+// (paradigm<<16 | form) value.
+type WordValue struct {
+	Word  string
+	Value uint32
+}
+
+// BuildPrediction rebuilds d.Prediction from d.Words[0] (see
+// BuildPredictionFrom). The dictionary must be unsharded and still raw
+// (plain-text keys); a sharded dictionary is left untouched (no-op).
 func BuildPrediction(d *Dictionary, productive func(tag string) bool) error {
 	if d == nil || len(d.Words) != 1 {
 		return nil
 	}
-
+	var pairs []WordValue
+	d.Words[0].Walk(func(word string, values [][]byte) {
+		for _, v := range values {
+			if len(v) >= 4 {
+				pairs = append(pairs, WordValue{Word: word, Value: binary.BigEndian.Uint32(v[:4])})
+			}
+		}
+	})
 	var paradigms []Paradigm
 	if len(d.Paradigms) > 0 {
 		paradigms = d.Paradigms[0]
 	}
+	pred, err := BuildPredictionFrom(pairs, paradigms, d.TagSet, productive)
+	if err != nil {
+		return err
+	}
+	d.Prediction = []*DAWG{pred}
+	return nil
+}
 
+// BuildPredictionFrom builds the pymorphy2 KnownSuffixAnalyzer prediction
+// DAWG for prefix id 0 from raw (word, value) readings resolved against
+// paradigms (shard 0) and tagSet. For every reading whose tag is
+// productive, the word's last 1..5 runes become suffix keys; readings
+// sharing a (suffix, paradigm, form) triple accumulate a count. Each
+// triple becomes one payload: count(BE16) + para(BE16) + form(BE16).
+func BuildPredictionFrom(pairs []WordValue, paradigms []Paradigm, tagSet *TagSet, productive func(tag string) bool) (*DAWG, error) {
 	type predKey struct {
 		suffix string
 		para   uint16
 		form   uint16
 	}
 	counts := make(map[predKey]int)
-
-	d.Words[0].Walk(func(word string, values [][]byte) {
-		for _, v := range values {
-			if len(v) < 4 {
-				continue
-			}
-			para := binary.BigEndian.Uint16(v[:2])
-			form := binary.BigEndian.Uint16(v[2:4])
-			if int(para) >= len(paradigms) || int(form) >= paradigms[para].Len() {
-				continue
-			}
-
-			tag := ""
-			if d.TagSet != nil {
-				tag = d.TagSet.TagName(paradigms[para].Tag(int(form)))
-			}
-			if !productive(tag) {
-				continue
-			}
-
-			rr := []rune(word)
-			max := predictionMaxSuffix
-			if max > len(rr) {
-				max = len(rr)
-			}
-			for l := 1; l <= max; l++ {
-				counts[predKey{suffix: string(rr[len(rr)-l:]), para: para, form: form}]++
-			}
+	for _, p := range pairs {
+		para, form := uint16(p.Value>>16), uint16(p.Value)
+		if int(para) >= len(paradigms) || int(form) >= paradigms[para].Len() {
+			continue
 		}
-	})
+		tag := ""
+		if tagSet != nil {
+			tag = tagSet.TagName(paradigms[para].Tag(int(form)))
+		}
+		if !productive(tag) {
+			continue
+		}
+		rr := []rune(p.Word)
+		max := min(predictionMaxSuffix, len(rr))
+		for l := 1; l <= max; l++ {
+			counts[predKey{suffix: string(rr[len(rr)-l:]), para: para, form: form}]++
+		}
+	}
 
 	keys := make([]string, 0, len(counts))
 	values := make([][]byte, 0, len(counts))
 	for k, count := range counts {
-		if count > predictionMaxCount {
-			count = predictionMaxCount
-		}
+		count = min(count, predictionMaxCount)
 		buf := make([]byte, 6)
 		binary.BigEndian.PutUint16(buf[:2], uint16(count))
 		binary.BigEndian.PutUint16(buf[2:4], k.para)
@@ -86,11 +88,5 @@ func BuildPrediction(d *Dictionary, productive func(tag string) bool) error {
 		keys = append(keys, k.suffix)
 		values = append(values, buf)
 	}
-
-	pred, err := BuildDAWGWithValuesBytes(keys, values)
-	if err != nil {
-		return err
-	}
-	d.Prediction = []*DAWG{pred}
-	return nil
+	return BuildDAWGWithValuesBytes(keys, values)
 }
