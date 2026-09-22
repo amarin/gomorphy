@@ -432,7 +432,7 @@ func ExampleMergeReplace() {
 }
 
 // ExampleMergeWithOptions merges two thematic dictionaries and rebuilds
-// prediction so the overlay's endings are predicted too.
+// prediction so words with the overlay's endings are predicted too.
 func ExampleMergeWithOptions() {
 	base := morphology.NewBuilder(morphology.BuilderOptions{})
 	_ = base.AddForm("кот", "кот", "NOUN,nomn")
@@ -454,11 +454,13 @@ func ExampleMergeWithOptions() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, r := range merged.Parse("мыши") {
+	// "камыши" is not itself in either dictionary; only the rebuilt
+	// prediction (fed by the overlay's "мыши" ending) can analyse it.
+	for _, r := range merged.Parse("камыши") {
 		fmt.Println(r.Normal, r.Tag)
 	}
 	// Output:
-	// мышь NOUN,gent
+	// камышь NOUN,gent
 }
 
 // ExampleMultiDictionary_DictTagSetName shows combining a Reading from
