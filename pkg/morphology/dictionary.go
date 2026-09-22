@@ -1,7 +1,10 @@
 // Package morphology is the public API for morphological analysis over
-// dictionaries in a single internal format. Two sources are supported
-// today: pymorphy2 and OpenCorpora; UniMorph import is planned but not
-// yet implemented (see docs/en/todo.md, Stage 16).
+// dictionaries in a single internal format. Dictionaries come from three
+// bundled importers — pymorphy2, OpenCorpora and UniMorph (see
+// docs/en/unimorph.md) — or are built from scratch: Builder accumulates
+// wordform entries, ImportTSV loads a wordform TSV, Merge combines
+// existing dictionaries, and the CompileFrom* helpers wrap an importer
+// in a single call.
 package morphology
 
 import (

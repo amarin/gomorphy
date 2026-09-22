@@ -170,10 +170,78 @@ gomorphy update unimorph --lang ru
 
 Flags: `-o, --output <path>`, `--lang <code>` — same as `build`.
 
-### `merge` / `split` — not yet implemented
+### `import` — build a `.dat` from a wordform TSV
 
-Placeholder commands for future `.dat` dictionary merging/splitting;
-currently they fail with a `not yet implemented` error.
+```bash
+gomorphy import tsv words.tsv -o out.dat
+gomorphy import tsv words.tsv -o out.dat --source ships
+```
+
+Reads a tab-separated wordform stream and builds a `.dat` (dense 1-byte
+alphabet, prediction rebuilt — same default as `build`). Used to make
+thematic dictionaries with no external resources (no internet, no base
+OpenCorpora dictionary): prepare a TSV, import it into a `.dat`.
+
+Format, one entry per line:
+
+```
+lemma<TAB>wordform[<TAB>tags]
+```
+
+- Blank lines and lines whose first non-space byte is `#` are skipped.
+- A missing lemma makes the wordform its own lemma (auto-lemma).
+- Leading/trailing spaces are trimmed from each field (tab is the only
+  delimiter).
+- Tags are opaque free-form strings, registered automatically as
+  grammemes — no mapping onto the OpenCorpora set.
+
+Anything else — a row with 1 column or more than 3 — is an error naming
+the offending line number.
+
+`-o` is required (the importer has no default domain path to fall back
+to).
+
+Flags:
+
+| Flag | Description |
+|------|----------|
+| `-o, --output <path>` | path to the output `.dat` file (required) |
+| `--source <name>` | value for `BuildInfo.Source` (default: `tsv`) |
+
+### `merge` — combine several dictionaries into one
+
+```bash
+gomorphy merge --mode add -o merged.dat base.dat overlay.dat
+gomorphy merge --mode replace -o merged.dat base.dat overlay1.dat overlay2.dat
+```
+
+Reads the base dictionary plus one or more overlays (compiled `.dat`
+files) and writes a merged `.dat` (dense 1-byte alphabet, prediction
+rebuilt) without mutating the inputs:
+
+- `--mode add` — wordforms that already exist in the base are left
+  untouched (the overlay's readings for them are dropped); words unique
+  to an overlay are added.
+- `--mode replace` — for a word present in both, the overlay's readings
+  fully replace the base's; words unique to either side are preserved.
+
+The output's `BuildInfo.Source` is `merge`; the base's language,
+`SourceVersion` and `Description` carry over.
+
+`-o` is required and may not alias any input path — a merge must never
+silently overwrite one of its own sources.
+
+Flags:
+
+| Flag | Description |
+|------|----------|
+| `-o, --output <path>` | path to the output `.dat` file (required) |
+| `--mode <add\|replace>` | merge conflict policy (required, case-insensitive) |
+
+### `split` — not yet implemented
+
+Placeholder for future `.dat` dictionary splitting; currently fails with
+a `not yet implemented` error.
 
 ### `version`
 

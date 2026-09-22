@@ -243,7 +243,7 @@ embed dictionary data (a real trade-off, not a strict win — no
 download/build step needed for the alternatives, but also no
 CC BY-SA/data-license obligation inherited by gomorphy itself).
 
-## Stage 19. Thematic dictionaries: TSV import, CLI batches, skills, MCP decision — PLANNED
+## Stage 19. Thematic dictionaries: TSV import, CLI batches, skills, MCP decision — DONE 2026-09-22 (builder/TSV/merge core; the import report, batch query modes, the skill and CLI `--summary` stay open)
 
 **Summary**: Make the library and CLI a convenient tool for an agent to
 build **thematic dictionaries** with no external resources (no
@@ -271,48 +271,85 @@ Key properties:
 - **Deduplication.** Repeated (form, tags) pairs within a lemma are
   dropped by the Builder.
 
-**Increment**:
-- `pkg/morphology` (the current facade, FT8 Builder is kept in the new
-  implementation too):
-  - `import_tsv.go`: `ImportTSV(r io.Reader, opts Options) (*Dictionary, error)`,
-    `ImportTSVFile(path string, opts Options) (*Dictionary, error)` —
-    streaming `bufio.Scanner` reads, splitting on `\t` into 2-3 fields ->
-    `AddLemma`/`AddForm`, grammeme auto-registration, dedup.
-  - `report.go`: an import report — lemma/form counts, lemmas without
-    tags, warnings about diverging stems (LCP) and anomalously short
-    paradigms (a substitute for external verification in offline
-    scenarios).
+**Increment** — the Builder/TSV/merge core shipped on 2026-09-22 (design
+spec [2026-09-21-builder-tsv-merge-design.md](superpowers/specs/2026-09-21-builder-tsv-merge-design.md),
+write-up [implementation/stage-19-builder-tsv-merge.md](implementation/stage-19-builder-tsv-merge.md));
+the import report, the batch query modes, the skill, and the CLI
+`--summary` flag are NOT part of that pass and stay open:
+- `pkg/morphology` (the current facade, the FT8 Builder in its new form
+  stays here):
+  - [x] **Builder API** (`builder.go`): public `Builder`
+    (`NewBuilder`/`AddForm`/`AddLemma`/`Build`, `BuilderOptions{Language,
+    Source}`, sentinels `ErrNoEntries`, `ErrBuilderClosed`) + the shared
+    unexported `buildFromEntries` helper.
+  - [x] **`ImportTSV`** (`import_tsv.go`): `ImportTSV(r io.Reader, opts
+    BuilderOptions)` — streaming `bufio.Scanner` reads (1MB lines),
+    splitting on `\t` into 2-3 fields -> `AddForm`, grammeme
+    auto-registration, dedup, per-field trim, auto-lemma, line-numbered
+    errors; `Source` defaults to `"tsv"`.
+  - [ ] **`ImportTSVFile`** — NOT built: a deliberate non-goal this pass
+    (the CLI opens the file and passes the reader — see the design spec).
+  - [ ] **`report.go`** — an import report (lemma/form counts, lemmas
+    without tags, warnings about diverging stems (LCP) and anomalously
+    short paradigms) — still open.
+  - [x] **Merge** (`merge.go`): `Merge(base, overlays, mode)` with
+    `MergeAdd`/`MergeReplace`, inputs read-only, output dense with
+    prediction rebuilt, `Source = "merge"`, base's
+    `SourceVersion`/`Description`/language/CharPolicy inherited.
+  - [x] **Prediction rebuilt** by the shared build pipeline (`Build`/
+    `ImportTSV`/`Merge` all run `BuildPrediction` then `RecompileDense`)
+    — for any result that stays single-shard (the typical thematic
+    dictionary); a sharded merge output keeps prediction absent, same as
+    OpenCorpora dictionaries (engine resolves prediction against shard 0
+    only).
+  - **Probability is NOT rebuildable** from a dictionary's own wordforms+paradigms
+    (it is external corpus-frequency data, `p_t_given_w.intdawg`). Built/merged
+    dictionaries therefore carry none — exactly like OpenCorpora dictionaries
+    today. Open roadmap items (see the builder/merge design spec
+    [2026-09-21-builder-tsv-merge-design.md](superpowers/specs/2026-09-21-builder-tsv-merge-design.md)):
+    a way to build/rebuild probability from scratch (corpus frequency input to
+    the Builder) and a carry-forward policy for merges that would DROP it.
+    Prediction, by contrast, IS rebuilt by the shared build pipeline by default.
 - CLI `cmd/gomorphy`:
-  - `gomorphy import tsv <file> -o out.dict [--summary]`;
-  - **batch query modes**: `lookup`/`lemmas`/`fuzzy` accept several
+  - [x] `gomorphy import tsv <file> [-o out.dat] [--source name]` —
+    shipped, `-o` required (the planned `--summary` flag is NOT built).
+  - [ ] **batch query modes**: `lookup`/`lemmas`/`fuzzy` accept several
     words as arguments or read from stdin one word per line (the `-`
-    argument); results are sectioned by word. Batching closes the main
-    source of token bloat for an agent (see [docs/mcp.md](mcp.md), §Tokens).
-- Skill `skills/thematic-dictionary/SKILL.md` — "thematic dictionary"
-  (authored as a `SKILL.md` in the repository, versioned together with
-  the library, copied into the agent's configuration): how to prepare a
-  TSV for arbitrary vocabulary (nouns, ship/region names that inflect
-  like adjectives), paradigm tables, custom tags, working standalone
-  without OpenCorpora, verification via batch `lookup` and the import
-  report. (The "using the gomorphy dictionary" skill is in Stage 18.)
-- MCP decision: [docs/mcp.md](mcp.md) — record the intent not to
-  implement a built-in MCP server, with the reasoning (no token
-  savings, overhead, already covered by CLI batching).
+    argument); results are sectioned by word. NOT implemented — still
+    open. Batching closes the main source of token bloat for an agent
+    (see [docs/mcp.md](mcp.md), §Tokens).
+- [ ] Skill `skills/thematic-dictionary/SKILL.md` — NOT STARTED, still
+  open: how to prepare a TSV for arbitrary vocabulary (nouns, ship/region
+  names that inflect like adjectives), paradigm tables, custom tags,
+  working standalone without OpenCorpora, verification via batch `lookup`
+  and the import report. (The "using the gomorphy dictionary" skill is in
+  Stage 18.)
+- [x] MCP decision: [docs/mcp.md](mcp.md) — already recorded: no built-in
+  MCP server, with the reasoning (no token savings, overhead, already
+  covered by CLI batching).
 
-**Automated checks (tests)**:
-- unit: a mini TSV (5-10 lemmas) -> correct lemmas, forms, tags;
-- unit: optional tags, empty lemma, custom tags, dedup;
-- unit: import report — counters and warnings;
-- roundtrip: `ImportTSV -> SaveTo -> Open -> Lookup` identical to a
+**Automated checks (tests)** — delivered ones are green (test files
+`pkg/morphology/builder_test.go`, `import_tsv_test.go`, `merge_test.go`,
+`cmd/gomorphy/import_test.go`, `merge_test.go`, plus the white-box
+`*_internal_test.go` checks for dense-alphabet/prediction/BuildInfo):
+- [x] unit: a mini TSV (5-10 lemmas) -> correct lemmas, forms, tags;
+- [x] unit: optional tags, empty lemma, custom tags, dedup;
+- [ ] unit: import report — counters and warnings (no `report.go` yet);
+- [x] roundtrip: `ImportTSV -> SaveTo -> Open -> Lookup` identical to a
   direct build;
-- CLI: batch `lookup` with several arguments and via stdin;
-- `go test -race ./...` — green.
+- [ ] CLI: batch `lookup` with several arguments and via stdin (no batch
+  modes yet);
+- [x] `go test -race ./...` — green (verified 2026-09-22).
 
-**Manual checks**:
-- `gomorphy import tsv names.tsv -o names.dict --summary` -> `.dat` created;
-- `gomorphy -dict names.dict lookup - < words.txt` -> sections per word;
-- run the "thematic dictionary" skill through an agent on the example
-  "a dictionary of ship-name adjectives" with no OpenCorpora loaded.
+**Manual checks** — the ones that depend on still-open items are not run:
+- [ ] `gomorphy import tsv names.tsv -o names.dict --summary` -> `.dat`
+  created (the `--summary` flag is not built; the command without it is
+  covered by `cmd/gomorphy/import_test.go`);
+- [ ] `gomorphy -dict names.dict lookup - < words.txt` -> sections per
+  word (no batch modes yet);
+- [ ] run the "thematic dictionary" skill through an agent on the example
+  "a dictionary of ship-name adjectives" with no OpenCorpora loaded (no
+  skill yet).
 
 ## Stage 20. Synonym database: groups, tags, sidecar file — PLANNED (scenarios are an open question)
 
