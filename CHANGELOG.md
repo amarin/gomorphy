@@ -12,6 +12,12 @@ full list with links.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-23
+
+Build dictionaries from your own wordforms and merge compiled
+dictionaries (Stage 19 and 19.1, see
+[implementation/stage-19-builder-tsv-merge.md](docs/en/implementation/stage-19-builder-tsv-merge.md)).
+
 ### Added
 - `morphology.Builder` (`NewBuilder`/`AddForm`/`AddLemma`/`Build`) and
   `morphology.ImportTSV` — build a dictionary from your own wordforms;
@@ -22,6 +28,11 @@ full list with links.
   `gomorphy merge --mode add|replace [--rebuild-prediction]`.
 - `tagmap.Known`.
 - Internal: value DAWGs (`BuildIntDAWG`, `WalkValues`), `DAWG.Clone`.
+
+### Fixed
+- `morphology.Version` (printed by `gomorphy version` and written to
+  `BuildInfo.LibraryVersion` on every `SaveTo`) now matches the release;
+  1.0.0 still reported `0.1.0`.
 
 ## [1.0.0] - 2026-09-19
 
