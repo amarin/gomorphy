@@ -33,6 +33,8 @@ dictionaries (Stage 19 and 19.1, see
 - `morphology.Version` (printed by `gomorphy version` and written to
   `BuildInfo.LibraryVersion` on every `SaveTo`) now matches the release;
   1.0.0 still reported `0.1.0`.
+- `ImportTSV` rejects a row with an empty wordform column instead of
+  silently attaching its tags to an empty word.
 
 ## [1.0.0] - 2026-09-19
 
