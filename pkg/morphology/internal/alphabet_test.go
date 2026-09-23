@@ -203,3 +203,12 @@ func TestDenseAlphabetDecodeRejectsReservedOrOutOfRangeCode(t *testing.T) {
 	_, err = a2.Decode([]byte{2, 0}) // reserved byte in lo position
 	assert.Error(t, err)
 }
+
+func TestDenseAlphabetRunes(t *testing.T) {
+	a, err := NewDenseAlphabet(1, []string{"ба", "в"})
+	require.NoError(t, err)
+	assert.Equal(t, []rune("абв"), a.Runes())
+	r := a.Runes()
+	r[0] = 'z'
+	assert.Equal(t, []rune("абв"), a.Runes(), "Runes returns a copy")
+}

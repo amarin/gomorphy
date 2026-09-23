@@ -11,11 +11,14 @@ import (
 )
 
 // runMerge combines args[0] (the base dictionary) with the overlay
-// dictionaries args[1:] into a new .dat at output, under mergeMode
-// ("add" or "replace"). output is required (merge must never silently
-// overwrite an input — the abs-ified output path is rejected when it
-// equals any input path), and the mode is validated case-insensitively.
-func runMerge(cmd *cobra.Command, args []string, output, mergeMode string) error {
+// dictionaries args[1:] into a new .dat at output. In "add" mode, an overlay word
+// is taken only if the base and earlier overlays lack it. In "replace" mode,
+// the last overlay's reading wins. The base's prediction, probabilities, and tag set
+// are kept (unless rebuildPrediction is true, which rebuilds prediction from all merged
+// words; single-shard output only). output is required (merge must never silently
+// overwrite an input — the abs-ified output path is rejected when it equals any
+// input path), and the mode is validated case-insensitively.
+func runMerge(cmd *cobra.Command, args []string, output, mergeMode string, rebuildPrediction bool) error {
 	if output == "" {
 		return fmt.Errorf("merge: -o output path is required")
 	}
@@ -65,7 +68,10 @@ func runMerge(cmd *cobra.Command, args []string, output, mergeMode string) error
 		dicts = append(dicts, d)
 	}
 
-	merged, err := morphology.Merge(dicts[0], dicts[1:], mode)
+	merged, err := morphology.MergeWithOptions(dicts[0], dicts[1:], morphology.MergeOptions{
+		Mode:              mode,
+		RebuildPrediction: rebuildPrediction,
+	})
 	if err != nil {
 		return fmt.Errorf("merge: %w", err)
 	}
@@ -81,17 +87,23 @@ func newMergeCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "merge",
 		Short: "merge several dictionaries into one .dat (add or replace)",
-		Args:  cobra.MinimumNArgs(2),
+		Long: `In "add" mode, an overlay word is taken only if the base and earlier overlays lack it.
+In "replace" mode, the last overlay's reading wins. The base's prediction, probabilities,
+and tag set are kept (unless --rebuild-prediction is set; single-shard output only).`,
+		Args: cobra.MinimumNArgs(2),
 	}
 	cmd.Flags().StringP("output", "o", "", "output .dat path (required)")
 	cmd.Flags().String("mode", "", "merge mode: add or replace (required)")
+	cmd.Flags().Bool("rebuild-prediction", false,
+		"rebuild out-of-dictionary prediction from all merged words (default: keep the base's; single-shard output only)")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if err := configureLogging(cmd); err != nil {
 			return err
 		}
 		output, _ := cmd.Flags().GetString("output")
 		mode, _ := cmd.Flags().GetString("mode")
-		return runMerge(cmd, args, output, mode)
+		rebuild, _ := cmd.Flags().GetBool("rebuild-prediction")
+		return runMerge(cmd, args, output, mode, rebuild)
 	}
 	return cmd
 }

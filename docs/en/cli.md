@@ -216,14 +216,27 @@ gomorphy merge --mode replace -o merged.dat base.dat overlay1.dat overlay2.dat
 ```
 
 Reads the base dictionary plus one or more overlays (compiled `.dat`
-files) and writes a merged `.dat` (dense 1-byte alphabet, prediction
-rebuilt) without mutating the inputs:
+files) and writes a merged `.dat` without touching the inputs. The merge
+is structural: the base keeps its paradigms, tag set name (so tag
+normalization keeps working), probabilities and out-of-dictionary
+prediction; overlay words are added into that structure. Merging a small
+overlay into `pymorphy.dat` takes ~25 s (rebuilding the word index
+dominates) and grows the file by the overlay's size only. Expect memory
+use on the same order as building the base dictionary from source —
+around 4.6 GB peak RSS for the full pymorphy2/OpenCorpora Russian
+dictionaries (compiling `pymorphy.dat` itself peaks at about 3.5 GB).
 
-- `--mode add` — wordforms that already exist in the base are left
-  untouched (the overlay's readings for them are dropped); words unique
-  to an overlay are added.
-- `--mode replace` — for a word present in both, the overlay's readings
-  fully replace the base's; words unique to either side are preserved.
+- `--mode add` — overlay words that the base (or an earlier overlay)
+  already has are skipped; new words are added.
+- `--mode replace` — an overlay word's readings replace the word's
+  existing ones; with several overlays the last one wins.
+- `--rebuild-prediction` — rebuild prediction from all merged words
+  (useful when merging thematic dictionaries with each other); by default
+  the base's prediction is kept, and overlay words don't feed it.
+
+Inputs must share a language exactly (a dictionary with an empty
+language is rejected against a `"ru"` base); two different known tag
+vocabularies (e.g. `opencorpora-int` and `unimorph`) are rejected too.
 
 The output's `BuildInfo.Source` is `merge`; the base's language,
 `SourceVersion` and `Description` carry over.
@@ -237,6 +250,7 @@ Flags:
 |------|----------|
 | `-o, --output <path>` | path to the output `.dat` file (required) |
 | `--mode <add\|replace>` | merge conflict policy (required, case-insensitive) |
+| `--rebuild-prediction` | rebuild prediction from all merged words (single-shard output only) |
 
 ### `split` — not yet implemented
 

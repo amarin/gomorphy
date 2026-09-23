@@ -42,9 +42,9 @@ func TestMergeDenseOutputAndPrediction(t *testing.T) {
 
 	require.NotNil(t, merged.d, "merged dictionary must wrap an internal dictionary")
 	assert.NotNil(t, merged.d.Alphabet, "Merge output must be dense (Alphabet set)")
-	assert.Len(t, merged.d.Prediction, 1, "Merge must rebuild the prediction")
+	assert.Len(t, merged.d.Prediction, 1, "the base prediction is carried")
 	assert.Equal(t, "merge", merged.d.Info.Source)
-	assert.Equal(t, mergeTagSetName, merged.TagSetName())
+	assert.Equal(t, "builder", merged.TagSetName(), "the base TagSet name is kept")
 }
 
 func TestMergeInfoInheritance(t *testing.T) {
@@ -55,10 +55,11 @@ func TestMergeInfoInheritance(t *testing.T) {
 	baseDict.d.Info.SourceVersion = "v9"
 	baseDict.d.Info.Description = "custom base overlay"
 
-	overlay := mergeTestDict(t,
-		[3]string{"мышь", "мышь", femnNomn},
-		[3]string{"мыши", "мышь", femnGent},
-	)
+	ob := NewBuilder(BuilderOptions{Language: "en"})
+	require.NoError(t, ob.AddForm("мышь", "мышь", femnNomn))
+	require.NoError(t, ob.AddForm("мыши", "мышь", femnGent))
+	overlay, err := ob.Build()
+	require.NoError(t, err)
 
 	merged, err := Merge(baseDict, []*Dictionary{overlay}, MergeAdd)
 	require.NoError(t, err)
@@ -68,7 +69,20 @@ func TestMergeInfoInheritance(t *testing.T) {
 	assert.Equal(t, "custom base overlay", merged.d.Info.Description, "Description is inherited from base Info")
 	assert.Equal(t, "en", merged.Language(), "language is inherited from the base dictionary")
 	assert.Same(t, baseDict.d.CharPolicy, merged.d.CharPolicy, "CharPolicy is inherited from the base dictionary")
-	assert.Equal(t, mergeTagSetName, merged.TagSetName())
+	assert.Equal(t, "builder", merged.TagSetName())
+}
+
+func TestMergeRejectsMixedKnownTagSets(t *testing.T) {
+	base := mergeTestDict(t, [3]string{"кот", "кот", mascNomn})
+	overlay := mergeTestDict(t, [3]string{"пёс", "пёс", mascNomn})
+	base.d.TagSet.Name = "opencorpora-int"
+	overlay.d.TagSet.Name = "unimorph"
+	_, err := Merge(base, []*Dictionary{overlay}, MergeAdd)
+	assert.ErrorIs(t, err, ErrIncompatibleDictionaries)
+
+	overlay.d.TagSet.Name = "builder" // opaque vocabularies may always be merged in
+	_, err = Merge(base, []*Dictionary{overlay}, MergeAdd)
+	assert.NoError(t, err)
 }
 
 func TestMergeEmptyErrNoEntries(t *testing.T) {

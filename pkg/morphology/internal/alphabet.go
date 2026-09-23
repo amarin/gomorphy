@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 )
 
@@ -204,4 +205,11 @@ func (a *DenseAlphabet) Decode(b []byte) (string, error) {
 		out = append(out, a.runeOf[code-2])
 	}
 	return string(out), nil
+}
+
+// Runes returns the alphabet's runes in code order (code 2 first) — a
+// copy, safe to modify. Feeding string(a.Runes()) back into
+// NewDenseAlphabet reproduces a superset-compatible corpus.
+func (a *DenseAlphabet) Runes() []rune {
+	return slices.Clone(a.runeOf)
 }

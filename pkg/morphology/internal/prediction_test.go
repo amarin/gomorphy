@@ -159,3 +159,26 @@ func TestBuildPredictionNoOpWhenSharded(t *testing.T) {
 	require.NoError(t, BuildPrediction(dict, predProductive))
 	assert.Nil(t, dict.Prediction, "prediction is built only for unsharded dictionaries")
 }
+
+func TestBuildPredictionFromMatchesBuildPrediction(t *testing.T) {
+	all := func(string) bool { return true }
+	d, err := BuildDictionaryFromEntries(BuildOptions{}, []BuildEntry{
+		{Word: "кот", Lemma: "кот", Tag: "NOUN,nomn"},
+		{Word: "кота", Lemma: "кот", Tag: "NOUN,gent"},
+		{Word: "мышь", Lemma: "мышь", Tag: "NOUN,nomn"},
+		{Word: "мыши", Lemma: "мышь", Tag: "NOUN,gent"},
+	})
+	require.NoError(t, err)
+
+	var pairs []WordValue
+	d.Words[0].Walk(func(w string, vals [][]byte) {
+		for _, v := range vals {
+			pairs = append(pairs, WordValue{Word: w, Value: binary.BigEndian.Uint32(v[:4])})
+		}
+	})
+	pred, err := BuildPredictionFrom(pairs, d.Paradigms[0], d.TagSet, all)
+	require.NoError(t, err)
+
+	require.NoError(t, BuildPrediction(d, all))
+	assert.Equal(t, d.Prediction[0].Bytes(), pred.Bytes())
+}

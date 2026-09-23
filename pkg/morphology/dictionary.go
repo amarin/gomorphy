@@ -24,9 +24,11 @@
 //
 // # Merging dictionaries
 //
-// [Merge] combines already-compiled dictionaries into one — [MergeAdd]
+// [Merge] adds overlay dictionaries into a base one without rebuilding it:
+// the base keeps its tag set, probabilities and prediction. [MergeAdd]
 // keeps the base reading for words present in both, [MergeReplace] swaps
-// it for the overlay's (see ExampleMerge). The CLI equivalent is
+// in the overlay's (the last overlay wins); see ExampleMerge and
+// [MergeWithOptions]. The CLI equivalent is
 // `gomorphy merge --mode add -o merged.dat base.dat overlay.dat`.
 package morphology
 

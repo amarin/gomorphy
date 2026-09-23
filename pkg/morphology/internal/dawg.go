@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"io"
+	"slices"
 	"unicode/utf8"
 	"unsafe"
 )
@@ -286,6 +287,39 @@ func (d *DAWG) Walk(fn func(key string, values [][]byte)) {
 				fn(string(prefix), d.ValuesForIndex(next))
 				return
 			}
+			walk(next, append(prefix, label))
+		})
+	}
+	walk(0, nil)
+}
+
+// Clone returns a deep copy of d whose arrays don't alias d's — so a
+// DAWG parsed from an mmap'd file can outlive the mapping. nil-safe.
+func (d *DAWG) Clone() *DAWG {
+	if d == nil {
+		return nil
+	}
+	return &DAWG{dict: slices.Clone(d.dict), guide: slices.Clone(d.guide)}
+}
+
+// Empty reports whether the DAWG holds no keys (nil-safe).
+func (d *DAWG) Empty() bool {
+	if d == nil || len(d.guide) == 0 {
+		return true
+	}
+	return guideChild(d.guide, 0) == 0
+}
+
+// WalkValues visits every key of a value DAWG (dawgdic IntDAWG layout, e.g.
+// pymorphy2's p_t_given_w.intdawg or a BuildIntDAWG result) with its
+// integer value, in trie order. Payload DAWGs (words.dawg) should use Walk.
+func (d *DAWG) WalkValues(fn func(key string, value uint32)) {
+	var walk func(index uint32, prefix []byte)
+	walk = func(index uint32, prefix []byte) {
+		if index != 0 && d.HasValue(index) {
+			fn(string(prefix), d.Value(index))
+		}
+		d.ForEachChild(index, func(label byte, next uint32) {
 			walk(next, append(prefix, label))
 		})
 	}

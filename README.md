@@ -50,8 +50,8 @@ Minimal Russian subset (installation/CLI/library basics only):
 | Document | English | Русский |
 |----------|---------|---------|
 | Installation | [docs/en/installation.md](docs/en/installation.md) | [docs/ru/installation.md](docs/ru/installation.md) |
-| CLI: lookup, lemmas, fuzzy, top, download, build, update | [docs/en/cli.md](docs/en/cli.md) | [docs/ru/cli.md](docs/ru/cli.md) |
-| Programmatic use: opening a dictionary, lookups, MultiDictionary | [docs/en/library.md](docs/en/library.md) | [docs/ru/library.md](docs/ru/library.md) |
+| CLI: lookup, lemmas, fuzzy, top, download, build, update, import tsv, merge | [docs/en/cli.md](docs/en/cli.md) | [docs/ru/cli.md](docs/ru/cli.md) |
+| Programmatic use: opening a dictionary, lookups, MultiDictionary, building (Builder, ImportTSV) and merging dictionaries | [docs/en/library.md](docs/en/library.md) | [docs/ru/library.md](docs/ru/library.md) |
 | Why there's no built-in MCP server | [docs/en/mcp.md](docs/en/mcp.md) | [docs/ru/mcp.md](docs/ru/mcp.md) |
 | Comparison with other Go morphological analyzers | [docs/en/comparison.md](docs/en/comparison.md) | — (English only) |
 | Roadmap, implementation history, research, design specs | [docs/en/todo.md](docs/en/todo.md) | — (English only) |
@@ -71,7 +71,7 @@ A full feature/architecture/license comparison against these is in
 ## Project structure
 
 ```
-cmd/gomorphy               CLI: lookup, lemmas, fuzzy, top, cli, download, unpack, build, update
+cmd/gomorphy               CLI: lookup, lemmas, fuzzy, top, cli, download, unpack, build, update, import, merge
 pkg/morphology              public API (Open, OpenPyMorphy, CompileFromXML, CompileFromUniMorph, Parse, Lemma, Fuzzy, MultiDictionary)
 pkg/morphology/internal     TagSet + Paradigm + DAWG + sectioned binary format (not for direct use)
 pkg/morphology/tagmap       native tag -> universal (UniMorph) feature bundle normalizer

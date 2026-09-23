@@ -143,6 +143,14 @@ func TestImportTSVTooManyColumnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "line 1", "error must name the offending line number")
 }
 
+// TestImportTSVEmptyWordError verifies a row with an empty wordform column is
+// an error naming the offending line number, matching Builder.AddForm.
+func TestImportTSVEmptyWordError(t *testing.T) {
+	_, err := morphology.ImportTSV(strings.NewReader("кот\tкот\nкот\t \tNOUN\n"), morphology.BuilderOptions{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "line 2", "error must name the offending line number")
+}
+
 // TestImportTSVPrediction verifies prediction is rebuilt and functional: an
 // out-of-dictionary word with a productive ending ("ота", attested by
 // "кота") gets a predicted reading with a reconstructed lemma — same shape as

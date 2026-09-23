@@ -91,8 +91,10 @@ The constructors above compile an existing source (OpenCorpora XML,
 pymorphy2, UniMorph). To build a dictionary from your own wordforms — a
 thematic dictionary, a name list, a small custom lexicon — use `Builder`,
 `ImportTSV`, or `Merge`. All three produce the same in-memory format as
-`CompileFrom*Dense`: dense 1-byte alphabet, prediction rebuilt, round-trips
-through `SaveTo`/`Open`.
+`CompileFrom*Dense` (dense 1-byte alphabet), round-tripping through
+`SaveTo`/`Open`. `Builder` and `ImportTSV` rebuild prediction from their
+own words; `Merge` instead keeps the base dictionary's prediction (see
+"`Merge` — combine compiled dictionaries" below).
 
 ### `Builder` — register wordforms programmatically
 
@@ -118,7 +120,7 @@ d, err := b.Build()
 d, err := morphology.ImportTSV(r, morphology.BuilderOptions{Language: "ru"})
 ```
 
-Reads `lemma<TAB>wordform[<TAB>tags]` rows (`io.Reader` or a file) with the
+Reads `lemma<TAB>wordform[<TAB>tags]` rows from an `io.Reader` with the
 same rules as `Builder` (opaque tags, auto-lemma, dedup). Blank lines and
 `#` comments are skipped, fields trimmed, row errors name the offending
 line. A file variant is not provided — wrap the caller's path yourself.
@@ -127,17 +129,36 @@ line. A file variant is not provided — wrap the caller's path yourself.
 
 ```go
 merged, err := morphology.Merge(base, overlays, morphology.MergeAdd)
+
+merged, err = morphology.MergeWithOptions(base, overlays, morphology.MergeOptions{
+    Mode:              morphology.MergeReplace,
+    RebuildPrediction: true,
+})
 ```
 
 Combines already-compiled dictionaries (e.g. a base `.dat` plus overlay
-dictionaries) without mutating its inputs:
+dictionaries) without mutating its inputs. The merge is structural: the
+base keeps its paradigms, tag set name (so `pkg/morphology/tagmap` keeps
+working), probabilities and out-of-dictionary prediction; overlay words
+are added into that structure.
 
-- `MergeAdd` — a word present in the base keeps only the base's readings;
-  overlay-only words are added with their own readings.
-- `MergeReplace` — for a word present in both, the overlay's readings fully
-  replace the base's; words unique to either side are preserved.
+- `MergeAdd` (the default `MergeOptions.Mode`) — an overlay word that the
+  base (or an earlier overlay) already has is skipped; new words are
+  added.
+- `MergeReplace` — an overlay word's readings replace the word's existing
+  ones; with several overlays the last one wins.
+- `MergeOptions.RebuildPrediction` — rebuild prediction from all merged
+  words (useful when merging thematic dictionaries with each other); by
+  default the base's prediction is kept, and overlay words don't feed it.
+  Requires a single-shard result (`ErrPredictionSharded` otherwise).
+- Inputs must share a language exactly (a dictionary with an empty
+  language is rejected against a `"ru"` base); two different known tag
+  vocabularies (e.g. `opencorpora-int` and `unimorph`) are rejected too
+  (`ErrIncompatibleDictionaries`).
 - Output `BuildInfo.Source` is `"merge"`; the base's language,
   `SourceVersion` and `Description` carry over.
+
+See ExampleMerge and ExampleMergeWithOptions.
 
 ### Fetching source data
 
@@ -354,12 +375,17 @@ into its own `.dat` section and reconstructed on `Open`.
 
 ## Errors
 
-The package defines two exported sentinel errors for the `Builder` API:
+The package defines four exported sentinel errors:
 
 ```go
 var (
-    ErrNoEntries    // Builder.Build with no registered entries
-    ErrBuilderClosed // Builder used after Build
+    ErrNoEntries               // Builder.Build with no registered entries
+    ErrBuilderClosed           // Builder used after Build
+    ErrIncompatibleDictionaries // Merge: overlay language or tag vocabulary
+                                // can't share the base's
+    ErrPredictionSharded        // MergeWithOptions: RebuildPrediction set
+                                // but the merged dictionary has more than
+                                // one shard
 )
 ```
 

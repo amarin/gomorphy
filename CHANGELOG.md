@@ -10,6 +10,19 @@ summary, not a duplicate — see
 [docs/en/todo.md](docs/en/todo.md)'s "Completed stages" table for the
 full list with links.
 
+## [Unreleased]
+
+### Added
+- `morphology.Builder` (`NewBuilder`/`AddForm`/`AddLemma`/`Build`) and
+  `morphology.ImportTSV` — build a dictionary from your own wordforms;
+  CLI `gomorphy import tsv`.
+- `morphology.Merge` / `MergeWithOptions` — structural merge of compiled
+  dictionaries (`MergeAdd`/`MergeReplace`, overlays applied in order)
+  keeping the base's tag set, probabilities and prediction; CLI
+  `gomorphy merge --mode add|replace [--rebuild-prediction]`.
+- `tagmap.Known`.
+- Internal: value DAWGs (`BuildIntDAWG`, `WalkValues`), `DAWG.Clone`.
+
 ## [1.0.0] - 2026-09-19
 
 A complete rewrite of the library from the ground up (see "Changed"
