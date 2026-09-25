@@ -32,6 +32,13 @@ type BuilderOptions struct {
 	// defaults to "tsv" when empty). Should reflect what the entries came
 	// from.
 	Source string
+
+	// CharPolicy is the lookup substitution policy stored in the built
+	// dictionary. nil means the language default: е→ё for "ru" (and for an
+	// empty Language, which means "ru"), no substitutions for any other
+	// language. Use NoCharPolicy to disable substitutions explicitly, or
+	// RussianCharPolicy to get е→ё for another language.
+	CharPolicy *CharPolicy
 }
 
 // Builder accumulates (word, lemma, tag) triples and builds an immutable
@@ -113,9 +120,17 @@ func (b *Builder) Build() (*Dictionary, error) {
 // BuildInfo. It is the shared post-process helper underneath
 // Builder.Build, ImportTSV, and Merge.
 func buildFromEntries(opts BuilderOptions, entries []internal.BuildEntry, tagSetName string) (*Dictionary, error) {
+	language := opts.Language
+	if language == "" {
+		language = "ru" // ImportTSV does not default Language; NewBuilder does
+	}
+	policy := opts.CharPolicy
+	if policy == nil {
+		policy = defaultCharPolicy(language)
+	}
 	d, err := internal.BuildDictionaryFromEntries(internal.BuildOptions{
-		Language:   opts.Language,
-		CharPolicy: nil,
+		Language:   language,
+		CharPolicy: policy,
 		TagSetName: tagSetName,
 	}, entries)
 	if err != nil {

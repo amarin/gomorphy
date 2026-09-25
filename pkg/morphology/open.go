@@ -13,7 +13,9 @@ import (
 
 // UniMorphOptions configures CompileFromUniMorph/CompileFromUniMorphFile
 // (and their Dense variants) — an alias for unimorph.Options so callers
-// don't need to import pkg/morphology/importers/unimorph directly.
+// don't need to import pkg/morphology/importers/unimorph directly. Its
+// CharPolicy field takes a *CharPolicy (NoCharPolicy, RussianCharPolicy,
+// NewCharPolicy); nil means the language default.
 type UniMorphOptions = unimorph.Options
 
 // OpenPyMorphy loads a pymorphy2 dictionary from a directory (a direct read
