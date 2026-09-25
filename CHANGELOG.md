@@ -12,12 +12,39 @@ full list with links.
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-09-25
+
+A documentation release: godoc, the markdown docs and the examples were
+reviewed against the 1.2.0 code as a whole (see
+[implementation/docs-audit-1.2.1.md](docs/en/implementation/docs-audit-1.2.1.md)),
+plus one loader fix. The dictionary API and the `.dat` format are unchanged.
+
+### Added
+- Usage scenarios — what each feature is for, which calls and example
+  solve it, since which version and how its behaviour changed:
+  [docs/en/scenarios.md](docs/en/scenarios.md),
+  [docs/ru/scenarios.md](docs/ru/scenarios.md).
+- Examples `ner` (IsKnown/Predicted), `typos` (Fuzzy, е/ё), `embed`
+  (`//go:embed` + OpenBytes), `contenthash`, `tagmap`; `go test ./examples/`
+  runs every example that needs no data and checks its `// Output:` block.
+- `common.NewLoaderLogger` — the logger the download loaders use (see Fixed).
+- `ExampleDictionary_Parse`, `ExampleNewCharPolicy`, `ExampleNoCharPolicy`,
+  `ExampleDictionary_ContentHash`, `ExampleMultiDictionary_IsKnown`,
+  `tagmap.ExampleMap`, `tagmap.ExampleKnown`.
+
 ### Fixed
 - `pymorphy.NewLoader`, `opencorpora.NewLoader` and `unimorph.NewLoader` no
   longer panic («logging: set backend first») when the caller never called
   `logging.Init` — the usual case for library code; only the `gomorphy` CLI
   configured it. Without `logging.Init` the loaders now log nothing; with it
   they log as before. Assign the exported `Logger` field to use your own logger.
+- Documentation that contradicted the code: the Russian `library.md` (dense
+  dictionaries can be saved and fuzzy-searched; е/ё distance), CLI output
+  samples (`fuzzy`/`top` print a dictionary column), the glossary's
+  CharPolicy (one-way, default by language), and godoc of `Info`,
+  `TagSetName`, `ContentHash`, `FuzzyTop`, `AddForm`, `ImportTSV` and the
+  OpenCorpora `Progress` callback.
+- `morphology.Version` is `1.2.1`.
 
 ## [1.2.0] - 2026-09-25
 

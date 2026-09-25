@@ -5,6 +5,8 @@ GMOR (`.dat`, единый формат для источников pymorphy2/Op
 — см. [library.md](library.md)), а также утилита получения и сборки
 исходных словарей.
 
+Какая команда решает какую задачу — см. [scenarios.md](scenarios.md).
+
 ## Общая форма вызова
 
 ```bash
@@ -16,7 +18,7 @@ gomorphy cli [flags]        # интерактивная консоль
 
 | Флаг | Описание |
 |------|----------|
-| `-d, --dictionary <path>` | путь к `.dat`-файлу или каталогу с `.dat`-файлами (можно указывать несколько раз — словари объединяются в один индекс с сохранением порядка) |
+| `-d, --dictionary <path>` | путь к `.dat`-файлу или каталогу с `.dat`-файлами (можно указывать несколько раз; каталог даёт все `*.dat` непосредственно в нём). Несколько словарей не сливаются: они опрашиваются вместе как один `MultiDictionary`, результаты идут в порядке `-d`. Чтобы объединить словари в один файл, см. [`merge`](#merge--объединение-словарей) |
 | `-v, --verbose` | подробное логирование |
 | `-l, --log <path>` | писать лог в файл вместо stderr |
 
@@ -27,7 +29,9 @@ gomorphy cli [flags]        # интерактивная консоль
 
 ### `lookup` — точный поиск словоформы
 
-Возвращает все грамматические разборы заданного слова.
+Возвращает все грамматические разборы заданного слова. Ввод приводится
+к нижнему регистру (`КОТА` находит те же разборы, что и `кота`), а в
+русских словарях `е` в запросе совпадает и с `ё` (`еж` находит `ёж`).
 
 ```bash
 gomorphy lookup -d opencorpora.dat кота
@@ -36,12 +40,13 @@ gomorphy lookup -d opencorpora.dat кота
 Вывод (по одной строке на разбор, поля через TAB):
 
 ```
-кота	кот	sing,nomn	para#0/33/1	opencorpora/0.92/417127
+кота	кот	NOUN,anim,masc,sing,gent	para#0/0/52	opencorpora/0.92/417257
+кота	кот	NOUN,anim,masc,sing,accs	para#0/0/52	opencorpora/0.92/417257
 ```
 
 Формат: `<слово>\t<лемма>\t<тег>\tpara#<dict>/<shard>/<para>\t<словарь>` — компонент
-`dict` указывает, из какого по счёту (начиная с 0) объединённого словаря
-пришёл разбор, если указано несколько `-d`; `<словарь>` — его имя и версия.
+`dict` указывает, из какого по счёту словаря (начиная с 0, в порядке `-d`)
+пришёл разбор, если словарей несколько; `<словарь>` — его имя и версия.
 Разбор, угаданный по окончанию (слова нет в словаре), заканчивается ещё
 одной колонкой `(predicted)`. Эта колонка — необязательное 6-е поле:
 строка со словарным разбором содержит 5 полей через TAB, строка с
@@ -70,14 +75,17 @@ gomorphy fuzzy -d opencorpora.dat кот 1
 Вывод (отсортирован по расстоянию, затем по слову):
 
 ```
-0	кот	dict#0
-1	бот	dict#0
-1	вот	dict#0
-1	гот	dict#0
+0	кот	dict#0	opencorpora/0.92/417257
+1	бот	dict#0	opencorpora/0.92/417257
+1	вот	dict#0	opencorpora/0.92/417257
+1	гот	dict#0	opencorpora/0.92/417257
 ...
 ```
 
-Формат: `<расстояние>\t<слово>\tdict#<dict>`.
+Формат: `<расстояние>\t<слово>\tdict#<dict>\t<словарь>` — `<словарь>` —
+имя и версия словаря-источника, как в `lookup`. Запрос приводится к
+нижнему регистру; в русских словарях замена `е` → `ё` считается
+расстоянием 0.
 
 ### `top` — N ближайших слов
 
@@ -88,12 +96,14 @@ gomorphy top -d opencorpora.dat кот 5
 ```
 
 ```
-0	кот	dict#0
-1	бот	dict#0
-1	вот	dict#0
-1	гот	dict#0
-1	дот	dict#0
+0	кот	dict#0	opencorpora/0.92/417257
+1	бот	dict#0	opencorpora/0.92/417257
+1	вот	dict#0	opencorpora/0.92/417257
+1	гот	dict#0	opencorpora/0.92/417257
+1	дот	dict#0	opencorpora/0.92/417257
 ```
+
+Формат вывода — как у `fuzzy`.
 
 ### `cli` — интерактивная консоль
 
@@ -103,7 +113,8 @@ gomorphy cli -d opencorpora.dat
 
 ```
 gomorphy> lookup кота
-кота	кот	sing,nomn	para#0/33/1
+кота	кот	NOUN,anim,masc,sing,gent	para#0/0/52	opencorpora/0.92/417257
+кота	кот	NOUN,anim,masc,sing,accs	para#0/0/52	opencorpora/0.92/417257
 gomorphy> exit
 ```
 
@@ -117,14 +128,28 @@ TAB — автодополнение команд (`lookup`, `lemmas`, `fuzzy`, 
 ```bash
 gomorphy download opencorpora
 gomorphy download pymorphy
+gomorphy download unimorph
+gomorphy download unimorph --lang ru
 ```
+
+`--lang <code>` — только для `unimorph`; язык для загрузки (по умолчанию
+`ru`, сейчас единственное допустимое значение). Для остальных типов
+игнорируется.
 
 ### `unpack` — распаковать уже скачанный архив
 
 ```bash
 gomorphy unpack opencorpora
 gomorphy unpack pymorphy
+gomorphy unpack unimorph
 ```
+
+`--lang <code>` — как у `download`.
+
+`unpack unimorph` ничего не делает, только проверяет, что файл скачан, —
+скачанный файл UniMorph уже является готовым TSV, распаковывать нечего.
+Оставлено лишь затем, чтобы все три типа источников проходили через
+одинаковую схему `download`/`unpack`/`build`/`update`.
 
 ### `build` — скомпилировать источник в `.dat`
 
@@ -135,7 +160,19 @@ gomorphy unpack pymorphy
 ```bash
 gomorphy build opencorpora -i dict.xml -o out.dat
 gomorphy build pymorphy -i /path/to/unpacked/dir -o out.dat
+gomorphy build unimorph -i rus.tsv -o out.dat
 ```
+
+И `build pymorphy`, и `build opencorpora` всегда перекомпилируют
+`words.dawg` под плотный 1-байтовый алфавит — флага, чтобы это
+отключить, нет. Это согласованное поведение по умолчанию (см.
+[implementation/pymorphy2-dense-alphabet.md](../en/implementation/pymorphy2-dense-alphabet.md), англ.),
+и `build unimorph` следует ему же (см.
+[implementation/stage-16-import-unimorph.md](../en/implementation/stage-16-import-unimorph.md), англ.).
+Встроить «сырой» (не плотный) словарь можно только через Go API:
+вызовите `morphology.OpenPyMorphy`, `morphology.CompileFromXML`/
+`CompileFromXMLFile` или `morphology.CompileFromUniMorph`/
+`CompileFromUniMorphFile` напрямую, минуя CLI.
 
 Флаги:
 
@@ -143,15 +180,17 @@ gomorphy build pymorphy -i /path/to/unpacked/dir -o out.dat
 |------|----------|
 | `-i, --input <path>` | скомпилировать этот путь напрямую, минуя загрузчик |
 | `-o, --output <path>` | путь выходного `.dat`-файла (по умолчанию `.data/<type>/<type>.dat`) |
+| `--lang <code>` | только для `unimorph`; язык сборки (по умолчанию `ru`, сейчас единственное допустимое значение) |
 
 ### `update` — download + unpack + build одной командой
 
 ```bash
 gomorphy update opencorpora
 gomorphy update pymorphy -o /tmp/pymorphy.dat
+gomorphy update unimorph --lang ru
 ```
 
-Флаги: `-o, --output <path>` — как у `build`.
+Флаги: `-o, --output <path>`, `--lang <code>` — как у `build`.
 
 ### `import` — сборка `.dat` из TSV словоформ
 
@@ -162,7 +201,9 @@ gomorphy import tsv words.tsv -o out.dat --source ships
 
 Читает поток словоформ с разделителем TAB и собирает `.dat` (плотный
 1-байтовый алфавит, prediction пересобран, как и у других
-самостоятельно собранных словарей). Используется для тематических
+самостоятельно собранных словарей). Словарь собирается с языком `ru`
+(флага `--lang` нет), поэтому действует русская политика поиска: `е` в
+запросе совпадает и с `ё`. Используется для тематических
 словарей без внешних источников (без интернета, без базового словаря
 OpenCorpora): подготовьте TSV, импортируйте его в `.dat`.
 
@@ -177,6 +218,10 @@ lemma<TAB>wordform[<TAB>tags]
 - Отсутствующая лемма делает словоформу леммой самой себе (auto-lemma).
 - Начальные/конечные пробелы обрезаются в каждом поле (разделитель —
   только TAB).
+- Словоформа и лемма при импорте приводятся к нижнему регистру (поиск
+  тоже приводит запрос к нижнему регистру). `.dat`, импортированный
+  версией 1.1.0 из TSV со смешанным регистром, хранит слова с заглавными
+  буквами как есть, и точный поиск их не находит — импортируйте заново.
 - Теги — непрозрачные произвольные строки, регистрируются
   автоматически как граммемы — без привязки к набору OpenCorpora.
 

@@ -173,6 +173,6 @@ See todo.md Stage 19 "Automated checks" for the green test list
 (`builder_test.go`, `import_tsv_test.go`, `merge_test.go`,
 `internal/*_test.go`, CLI `import_test.go`/`merge_test.go`); the full
 suite runs clean under `go test -race ./...`. Cross-links:
-[dictionary.go](../../pkg/morphology/dictionary.go) — the facade this
+[dictionary.go](../../../pkg/morphology/dictionary.go) — the facade this
 stage extends; [unimorph.md](../unimorph.md) — the other source-agnostic
 importer; [mcp.md](../mcp.md) — why a built-in MCP server is not coming.

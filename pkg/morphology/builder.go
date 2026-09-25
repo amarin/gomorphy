@@ -106,7 +106,7 @@ func (b *Builder) AddLemma(normal, tag string) error {
 // Builder even when it fails (for example, on a CharPolicy over the
 // 255-substitution limit): later AddForm and Build calls return
 // ErrBuilderClosed. Build with no entries, or on a nil Builder, returns
-// ErrNoEntries.
+// ErrNoEntries and leaves the Builder open.
 func (b *Builder) Build() (*Dictionary, error) {
 	if b == nil || len(b.entries) == 0 {
 		return nil, ErrNoEntries

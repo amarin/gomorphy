@@ -1,7 +1,8 @@
 // Command gomorphy is the CLI for morphological analysis over dictionaries
 // compiled into the unified GMOR format (lookup/lemmas/fuzzy/top), plus
 // utilities to download, unpack, and build dictionaries from their sources
-// (opencorpora, pymorphy2). See docs/cli.md for the full command reference.
+// (opencorpora, pymorphy2, unimorph) or a wordform TSV (import), and to merge
+// compiled dictionaries. See docs/en/cli.md for the full command reference.
 package main
 
 import (

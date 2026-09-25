@@ -60,35 +60,29 @@ A short status with links to details — the write-ups themselves live in
 
 ## Unfinished/future stages
 
-### Documentation audit after 1.2.0 (markdown + godoc) — NEXT, first priority
+### Documentation audit after 1.2.0 (markdown + godoc) — DONE 2026-09-25, for release 1.2.1
 
 **Why:** 1.2.0 shipped without a dedicated documentation pass (owner note
-2026-09-25). The NER-support work touched the public API in many places
-(`Reading.Predicted`, `LemmaRef.Predicted`, `IsKnown`, `OpenBytes`,
-`CharPolicy`/`Substitution`/`NewCharPolicy`/`RussianCharPolicy`/`NoCharPolicy`,
-`BuilderOptions.CharPolicy`, `ContentHash`, `Close` lifecycle, lower-casing in
-Builder/ImportTSV/UniMorph/Fuzzy, the 255-substitution limit, `go 1.25.0`), and
-docs were updated task by task, not reviewed as a whole. Do this before any
-1.3.0 work, and ship the result as 1.2.1 (docs-only patch) if anything
-user-visible changes.
+2026-09-25). The NER-support work touched the public API in many places,
+and docs were updated task by task, not reviewed as a whole. Write-up:
+[implementation/docs-audit-1.2.1.md](implementation/docs-audit-1.2.1.md).
 
-- [ ] godoc: every exported identifier of `pkg/morphology` (and `tagmap`,
-      loaders) has a doc comment that starts with its name, states behaviour,
-      defaults, error and nil cases, and concurrency/lifecycle rules; check with
-      `go doc -all ./pkg/morphology` and `golangci-lint` (revive/godot if
-      enabled); package docs (`doc.go`) mention the 1.2.0 features.
-- [ ] Runnable examples (`example_test.go`) cover the new API
-      (`IsKnown`, `OpenBytes`, `CharPolicy` in Builder, `ContentHash`) and show
-      real output.
-- [ ] Markdown: `README.md`, `docs/en/index.md`, `library.md`, `cli.md`,
-      `installation.md`, `comparison.md`, `glossary.md`, `requirements.md`,
-      `implementation.md` — consistent with 1.2.0 (API, defaults, Windows/OpenBytes,
-      Go version, lower-casing, е/ё rules); no stale 1.1.0 statements; links resolve.
-- [ ] Russian subset (`docs/ru/`) matches the English content it mirrors.
-- [ ] `CHANGELOG.md` and `docs/en/implementation/ner-support.md` agree with the
-      code (the final-review fixes included).
-- [ ] Result: a short write-up in `implementation/` (what was fixed), CHANGELOG
-      entry, tag `v1.2.1` if released.
+- [x] godoc: package overview covers 1.2.0; doc/code contradictions fixed.
+- [x] Runnable examples: new `examples/{ner,typos,embed,contenthash,tagmap}`,
+      new `ExampleXxx` for Parse/Predicted, CharPolicy, ContentHash,
+      MultiDictionary.IsKnown, tagmap; `go test ./examples/` checks every
+      example's `// Output:` block.
+- [x] Markdown (README, index, library, cli, installation, comparison,
+      glossary, requirements, implementation, mcp) consistent with 1.2.0.
+- [x] Russian docs mirror the English ones they translate (`library.md`
+      and `cli.md` were substantially behind and partly wrong).
+- [x] New: usage scenarios (`docs/en/scenarios.md`, `docs/ru/scenarios.md`)
+      — what each feature is for, how, which example, since which version
+      and how its behaviour changed (a per-feature excerpt of CHANGELOG).
+- [x] Added to the same release: the download loaders panicked without
+      `logging.Init` — fixed (`common.NewLoaderLogger`).
+- [ ] Loader defects found by the audit, not fixed in 1.2.1 — see the
+      write-up's "Open issues".
 
 ### Stage 19.1 — Structural merge — DONE 2026-09-23
 

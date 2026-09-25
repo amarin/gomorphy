@@ -10,9 +10,11 @@ The entire public API lives in the `morphology` package — the nested
 `morphology/internal` package is not exported and is not meant for direct
 use.
 
+Which call solves which task: [scenarios.md](scenarios.md).
+
 Runnable, self-contained programs for each entry point below live in
 [examples/](../../examples/README.md) — `go run ./examples/<name>`.
-Each entry point also has a matching `ExampleXxx` function in
+Most entry points also have a matching `ExampleXxx` function in
 `pkg/morphology/example_test.go`, which pkg.go.dev/godoc renders
 inline on that function's own doc page.
 
@@ -41,7 +43,9 @@ func CompileFromUniMorphFileDense(path string, opts UniMorphOptions) (*Dictionar
 - **`OpenBytes(data)`** — the same format as `Open`, from memory (e.g.
   `//go:embed`). Checksum verified; `data` is not copied and must outlive the
   dictionary; misaligned sections are copied. No mmap, so it works on
-  Windows; `Close` is a no-op.
+  Windows (`Open` is not supported there yet); `Close` is a no-op. See
+  [examples/embed](../../examples/embed/main.go).
+  Use case: [scenarios.md](scenarios.md#11-ship-a-dictionary-inside-the-binary-windows).
 - **`OpenPyMorphy(dir)`** — reads a pymorphy2 dictionary directly from
   a directory of source files (`words.dawg`, `paradigms.array`,
   ...), without pre-compiling into `.dat`.
@@ -67,9 +71,21 @@ func CompileFromUniMorphFileDense(path string, opts UniMorphOptions) (*Dictionar
   opencorpora` uses by default.
 - **`CompileFromUniMorph`/`CompileFromUniMorphFile`** — compiles a
   UniMorph dictionary from a `lemma<TAB>wordform<TAB>bundle` TSV file
-  (e.g. `unimorph/rus`). `opts` (`UniMorphOptions`, an alias for
-  `unimorph.Options`) requires `Language: "ru"` — currently the only
-  accepted value. See
+  (e.g. `unimorph/rus`). Lemma and wordform text are lower-cased on read
+  (since 1.2.0; UniMorph `.dat` files built by 1.1.0 from mixed-case rows
+  must be rebuilt to be reachable by exact lookup); the feature bundle is
+  stored verbatim. `opts` (`UniMorphOptions`, an alias for
+  `importers/unimorph.Options`) has these fields:
+  - `Language` — required; `"ru"` is currently the only accepted value.
+  - `CharPolicy` — `nil` means е→ё (the Russian default); pass
+    `NoCharPolicy()` or your own `NewCharPolicy(...)` to override.
+  - `OnMalformed func(lineNumber int, text string)` — called for each row
+    that isn't exactly 3 tab-separated fields; the row is skipped either
+    way (`nil` skips silently).
+  - `Progress` — optional progress callback; `SourceVersion` — recorded in
+    `BuildInfo.SourceVersion`.
+
+  See
   [implementation/stage-16-import-unimorph.md](implementation/stage-16-import-unimorph.md).
 - **`CompileFromUniMorphDense`/`CompileFromUniMorphFileDense`** — like
   `CompileFromUniMorph`/`CompileFromUniMorphFile`, but rebuilds every
@@ -131,6 +147,9 @@ d, err := b.Build()
   `Parse`'s own lower-casing plus ending prediction — indistinguishable from
   a guess; now it's a real dictionary entry, reachable as `Parse("москва")`
   or `Parse("Москва")` with `Predicted == false`.
+- `AddForm`/`AddLemma` do **not** trim whitespace (unlike `ImportTSV`,
+  which trims every field): `" кот "` is stored with its spaces. Only an
+  empty or whitespace-only `word` is rejected with an error.
 - `CharPolicy` — `nil` (the default) picks the policy by `Language`: е→ё for
   `"ru"` and for an empty `Language` (which means "ru"), no substitutions
   for any other language. Pass `NoCharPolicy()` to disable substitutions
@@ -142,8 +161,10 @@ d, err := b.Build()
   grammemes — no mapping onto the OpenCorpora set.
 - An empty lemma makes the wordform its own lemma (auto-lemma).
 - Repeated identical `(word, lemma, tag)` entries are deduplicated.
-- A `Builder` is single-use: `Build()` closes it. `ErrNoEntries` is
-  returned when `Build` is called with nothing registered.
+- A `Builder` is single-use: `Build()` closes it, even when the build
+  itself fails (e.g. an invalid `CharPolicy`) — later `AddForm`/`Build`
+  calls return `ErrBuilderClosed`. `ErrNoEntries` is returned (without
+  closing the Builder) when `Build` is called with nothing registered.
 
 ### `ImportTSV` — wordforms from a TSV stream or file
 
@@ -154,9 +175,14 @@ d, err := morphology.ImportTSV(r, morphology.BuilderOptions{Language: "ru"})
 Reads `lemma<TAB>wordform[<TAB>tags]` rows from an `io.Reader` with the
 same rules as `Builder` (opaque tags, auto-lemma, dedup, lower-casing of
 the wordform and lemma columns, the same `CharPolicy` default). Blank
-lines and `#` comments are skipped, fields trimmed, row errors name the
-offending line. A file variant is not provided — wrap the caller's path
-yourself.
+lines and `#` comments are skipped; every field, tags included, is trimmed
+of surrounding whitespace; an empty wordform or a row with other than 2–3
+columns is an error naming the offending line. Lines are limited to 1 MiB.
+Unlike `Builder.Build`, an empty or comment-only stream is not an error:
+it returns an empty dictionary (every lookup misses) with a `nil` error.
+A file variant is not provided — wrap the caller's path yourself.
+
+Use case: [scenarios.md](scenarios.md#5-a-thematic-dictionary-from-a-tsv-file).
 
 ### `Merge` — combine compiled dictionaries
 
@@ -192,6 +218,7 @@ are added into that structure.
   `SourceVersion` and `Description` carry over.
 
 See ExampleMerge and ExampleMergeWithOptions.
+Use case: [scenarios.md](scenarios.md#6-extend-or-override-a-base-dictionary).
 
 ### Fetching source data
 
@@ -227,6 +254,16 @@ if err := loader.Sync(false); err != nil {
 d, err := morphology.CompileFromUniMorphFile(loader.UnpackedFilePath(), morphology.UniMorphOptions{Language: "ru"})
 ```
 
+Logging: the loaders need no setup. `NewLoader` checks, at the call,
+whether the process-wide logger was configured with `logging.Init`
+(`github.com/amarin/logging`): if so, the loader logs through it as before;
+if not, it gets a logger that discards everything
+(`common.NewLoaderLogger`) — before 1.2.1 this case panicked. A
+`logging.Init` made later doesn't affect an already created loader; to use
+your own logger, assign the loader's exported `Logger` field.
+
+Use case: [scenarios.md](scenarios.md#15-download-source-dictionaries-from-go-code).
+
 ## Exact wordform lookup
 
 `Parse` returns all grammatical readings of a word, sorted by probability
@@ -241,6 +278,8 @@ for _, r := range readings {
 // кота -> кот (NOUN,anim,masc,sing,gent)
 // кота -> кот (NOUN,anim,masc,sing,accs)
 ```
+
+Use case: [scenarios.md](scenarios.md#1-morphological-analysis-of-a-word).
 
 The `Reading` type:
 
@@ -260,13 +299,19 @@ type Reading struct {
 }
 ```
 
-The `Tag` format depends on the dictionary source: `TagSet.Name`
-distinguishes `"opencorpora"` (comma-joined, from `dict.xml`) and
-`"opencorpora-int"` (pymorphy2, its own syntax) — both describe the same
-set of grammemes but serialize them differently. For comparing tags
-between dictionaries of different origin, see
+The `Tag` format depends on the dictionary source, identified by the tag
+set name — `Dictionary.TagSetName()`, or `MultiDictionary.DictTagSetName(i)`
+for a reading's `Dict` index: `"opencorpora"` (comma-joined, from
+`dict.xml`), `"opencorpora-int"` (pymorphy2, its own syntax — the same
+grammemes serialized differently) and `"unimorph"` (UniMorph feature
+bundles, e.g. `N;ACC;SG`). `Builder` and `ImportTSV` dictionaries report
+`"builder"` and `"tsv"`: their tags are the caller's own strings, which
+`pkg/morphology/tagmap` does not know (`tagmap.Known` is false); `Merge`
+keeps the base's name. For comparing tags between dictionaries of
+different origin, see
 [implementation/tag-mapping.md](implementation/tag-mapping.md)
-(`pkg/morphology/tagmap`).
+(`pkg/morphology/tagmap`) and [examples/tagmap](../../examples/tagmap/main.go).
+Use case: [scenarios.md](scenarios.md#13-compare-tags-across-dictionaries).
 
 Input is automatically lowercased.
 
@@ -286,7 +331,11 @@ d.Parse("бота")[0].Predicted // true
 `IsKnown(word)` reports whether `word` (lower-cased, `CharPolicy` applied
 — the same lookup `Parse` does) has at least one dictionary reading; it
 never predicts. `MultiDictionary.IsKnown` is `true` if any member
-dictionary knows the word.
+dictionary knows the word. See [examples/ner](../../examples/ner/main.go)
+for dictionary-based named-entity lookup built on `IsKnown`.
+
+Use cases: [scenarios.md](scenarios.md#3-tell-a-dictionary-word-from-a-guess),
+[named entities](scenarios.md#4-dictionary-based-named-entity-lookup).
 
 ## Lemmas (base forms)
 
@@ -300,6 +349,8 @@ for _, l := range lemmas {
 }
 // кот (NOUN,anim,masc,sing,nomn)
 ```
+
+Use case: [scenarios.md](scenarios.md#2-normalize-words-to-lemmas-for-search-and-indexing).
 
 The `LemmaRef` type:
 
@@ -322,7 +373,9 @@ type LemmaRef struct {
 Russian, "е" in the query matches a stored "ё" at distance 0, one-way,
 same as `Parse`; a stored "е" against a query "ё" still costs 1).
 `FuzzyTop` returns the `maxWords` nearest words, expanding the distance
-iteratively. Both return a `[]FuzzyMatch` sorted by (distance, word), with
+iteratively; `maxWords ≤ 0` means distance-0 matches only, as
+`Fuzzy(word, 0)` — the word itself and its `CharPolicy` variants (e.g.
+«ёлка» for «елка»). Both return a `[]FuzzyMatch` sorted by (distance, word), with
 no duplicate words. The query is lower-cased, like `Parse`'s input:
 
 ```go
@@ -332,33 +385,44 @@ top := d.FuzzyTop("кот", 5)
 
 ```go
 type FuzzyMatch struct {
-    Word     string
-    Distance int
+    Word     string // the word as stored in the dictionary (with "ё")
+    Distance int    // Levenshtein distance to the query, in runes
     Dict     int
 }
 ```
 
-Works the same for dictionaries with a dense alphabet
-(`OpenPyMorphyDense`) — same matches as the raw dictionary, see "Opening
-a dictionary" above.
+Works the same for dictionaries with a dense alphabet (the `…Dense`
+constructors and every `Builder`, `ImportTSV` and `Merge` result) — same
+matches as the same dictionary without one. See
+[examples/typos](../../examples/typos/main.go).
+Use cases: [typos](scenarios.md#8-typos-and-suggestions),
+[е/ё](scenarios.md#9-её-and-other-character-substitutions).
 
 ## Diagnostic metadata
 
-`Info()` returns the file's `info` section (when and with what the
-dictionary was built), or `nil` if it's absent (dictionaries not saved via
-`SaveTo`, or built before the section was introduced):
+`Info()` returns the dictionary's `info` section (when and with what the
+dictionary was built). Every importer, `Builder`, `ImportTSV` and `Merge`
+set at least `Source`; `BuiltAt` and `LibraryVersion` are filled in by
+`SaveTo` (zero until the dictionary is saved). It is `nil` only for a nil
+dictionary or a file written before the `info` section existed:
 
 ```go
 type BuildInfo struct {
-    BuiltAt        time.Time
-    LibraryVersion string
-    Source         string // "pymorphy2" / "opencorpora" / "unimorph" / "builder" / "tsv" / "merge"
-    SourceVersion  string
+    BuiltAt        time.Time // set by SaveTo
+    LibraryVersion string    // set by SaveTo: the Version that wrote the file
+    Source         string    // "pymorphy2" / "opencorpora" / "unimorph" / "builder" / "tsv" / "merge"
+                             // (or BuilderOptions.Source)
+    SourceVersion  string    // version of the source data, when known
     Author         string
     Description    string
     SourceURL      string
 }
 ```
+
+`Language()` returns the dictionary's language code (`"ru"` for every
+bundled importer; `BuilderOptions.Language` for `Builder`/`ImportTSV`,
+`"ru"` when empty). `TagSetName()` returns its tag set name (see "Exact
+wordform lookup" above).
 
 `ContentHash()` returns a stable hex digest (xxh3-128, 32 lower-case hex
 characters) of the dictionary's content sections, excluding `info`
@@ -369,7 +433,10 @@ digest describes the encoding, not only the semantics: the same words
 under a different alphabet or `CharPolicy` hash differently. The first
 call encodes every section (for a large dictionary, a copy of its words
 DAWG); the result is cached, so later calls are cheap. Returns `""` for a
-nil dictionary.
+nil dictionary (or on an internal encoding failure, which no dictionary
+built by this library triggers today). See
+[examples/contenthash](../../examples/contenthash/main.go).
+Use case: [scenarios.md](scenarios.md#12-cache-results-by-dictionary-content).
 
 ## Multiple dictionaries at once: `MultiDictionary`
 
@@ -377,6 +444,7 @@ nil dictionary.
 `Close` across an arbitrary set of already-open dictionaries — it does not
 open anything itself. Full design:
 [implementation/multi-dict.md](implementation/multi-dict.md).
+Use case: [scenarios.md](scenarios.md#7-query-several-dictionaries-at-once).
 
 ```go
 oc, _ := morphology.Open("opencorpora.dat")
@@ -399,17 +467,25 @@ for _, r := range m.Parse("кота") {
   **overall** result rather than the per-dictionary result: it takes the
   top `maxWords` from each dictionary, then sorts and truncates the
   combined set again.
+- `Len()` — the number of dictionaries in the set.
 - `DictInfo(i)` — the `BuildInfo` of the dictionary at index `i` (`nil` for
   an out-of-range index or a dictionary with no `info` section).
+- `DictTagSetName(i)` — the tag set name of the dictionary at index `i`
+  (`""` for an out-of-range index); typical use:
+  `tagmap.Map(m.DictTagSetName(r.Dict), r.Tag)`.
 - `IsKnown(word)` — `true` if any member dictionary knows `word` (never
   predicts).
 - `Close()` closes every dictionary in the set, joining errors via
-  `errors.Join`.
+  `errors.Join`. The same rule as `Dictionary.Close` applies: no calls may
+  be in flight on the set or any of its dictionaries.
 
 ## Concurrent use
 
 Reading from an open `*Dictionary` is thread-safe — multiple goroutines
-can call `Parse`/`Lemma`/`Fuzzy`/`FuzzyTop` concurrently:
+can call `Parse`/`Lemma`/`IsKnown`/`Fuzzy`/`FuzzyTop`/`ContentHash`/`Info`/
+`Language`/`TagSetName` concurrently (and the same methods of a
+`MultiDictionary`), but never concurrently with `Close` (see "Opening a
+dictionary" above):
 
 ```go
 var wg sync.WaitGroup
@@ -440,8 +516,8 @@ if err := d.SaveTo("opencorpora.dat"); err != nil {
 }
 ```
 
-A dictionary with a dense alphabet (`OpenPyMorphyDense`) round-trips
-through `SaveTo`/`Open` like any other — the alphabet codec is written
+A dictionary with a dense alphabet (the `…Dense` constructors, `Builder`,
+`ImportTSV`, `Merge`) round-trips through `SaveTo`/`Open` like any other — the alphabet codec is written
 into its own `.dat` section and reconstructed on `Open`.
 
 ## Errors

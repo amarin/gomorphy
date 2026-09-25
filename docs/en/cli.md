@@ -5,6 +5,8 @@ dictionary (`.dat`, a unified format for the pymorphy2/OpenCorpora/UniMorph
 sources — see [library.md](library.md)), plus a utility for fetching and
 building source dictionaries.
 
+For which command solves which task, see [scenarios.md](scenarios.md).
+
 ## General invocation form
 
 ```bash
@@ -16,7 +18,7 @@ gomorphy cli [flags]        # interactive console
 
 | Flag | Description |
 |------|----------|
-| `-d, --dictionary <path>` | path to a `.dat` file or a directory of `.dat` files (can be given multiple times — dictionaries are merged into a single index, preserving order) |
+| `-d, --dictionary <path>` | path to a `.dat` file or a directory of `.dat` files (can be given multiple times; a directory contributes every `*.dat` directly inside it). Several dictionaries are not merged: they are queried together as one `MultiDictionary`, and results come in `-d` order. To combine dictionaries into one file, see [`merge`](#merge--combine-several-dictionaries-into-one) |
 | `-v, --verbose` | verbose logging |
 | `-l, --log <path>` | write the log to a file instead of stderr |
 
@@ -27,7 +29,9 @@ If `-d/--dictionary` is not set, the path is taken from the
 
 ### `lookup` — exact wordform lookup
 
-Returns all grammatical readings for a given word.
+Returns all grammatical readings for a given word. The input is
+lower-cased (`КОТА` finds the same readings as `кота`), and in Russian
+dictionaries `е` in the query also matches `ё` (`еж` finds `ёж`).
 
 ```bash
 gomorphy lookup -d opencorpora.dat кота
@@ -36,12 +40,13 @@ gomorphy lookup -d opencorpora.dat кота
 Output (one line per reading, tab-separated fields):
 
 ```
-кота	кот	sing,nomn	para#0/33/1	opencorpora/0.92/417127
+кота	кот	NOUN,anim,masc,sing,gent	para#0/0/52	opencorpora/0.92/417257
+кота	кот	NOUN,anim,masc,sing,accs	para#0/0/52	opencorpora/0.92/417257
 ```
 
 Format: `<word>\t<lemma>\t<tag>\tpara#<dict>/<shard>/<para>\t<dictionary>` — the `dict`
-component indicates which merged dictionary (0-based) the reading came
-from, when multiple `-d` flags were given; `<dictionary>` is its name and
+component indicates which dictionary (0-based, in `-d` order) the reading
+came from, when several dictionaries were given; `<dictionary>` is its name and
 version. A reading guessed by suffix prediction (the word is not in the
 dictionary) ends with one more column, `(predicted)`. The `(predicted)`
 marker is this optional 6th column: a dictionary reading's line has 5
@@ -70,14 +75,16 @@ gomorphy fuzzy -d opencorpora.dat кот 1
 Output (sorted by distance, then by word):
 
 ```
-0	кот	dict#0
-1	бот	dict#0
-1	вот	dict#0
-1	гот	dict#0
+0	кот	dict#0	opencorpora/0.92/417257
+1	бот	dict#0	opencorpora/0.92/417257
+1	вот	dict#0	opencorpora/0.92/417257
+1	гот	dict#0	opencorpora/0.92/417257
 ...
 ```
 
-Format: `<distance>\t<word>\tdict#<dict>`.
+Format: `<distance>\t<word>\tdict#<dict>\t<dictionary>` — `<dictionary>` is
+the source dictionary's name and version, as in `lookup`. The query is
+lower-cased; in Russian dictionaries `е` → `ё` counts as distance 0.
 
 ### `top` — N nearest words
 
@@ -89,12 +96,14 @@ gomorphy top -d opencorpora.dat кот 5
 ```
 
 ```
-0	кот	dict#0
-1	бот	dict#0
-1	вот	dict#0
-1	гот	dict#0
-1	дот	dict#0
+0	кот	dict#0	opencorpora/0.92/417257
+1	бот	dict#0	opencorpora/0.92/417257
+1	вот	dict#0	opencorpora/0.92/417257
+1	гот	dict#0	opencorpora/0.92/417257
+1	дот	dict#0	opencorpora/0.92/417257
 ```
+
+Same output format as `fuzzy`.
 
 ### `cli` — interactive console
 
@@ -104,7 +113,8 @@ gomorphy cli -d opencorpora.dat
 
 ```
 gomorphy> lookup кота
-кота	кот	sing,nomn	para#0/33/1
+кота	кот	NOUN,anim,masc,sing,gent	para#0/0/52	opencorpora/0.92/417257
+кота	кот	NOUN,anim,masc,sing,accs	para#0/0/52	opencorpora/0.92/417257
 gomorphy> exit
 ```
 
@@ -119,7 +129,11 @@ TAB — command autocompletion (`lookup`, `lemmas`, `fuzzy`, `top`, `exit`,
 gomorphy download opencorpora
 gomorphy download pymorphy
 gomorphy download unimorph
+gomorphy download unimorph --lang ru
 ```
+
+`--lang <code>` — `unimorph` only; the language to download (default `ru`,
+currently the only accepted value). Ignored for the other types.
 
 ### `unpack` — unpack an already-downloaded archive
 
@@ -128,6 +142,8 @@ gomorphy unpack opencorpora
 gomorphy unpack pymorphy
 gomorphy unpack unimorph
 ```
+
+`--lang <code>` — same as `download`.
 
 `unpack unimorph` is a no-op that just confirms the download exists —
 UniMorph's downloaded file is already the usable TSV, there's no
@@ -183,7 +199,9 @@ gomorphy import tsv words.tsv -o out.dat --source ships
 ```
 
 Reads a tab-separated wordform stream and builds a `.dat` (dense 1-byte
-alphabet, prediction rebuilt, like the other self-built dictionaries). Used to make
+alphabet, prediction rebuilt, like the other self-built dictionaries). The
+dictionary is built with language `ru` (there is no `--lang` flag), so the
+Russian lookup policy applies: `е` in a query also matches `ё`. Used to make
 thematic dictionaries with no external resources (no internet, no base
 OpenCorpora dictionary): prepare a TSV, import it into a `.dat`.
 
@@ -197,6 +215,9 @@ lemma<TAB>wordform[<TAB>tags]
 - A missing lemma makes the wordform its own lemma (auto-lemma).
 - Leading/trailing spaces are trimmed from each field (tab is the only
   delimiter).
+- Wordform and lemma are lower-cased on import (lookups lower-case the
+  query too). A `.dat` imported by 1.1.0 from a mixed-case TSV stored
+  capitalized words verbatim, unreachable by exact lookup — re-import it.
 - Tags are opaque free-form strings, registered automatically as
   grammemes — no mapping onto the OpenCorpora set.
 
