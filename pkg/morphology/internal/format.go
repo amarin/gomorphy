@@ -361,6 +361,11 @@ func wrap(err error, msg string) error {
 }
 
 // EncodeMeta serializes the language and substitution policy (CharPolicy).
+// Panics if policy has more than MaxCharPolicySubstitutions substitutions
+// (the count is stored in one byte) — callers that accept a
+// caller-supplied CharPolicy must call ValidateCharPolicy first so this
+// is unreachable via the public API; this panic is a last-resort
+// invariant guard, not the intended error-reporting path.
 func EncodeMeta(language string, policy *CharPolicy) []byte {
 	var buf bytes.Buffer
 	writeU16String(&buf, language)
@@ -368,7 +373,7 @@ func EncodeMeta(language string, policy *CharPolicy) []byte {
 		buf.WriteByte(0)
 		return buf.Bytes()
 	}
-	if len(policy.Substitutions) > 255 {
+	if len(policy.Substitutions) > MaxCharPolicySubstitutions {
 		panic("internal: too many char substitutions")
 	}
 	buf.WriteByte(byte(len(policy.Substitutions)))

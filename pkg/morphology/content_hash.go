@@ -16,8 +16,12 @@ import (
 // with a different alphabet or CharPolicy hash differently.
 //
 // The first call encodes every section (for a large dictionary that is a
-// copy of its words DAWG); the result is cached. Returns "" for a nil
-// dictionary. Like every other method it must not be called after Close.
+// copy of its words DAWG); the result is cached. Returns "" in two cases:
+// a nil dictionary (or a nil/closed receiver), and an internal encoding
+// failure while assembling the sections (today only Alphabet's
+// EncodeAlphabet can fail this way; a CharPolicy that would make encoding
+// fail is instead rejected at build time — see NewCharPolicy). Like every
+// other method it must not be called after Close.
 func (x *Dictionary) ContentHash() string {
 	if x == nil || x.d == nil {
 		return ""

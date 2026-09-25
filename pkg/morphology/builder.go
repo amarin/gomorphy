@@ -37,7 +37,9 @@ type BuilderOptions struct {
 	// dictionary. nil means the language default: е→ё for "ru" (and for an
 	// empty Language, which means "ru"), no substitutions for any other
 	// language. Use NoCharPolicy to disable substitutions explicitly, or
-	// RussianCharPolicy to get е→ё for another language.
+	// RussianCharPolicy to get е→ё for another language. A policy with
+	// more than 255 substitutions is rejected by Build/ImportTSV with a
+	// wrapped error — see CharPolicy's doc comment.
 	CharPolicy *CharPolicy
 }
 
@@ -127,6 +129,9 @@ func buildFromEntries(opts BuilderOptions, entries []internal.BuildEntry, tagSet
 	policy := opts.CharPolicy
 	if policy == nil {
 		policy = defaultCharPolicy(language)
+	}
+	if err := internal.ValidateCharPolicy(policy); err != nil {
+		return nil, fmt.Errorf("morphology: build: %w", err)
 	}
 	d, err := internal.BuildDictionaryFromEntries(internal.BuildOptions{
 		Language:   language,
