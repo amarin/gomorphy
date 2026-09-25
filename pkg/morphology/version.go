@@ -4,4 +4,4 @@ package morphology
 // on every SaveTo (BuildInfo.LibraryVersion). Updated manually on
 // releases; after the CLI grooming (Stage 18, docs/en/todo.md) it may
 // switch to a value embedded at build time (ldflags/VCS info).
-const Version = "1.1.0"
+const Version = "1.2.0"

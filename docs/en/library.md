@@ -22,6 +22,7 @@ Entry points, all returning `*morphology.Dictionary`:
 
 ```go
 func Open(path string) (*Dictionary, error)
+func OpenBytes(data []byte) (*Dictionary, error)
 func OpenPyMorphy(dir string) (*Dictionary, error)
 func OpenPyMorphyDense(dir string) (*Dictionary, error)
 func CompileFromXML(r io.Reader, progress opencorpora.Progress) (*Dictionary, error)
@@ -37,6 +38,10 @@ func CompileFromUniMorphFileDense(path string, opts UniMorphOptions) (*Dictionar
 - **`Open(path)`** — loads an already-compiled unified format
   (`.dat`, sections + mmap). Hot sections (`words.dawg`) are mapped
   without copying; the result must be closed with `Close()`.
+- **`OpenBytes(data)`** — the same format as `Open`, from memory (e.g.
+  `//go:embed`). Checksum verified; `data` is not copied and must outlive the
+  dictionary; misaligned sections are copied. No mmap, so it works on
+  Windows; `Close` is a no-op.
 - **`OpenPyMorphy(dir)`** — reads a pymorphy2 dictionary directly from
   a directory of source files (`words.dawg`, `paradigms.array`,
   ...), without pre-compiling into `.dat`.
@@ -81,9 +86,20 @@ if err != nil {
 defer d.Close()
 ```
 
-`Dictionary.Close()` is a no-op for dictionaries not opened via `Open`
-(`OpenPyMorphy*`/`CompileFromXML*` don't use mmap), so it's safe to call
-unconditionally.
+`Dictionary.Close()` releases the mmap region and is a no-op for
+dictionaries that are imported, built (`Builder`, `ImportTSV`, `Merge`) or
+opened with `OpenBytes` — none of those use mmap, so it's safe to call
+unconditionally. `Close` must not be called while other goroutines may
+still call methods on the Dictionary (directly or through a
+`MultiDictionary`): in-flight `Parse`/`Lemma`/`IsKnown`/`Fuzzy`/`FuzzyTop`/
+`ContentHash` calls read the mapping, and unmapping it under them crashes
+the process with SIGSEGV or SIGBUS — not a recoverable panic. Values
+already returned (`Reading`, `LemmaRef`, `FuzzyMatch`, `BuildInfo` and all
+their strings) are independent copies and stay valid after `Close`. A
+caller that swaps dictionaries at runtime must retire the old one only
+after its in-flight calls have finished (for example, hold a
+`sync.RWMutex` read lock around each call and take the write lock before
+`Close`). The dictionary must not be used after `Close`.
 
 ## Building a dictionary from scratch
 
@@ -105,8 +121,23 @@ b.AddForm("кота", "кот", "NOUN,anim,masc,sing,gent")    // wordform -> le
 d, err := b.Build()
 ```
 
-- `BuilderOptions{Language, Source}` — `Language` is used by the build
-  pipeline; `Source` populates `BuildInfo.Source` (default `"builder"`).
+- `BuilderOptions{Language, Source, CharPolicy}` — `Language` is used by
+  the build pipeline; `Source` populates `BuildInfo.Source` (default
+  `"builder"`).
+- `AddForm`/`AddLemma` lower-case `word`/`lemma`/`normal` (`strings.ToLower`,
+  the same function `Parse` uses); `ImportTSV` lower-cases its `wordform`
+  and `lemma` columns the same way. Tags are never lower-cased. Before this,
+  a form added as «Москва» was stored verbatim and reachable only through
+  `Parse`'s own lower-casing plus ending prediction — indistinguishable from
+  a guess; now it's a real dictionary entry, reachable as `Parse("москва")`
+  or `Parse("Москва")` with `Predicted == false`.
+- `CharPolicy` — `nil` (the default) picks the policy by `Language`: е→ё for
+  `"ru"` and for an empty `Language` (which means "ru"), no substitutions
+  for any other language. Pass `NoCharPolicy()` to disable substitutions
+  explicitly regardless of language, or a custom policy such as
+  `NewCharPolicy(Substitution{From: 'и', To: 'і'})`. The policy is stored
+  in the dictionary and applied by `Parse`, `Lemma`, `IsKnown`, `Fuzzy` and
+  `FuzzyTop`.
 - Tags are opaque strings, stored verbatim and registered automatically as
   grammemes — no mapping onto the OpenCorpora set.
 - An empty lemma makes the wordform its own lemma (auto-lemma).
@@ -121,9 +152,11 @@ d, err := morphology.ImportTSV(r, morphology.BuilderOptions{Language: "ru"})
 ```
 
 Reads `lemma<TAB>wordform[<TAB>tags]` rows from an `io.Reader` with the
-same rules as `Builder` (opaque tags, auto-lemma, dedup). Blank lines and
-`#` comments are skipped, fields trimmed, row errors name the offending
-line. A file variant is not provided — wrap the caller's path yourself.
+same rules as `Builder` (opaque tags, auto-lemma, dedup, lower-casing of
+the wordform and lemma columns, the same `CharPolicy` default). Blank
+lines and `#` comments are skipped, fields trimmed, row errors name the
+offending line. A file variant is not provided — wrap the caller's path
+yourself.
 
 ### `Merge` — combine compiled dictionaries
 
@@ -221,6 +254,9 @@ type Reading struct {
     Shard  int     // dictionary shard index; always 0 for unsharded dictionaries
     Dict   int     // dictionary index within MultiDictionary; always 0 for a direct Dictionary.Parse call
     Prob   float64 // reading probability (0 if probability data is unavailable)
+    // Predicted is true when the reading came from suffix prediction (the
+    // word is absent from the dictionary), false for a dictionary reading.
+    Predicted bool
 }
 ```
 
@@ -233,6 +269,24 @@ between dictionaries of different origin, see
 (`pkg/morphology/tagmap`).
 
 Input is automatically lowercased.
+
+### Dictionary words vs. predictions
+
+`Parse` falls back to ending-based prediction when a word isn't in the
+dictionary, and a predicted `Reading` looks like any other — same fields,
+just `Predicted == true`. To tell the two apart, or to check membership
+without paying for prediction, use `Predicted` or `IsKnown`:
+
+```go
+d.IsKnown("кота")          // true: in the dictionary
+d.IsKnown("бота")          // false, although Parse("бота") may predict readings
+d.Parse("бота")[0].Predicted // true
+```
+
+`IsKnown(word)` reports whether `word` (lower-cased, `CharPolicy` applied
+— the same lookup `Parse` does) has at least one dictionary reading; it
+never predicts. `MultiDictionary.IsKnown` is `true` if any member
+dictionary knows the word.
 
 ## Lemmas (base forms)
 
@@ -256,16 +310,20 @@ type LemmaRef struct {
     Para   uint16
     Shard  int
     Dict   int
+    // Predicted is true when every reading behind this lemma was predicted.
+    Predicted bool
 }
 ```
 
 ## Fuzzy search
 
 `Fuzzy` returns all dictionary words within Levenshtein distance
-`maxDist` (measured in runes; "е"/"ё" count as a single substitution).
+`maxDist` (measured in runes; the dictionary's `CharPolicy` applies — for
+Russian, "е" in the query matches a stored "ё" at distance 0, one-way,
+same as `Parse`; a stored "е" against a query "ё" still costs 1).
 `FuzzyTop` returns the `maxWords` nearest words, expanding the distance
 iteratively. Both return a `[]FuzzyMatch` sorted by (distance, word), with
-no duplicate words:
+no duplicate words. The query is lower-cased, like `Parse`'s input:
 
 ```go
 matches := d.Fuzzy("кот", 1)
@@ -302,11 +360,22 @@ type BuildInfo struct {
 }
 ```
 
+`ContentHash()` returns a stable hex digest (xxh3-128, 32 lower-case hex
+characters) of the dictionary's content sections, excluding `info`
+(`BuiltAt`, `LibraryVersion`, `Source`…) — so re-saving an unchanged
+dictionary, or opening it via `Open`/`OpenBytes`, keeps the digest, and two
+dictionaries with equal `ContentHash` parse every word identically. The
+digest describes the encoding, not only the semantics: the same words
+under a different alphabet or `CharPolicy` hash differently. The first
+call encodes every section (for a large dictionary, a copy of its words
+DAWG); the result is cached, so later calls are cheap. Returns `""` for a
+nil dictionary.
+
 ## Multiple dictionaries at once: `MultiDictionary`
 
-`MultiDictionary` aggregates `Parse`/`Lemma`/`Fuzzy`/`FuzzyTop`/`Close`
-across an arbitrary set of already-open dictionaries — it does not open
-anything itself. Full design:
+`MultiDictionary` aggregates `Parse`/`Lemma`/`Fuzzy`/`FuzzyTop`/`IsKnown`/
+`Close` across an arbitrary set of already-open dictionaries — it does not
+open anything itself. Full design:
 [implementation/multi-dict.md](implementation/multi-dict.md).
 
 ```go
@@ -332,6 +401,8 @@ for _, r := range m.Parse("кота") {
   combined set again.
 - `DictInfo(i)` — the `BuildInfo` of the dictionary at index `i` (`nil` for
   an out-of-range index or a dictionary with no `info` section).
+- `IsKnown(word)` — `true` if any member dictionary knows `word` (never
+  predicts).
 - `Close()` closes every dictionary in the set, joining errors via
   `errors.Join`.
 
