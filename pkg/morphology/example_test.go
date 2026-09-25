@@ -494,3 +494,14 @@ func ExampleMultiDictionary_DictTagSetName() {
 	// SG
 	// MASC
 }
+
+// ExampleDictionary_IsKnown shows telling a dictionary word from an unknown
+// one without looking at readings (Parse would predict readings for many
+// unknown words; IsKnown never predicts).
+func ExampleDictionary_IsKnown() {
+	d := mustCompileExampleDict()
+
+	fmt.Println(d.IsKnown("Кота"), d.IsKnown("бота"))
+	// Output:
+	// true false
+}

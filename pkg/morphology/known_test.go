@@ -92,3 +92,42 @@ func TestMultiDictionaryParseMixesPredictedAndExact(t *testing.T) {
 	assert.True(t, sawPredicted)
 	assert.True(t, sawExact)
 }
+
+func TestIsKnown(t *testing.T) {
+	d := buildSmallDict(t)
+
+	assert.True(t, d.IsKnown("кота"))
+	assert.True(t, d.IsKnown("КОТА"), "input is lower-cased like Parse")
+	assert.False(t, d.IsKnown("бота"), "predicted by Parse, but not in the dictionary")
+	assert.NotEmpty(t, d.Parse("бота"))
+	assert.False(t, d.IsKnown(""))
+
+	var nilDict *morphology.Dictionary
+	assert.False(t, nilDict.IsKnown("кот"))
+}
+
+// parseDict's pymorphy2 fixture stores "ёж" and uses RussianCharPolicy:
+// IsKnown applies the same е→ё substitution as Parse.
+func TestIsKnownAppliesCharPolicy(t *testing.T) {
+	d := parseDict(t)
+	assert.True(t, d.IsKnown("еж"))
+	assert.True(t, d.IsKnown("ёж"))
+}
+
+// IsKnown(w) is true exactly when Parse(w) returns non-predicted readings.
+func TestIsKnownAgreesWithParse(t *testing.T) {
+	d := predictionFixture(t)
+	for _, w := range []string{"кот", "кота", "мышь", "ежик", "котёнка", "неттакогослова"} {
+		rs := d.Parse(w)
+		known := len(rs) > 0 && !rs[0].Predicted
+		assert.Equal(t, known, d.IsKnown(w), w)
+	}
+}
+
+func TestMultiDictionaryIsKnown(t *testing.T) {
+	m := morphology.NewMultiDictionary(buildSmallDict(t), botDict(t))
+	assert.True(t, m.IsKnown("кота"))
+	assert.True(t, m.IsKnown("бота"))
+	assert.False(t, m.IsKnown("зебра"))
+	assert.False(t, morphology.NewMultiDictionary().IsKnown("кот"))
+}
