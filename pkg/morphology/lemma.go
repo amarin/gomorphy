@@ -8,11 +8,12 @@ type LemmaRef struct {
 	Para   uint16 // paradigm id — unique only together with Shard
 	Shard  int    // dictionary shard index; always 0 for unsharded dictionaries
 	Dict   int    // dictionary index in MultiDictionary; always 0 for Dictionary.Lemma directly
-	// Predicted is true when the lemma comes from predicted readings (the
-	// word is absent from the dictionary). A single Dictionary.Parse never
-	// mixes predicted and dictionary readings, and MultiDictionary.Lemma
-	// never merges refs across dictionaries, so every reading behind one
-	// LemmaRef shares this value.
+	// Predicted is true when every reading behind this lemma was
+	// predicted (the lemma comes from predicted readings — the word is
+	// absent from the dictionary). A single Dictionary.Parse never mixes
+	// predicted and dictionary readings, and MultiDictionary.Lemma never
+	// merges refs across dictionaries, so every reading behind one
+	// LemmaRef shares this value today.
 	Predicted bool
 }
 

@@ -189,8 +189,8 @@ func (m *MultiDictionary) FuzzyTop(word string, maxWords int) []FuzzyMatch {
 // Close closes every dictionary in the set (Dictionary.Close is a no-op
 // for dictionaries not opened via Open), aggregating all errors via
 // errors.Join. The set must not be used after Close, nor its dictionaries.
-// The same rule as Dictionary.Close applies: no calls may be in flight on the set or any of its
-// dictionaries.
+// The same rule as Dictionary.Close applies: no calls may be in flight on
+// the set or any of its dictionaries.
 func (m *MultiDictionary) Close() error {
 	var errs []error
 	for _, d := range m.dicts {

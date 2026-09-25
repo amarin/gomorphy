@@ -29,8 +29,9 @@ type Reading struct {
 
 // Parse parses word and returns all dictionary readings, sorted by
 // probability (descending). For out-of-dictionary words, it tries to
-// predict readings from the prediction-DAWG (suffixes); such readings have Predicted set. Returns nil if no
-// readings are found. The input is lowercased.
+// predict readings from the prediction-DAWG (suffixes); such readings
+// have Predicted set. Returns nil if no readings are found. The input is
+// lowercased.
 func (x *Dictionary) Parse(word string) []Reading {
 	if x == nil || x.d == nil || len(x.d.Words) == 0 {
 		return nil
