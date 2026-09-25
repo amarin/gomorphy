@@ -302,7 +302,7 @@ type BuildInfo struct {
 
 ## Несколько словарей одновременно: `MultiDictionary`
 
-`MultiDictionary` агрегирует `Parse`/`Lemma`/`Fuzzy`/`FuzzyTop`/`Close`
+`MultiDictionary` агрегирует `Parse`/`Lemma`/`Fuzzy`/`FuzzyTop`/`IsKnown`/`Close`
 по произвольному набору уже открытых словарей — сам он ничего не
 открывает. Подробный дизайн:
 [implementation/multi-dict.md](../en/implementation/multi-dict.md).

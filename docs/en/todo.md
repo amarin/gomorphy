@@ -494,4 +494,5 @@ yet" error: the implementation only reads the file via
 (`CreateFileMapping`/`MapViewOfFile`), covering the same contract
 (`Open`/`Bytes`/`Len`/`Close`), and verify it on a real Windows machine
 (CI or by hand) — cross-compilation with no real test of the mapping
-itself isn't enough.
+itself isn't enough. Until then, `morphology.OpenBytes` (no mmap) is the
+workaround for loading a dictionary on Windows.

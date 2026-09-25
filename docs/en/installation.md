@@ -3,9 +3,12 @@
 ## Requirements
 
 - Go 1.25+ (the `go` directive follows the policy "current Go release minus two minor versions" and is raised when a new Go minor version ships)
-- OS: Linux, macOS (amd64/arm64); Windows is not supported — the library
-  uses mmap directly through the `syscall` package (see
-  `docs/code-review-pre-1.0.md`)
+- OS: Linux, macOS (amd64/arm64); Windows builds compile, but `Open`
+  returns an error at runtime — dictionary loading uses mmap directly
+  through the `syscall` package (see `docs/code-review-pre-1.0.md`).
+  `OpenBytes` works on Windows (no mmap); it is today's workaround for
+  loading a dictionary there (e.g. `//go:embed` the `.dat` file and pass
+  its bytes) — see `docs/en/todo.md`, "Windows: native mmap".
 
 ## Installing the CLI utility
 

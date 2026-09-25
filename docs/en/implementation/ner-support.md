@@ -229,6 +229,57 @@ ways (all found or resolved during planning, before implementation):
   builds `internal.BuildEntry` values itself and never calls `AddForm`,
   so it needed its own `strings.ToLower` calls on the wordform and lemma
   columns — done alongside the `Builder` fix.
+- **D-12 (D).** `NewCharPolicy(subs...)` is not named in the spec's own
+  API sketch — only `RussianCharPolicy()` and `NoCharPolicy()` are. It
+  was added by the implementation plan as the general constructor behind
+  both (`RussianCharPolicy`/`NoCharPolicy` are thin wrappers over it) and
+  kept in the shipped API: a harmless, symmetrical constructor that a
+  caller needs anyway to build a custom (non-Russian, non-empty)
+  `CharPolicy` from outside the module, now that `CharPolicy` is a public
+  type alias (D-2).
+
+## Final review round (2026-09-25)
+
+A whole-branch review of 1.2.0 after `release: 1.2.0` (commit `616e448`)
+found and fixed eight issues, none changing the GMOR format or the
+public names fixed by the spec:
+
+1. **UniMorph mixed-case unreachability.** `unimorph.ImportFromTSV`
+   stored lemma/wordform text verbatim; a mixed-case UniMorph row (e.g.
+   «Аббас») was unreachable by `Parse`/`Fuzzy`/`IsKnown`, all of which
+   lower-case their query. Fixed with `strings.ToLower` on the lemma and
+   wordform fields, consistent with `Builder`/`ImportTSV` (spec item C);
+   tags are left untouched. The OpenCorpora importer does not have this
+   bug — its `t=` attributes (the actual DAWG keys) are already
+   lower-case in the source format; the `pymorphy2` importer reads
+   pre-built binary DAWGs with no string-level entry point to fix. See
+   the CHANGELOG's 1.2.0 "Fixed" section for the rebuild note.
+2. **Windows install docs overstated the gap.** `docs/*/installation.md`
+   said Windows "is not supported"; aligned with README.md's actual
+   behavior (`Open` returns a runtime error there, but the code compiles)
+   and added that `OpenBytes` works on Windows today as the workaround.
+3. **`ContentHash`'s `""` cases were undocumented, and an oversized
+   `CharPolicy` panicked instead of erroring.** `ContentHash`'s doc
+   comment now states both cases that return `""` (nil dictionary;
+   an internal encoding failure). A `CharPolicy` with more than
+   `internal.MaxCharPolicySubstitutions` (255) substitutions used to
+   reach a `panic` inside `EncodeMeta` only at `SaveTo`/`ContentHash`
+   time; it is now rejected earlier, at build time, with a wrapped
+   error (`internal.ValidateCharPolicy`, called from
+   `buildFromEntries` and `unimorph.ImportFromTSV`). The `EncodeMeta`
+   panic stays as a last-resort invariant guard.
+5. **`LemmaRef.Predicted` wording unified.** `pkg/morphology/lemma.go`'s
+   doc comment now says "true when every reading behind this lemma was
+   predicted", matching `docs/en/library.md` and D-9 above.
+6. **CLI docs now say the `(predicted)` marker is an optional 6th
+   column** (`docs/en/cli.md`, `docs/ru/cli.md`): a dictionary reading's
+   line has 5 tab-separated fields, a predicted one has 6.
+7. **Two doc-comment lines re-wrapped** to the surrounding ~75-column
+   width: `Parse`'s doc comment (`parse.go`) and `MultiDictionary.Close`'s
+   (`multidict.go`).
+8. **`docs/ru/library.md`'s `MultiDictionary` method list was missing
+   `IsKnown`** (present in `docs/en/library.md` and in the actual API,
+   `known.go`); added.
 
 ## Testing
 
