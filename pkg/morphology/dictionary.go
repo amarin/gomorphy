@@ -33,6 +33,8 @@
 package morphology
 
 import (
+	"sync"
+
 	"github.com/amarin/gomorphy/internal/mmapx"
 	"github.com/amarin/gomorphy/pkg/morphology/internal"
 )
@@ -44,4 +46,7 @@ import (
 type Dictionary struct {
 	d  *internal.Dictionary
 	mm *mmapx.Region
+
+	hashOnce sync.Once // guards hash; see ContentHash
+	hash     string
 }
