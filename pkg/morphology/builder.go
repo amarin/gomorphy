@@ -59,7 +59,9 @@ func NewBuilder(opts BuilderOptions) *Builder {
 // and an opaque grammeme tag "tag". tag may be "" (a reading with no
 // grammemes). An empty word is an error (as are whitespace-only words, per
 // the TSV trim rule). An empty lemma means the wordform is its own lemma
-// (auto-lemma). Case is left to the caller, matching the importers.
+// (auto-lemma). word and lemma are lower-cased (strings.ToLower): Parse
+// lower-cases its input, so a mixed-case form would otherwise be
+// unreachable. tag is stored verbatim.
 func (b *Builder) AddForm(word, lemma, tag string) error {
 	if b.closed {
 		return ErrBuilderClosed
@@ -70,7 +72,7 @@ func (b *Builder) AddForm(word, lemma, tag string) error {
 	if lemma == "" {
 		lemma = word
 	}
-	entry := internal.BuildEntry{Word: word, Lemma: lemma, Tag: tag}
+	entry := internal.BuildEntry{Word: strings.ToLower(word), Lemma: strings.ToLower(lemma), Tag: tag}
 	if b.seen == nil {
 		b.seen = make(map[internal.BuildEntry]bool)
 	}
