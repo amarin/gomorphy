@@ -100,6 +100,20 @@ func TestUniMorphOptionsCharPolicyFromOutside(t *testing.T) {
 	assert.False(t, d.IsKnown("еж"))
 }
 
+func TestFuzzyAppliesCharPolicy(t *testing.T) {
+	ru := yolkaDict(t, morphology.BuilderOptions{})
+	got := ru.Fuzzy("елка", 0)
+	require.Len(t, got, 1)
+	assert.Equal(t, morphology.FuzzyMatch{Word: "ёлка", Distance: 0}, got[0])
+	assert.Equal(t, got, ru.FuzzyTop("елка", 1))
+
+	none := yolkaDict(t, morphology.BuilderOptions{CharPolicy: morphology.NoCharPolicy()})
+	assert.Empty(t, none.Fuzzy("елка", 0))
+	got = none.Fuzzy("елка", 1)
+	require.Len(t, got, 1)
+	assert.Equal(t, 1, got[0].Distance)
+}
+
 func TestCharPolicyConstructors(t *testing.T) {
 	to, ok := morphology.RussianCharPolicy().Substitute('е')
 	assert.True(t, ok)
