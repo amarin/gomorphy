@@ -60,6 +60,36 @@ A short status with links to details — the write-ups themselves live in
 
 ## Unfinished/future stages
 
+### Documentation audit after 1.2.0 (markdown + godoc) — NEXT, first priority
+
+**Why:** 1.2.0 shipped without a dedicated documentation pass (owner note
+2026-09-25). The NER-support work touched the public API in many places
+(`Reading.Predicted`, `LemmaRef.Predicted`, `IsKnown`, `OpenBytes`,
+`CharPolicy`/`Substitution`/`NewCharPolicy`/`RussianCharPolicy`/`NoCharPolicy`,
+`BuilderOptions.CharPolicy`, `ContentHash`, `Close` lifecycle, lower-casing in
+Builder/ImportTSV/UniMorph/Fuzzy, the 255-substitution limit, `go 1.25.0`), and
+docs were updated task by task, not reviewed as a whole. Do this before any
+1.3.0 work, and ship the result as 1.2.1 (docs-only patch) if anything
+user-visible changes.
+
+- [ ] godoc: every exported identifier of `pkg/morphology` (and `tagmap`,
+      loaders) has a doc comment that starts with its name, states behaviour,
+      defaults, error and nil cases, and concurrency/lifecycle rules; check with
+      `go doc -all ./pkg/morphology` and `golangci-lint` (revive/godot if
+      enabled); package docs (`doc.go`) mention the 1.2.0 features.
+- [ ] Runnable examples (`example_test.go`) cover the new API
+      (`IsKnown`, `OpenBytes`, `CharPolicy` in Builder, `ContentHash`) and show
+      real output.
+- [ ] Markdown: `README.md`, `docs/en/index.md`, `library.md`, `cli.md`,
+      `installation.md`, `comparison.md`, `glossary.md`, `requirements.md`,
+      `implementation.md` — consistent with 1.2.0 (API, defaults, Windows/OpenBytes,
+      Go version, lower-casing, е/ё rules); no stale 1.1.0 statements; links resolve.
+- [ ] Russian subset (`docs/ru/`) matches the English content it mirrors.
+- [ ] `CHANGELOG.md` and `docs/en/implementation/ner-support.md` agree with the
+      code (the final-review fixes included).
+- [ ] Result: a short write-up in `implementation/` (what was fixed), CHANGELOG
+      entry, tag `v1.2.1` if released.
+
 ### Stage 19.1 — Structural merge — DONE 2026-09-23
 
 **Why:** the Stage 19 `Merge` rebuilds its output from `(word, lemma,
