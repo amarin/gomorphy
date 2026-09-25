@@ -13,7 +13,9 @@ import (
 
 // UniMorphOptions configures CompileFromUniMorph/CompileFromUniMorphFile
 // (and their Dense variants) — an alias for unimorph.Options so callers
-// don't need to import pkg/morphology/importers/unimorph directly.
+// don't need to import pkg/morphology/importers/unimorph directly. Its
+// CharPolicy field takes a *CharPolicy (NoCharPolicy, RussianCharPolicy,
+// NewCharPolicy); nil means the language default.
 type UniMorphOptions = unimorph.Options
 
 // OpenPyMorphy loads a pymorphy2 dictionary from a directory (a direct read
@@ -154,20 +156,14 @@ func (x *Dictionary) TagSetName() string {
 
 // Open loads a dictionary from a GMOR file (the single on-disk format,
 // SaveTo). Hot sections (words.dawg) are mapped via mmap without copying;
-// the result must be closed with the Close method.
+// the result must be closed with the Close method (see Close for the
+// lifecycle rules). Not supported on Windows yet — use OpenBytes there.
 func Open(path string) (*Dictionary, error) {
 	mm, err := mmapx.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("morphology: open %s: %w", path, err)
 	}
-
-	cont, err := internal.OpenContainer(mm.Bytes())
-	if err != nil {
-		_ = mm.Close()
-		return nil, fmt.Errorf("morphology: open %s: %w", path, err)
-	}
-
-	d, err := parseContainer(cont)
+	d, err := openBytes(mm.Bytes())
 	if err != nil {
 		_ = mm.Close()
 		return nil, fmt.Errorf("morphology: open %s: %w", path, err)
@@ -175,9 +171,48 @@ func Open(path string) (*Dictionary, error) {
 	return &Dictionary{d: d, mm: mm}, nil
 }
 
-// Close releases the resources of a dictionary opened via Open (the mmap
-// region). It is a no-op for importer dictionaries. The dictionary must
-// not be used after Close.
+// OpenBytes opens a dictionary in the GMOR format (as written by SaveTo)
+// from data — typically a file embedded with //go:embed. The checksum is
+// verified like Open. data is not copied: DAWG sections whose unit array
+// is 4-byte aligned in memory are used in place (zero-copy), misaligned
+// ones are copied (//go:embed gives no alignment guarantee, so expect
+// copies there). data must stay unmodified and reachable for as long as
+// the Dictionary is used; Close releases nothing. Works on every platform,
+// Windows included (no mmap involved).
+func OpenBytes(data []byte) (*Dictionary, error) {
+	d, err := openBytes(data)
+	if err != nil {
+		return nil, fmt.Errorf("morphology: open bytes: %w", err)
+	}
+	return &Dictionary{d: d}, nil
+}
+
+// openBytes validates a GMOR container (magic, version, checksum, catalog)
+// and assembles the internal dictionary from its sections. The result may
+// alias data (see internal.ParseDAWG).
+func openBytes(data []byte) (*internal.Dictionary, error) {
+	cont, err := internal.OpenContainer(data)
+	if err != nil {
+		return nil, err
+	}
+	return parseContainer(cont)
+}
+
+// Close releases the mmap region of a dictionary opened with Open. It is a
+// no-op for dictionaries that are imported, built (Builder, ImportTSV,
+// Merge) or opened with OpenBytes.
+//
+// Close must not be called while other goroutines may still call methods
+// on the Dictionary (directly or through a MultiDictionary): in-flight
+// Parse/Lemma/IsKnown/Fuzzy/FuzzyTop/ContentHash calls read the
+// mapping, and unmapping it under them crashes the process with SIGSEGV or
+// SIGBUS — not a recoverable panic. Values already returned (Reading,
+// LemmaRef, FuzzyMatch, BuildInfo and all their strings) are independent
+// copies and stay valid after Close. A caller that swaps dictionaries at
+// runtime must retire the old one only after its in-flight calls have
+// finished (for example, hold a sync.RWMutex read lock around each call
+// and take the write lock before Close). The dictionary must not be used
+// after Close.
 func (x *Dictionary) Close() error {
 	if x == nil || x.mm == nil {
 		return nil

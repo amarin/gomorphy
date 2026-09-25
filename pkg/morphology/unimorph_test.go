@@ -79,3 +79,27 @@ func TestCompileFromUniMorphDense_SaveOpenRoundtrip(t *testing.T) {
 
 	assert.Equal(t, dense.Parse("кота"), got.Parse("кота"))
 }
+
+// mixedCaseUniMorphTSV mirrors uniMorphTSV but with the lemma/wordform
+// carrying upper-case letters (as real UniMorph proper-noun rows do, e.g.
+// "Аббас"). ImportFromTSV lower-cases lemma/wordform text on read so such
+// rows stay reachable by Parse/IsKnown/Fuzzy, which all lower-case their
+// query — see pkg/morphology/importers/unimorph/import.go.
+const mixedCaseUniMorphTSV = "Аббас\tАббас\tN;NOM;SG\n" +
+	"Аббас\tАббаса\tN;GEN;SG\n"
+
+func TestCompileFromUniMorph_MixedCaseReachable(t *testing.T) {
+	d, err := morphology.CompileFromUniMorph(strings.NewReader(mixedCaseUniMorphTSV), morphology.UniMorphOptions{Language: "ru"})
+	require.NoError(t, err)
+
+	readings := d.Parse("Аббас")
+	require.NotEmpty(t, readings, "Parse must find the mixed-case UniMorph entry via its lower-cased query")
+	assert.Equal(t, "аббас", readings[0].Normal)
+	assert.False(t, readings[0].Predicted, "an exact dictionary match must not be Predicted")
+
+	assert.True(t, d.IsKnown("Аббас"))
+
+	matches := d.Fuzzy("Аббас", 0)
+	require.NotEmpty(t, matches, "Fuzzy at distance 0 must find the lower-cased stored word")
+	assert.Equal(t, "аббас", matches[0].Word)
+}

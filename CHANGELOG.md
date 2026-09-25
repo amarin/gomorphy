@@ -12,6 +12,62 @@ full list with links.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-25
+
+Support for dictionary-based NER in the lexicon module (see
+[implementation/ner-support.md](docs/en/implementation/ner-support.md)).
+
+**Upgrading from 1.1.0:**
+- Rebuild UniMorph dictionaries and Builder/TSV dictionaries built from
+  mixed-case input — otherwise their capitalised forms stay unreachable by
+  exact lookup (see Fixed).
+- Dictionaries built with a non-Russian `Language` and no explicit
+  `CharPolicy` no longer get е→ё; pass `RussianCharPolicy()` to keep it.
+- `Fuzzy` distances between е and ё drop from 1 to 0 for Russian
+  dictionaries; adjust thresholds that relied on the old metric.
+- Existing `.dat` files open unchanged; the binary format is the same.
+
+### Added
+- `Reading.Predicted`, `LemmaRef.Predicted`: tell a dictionary reading from a
+  suffix-prediction guess. `Dictionary.IsKnown` / `MultiDictionary.IsKnown`:
+  exact lookup only, never predicts. CLI `lookup` appends `(predicted)`.
+- `OpenBytes(data)`: open a dictionary from memory (e.g. `//go:embed`), no mmap,
+  works on Windows.
+- Public `CharPolicy`, `Substitution`, `NewCharPolicy`, `RussianCharPolicy`,
+  `NoCharPolicy`; `BuilderOptions.CharPolicy`; `UniMorphOptions.CharPolicy` is now
+  settable from outside the module.
+- `Dictionary.ContentHash()`: a digest of the content that ignores the `info`
+  section, stable across re-saves.
+
+### Fixed
+- `Builder.AddForm`/`AddLemma` and `ImportTSV` lower-case words and lemmas. Before,
+  a form added as «Москва» was reachable only as a prediction.
+- `Fuzzy`/`FuzzyTop` lower-case the query.
+- The UniMorph importer (`unimorph.ImportFromTSV`) now lower-cases lemma and
+  wordform text on read, same as Builder/ImportTSV. Before, a mixed-case
+  UniMorph row (e.g. «Аббас») was stored verbatim and unreachable by exact
+  lookup, since `Parse`/`Fuzzy`/`IsKnown` lower-case their query. **UniMorph
+  dictionaries and Builder/TSV dictionaries built by 1.1.0 from mixed-case
+  input must be rebuilt** to be reachable by exact lookup — rebuilding is
+  the only way to apply this fix to existing `.dat` files.
+- A `CharPolicy` with more than 255 substitutions is rejected with an error
+  when the dictionary is built (Builder, ImportTSV, the UniMorph importer).
+  Before, it was accepted and the process panicked later, on `SaveTo`.
+
+### Changed
+- `Fuzzy`/`FuzzyTop` apply the dictionary's CharPolicy: for Russian, е in the
+  query matches ё in the dictionary at distance 0 (was 1).
+- The default CharPolicy of Builder/ImportTSV depends on the language: е→ё only
+  for `Language` "ru" (an empty `Language` means "ru"). A dictionary built with
+  any other `Language` and no explicit `CharPolicy` no longer gets the Russian
+  е→ё substitution (before, every built dictionary did); pass
+  `RussianCharPolicy()` to keep the old behaviour.
+- `go.mod` declares `go 1.25.0` (was 1.27.1) with `toolchain go1.27.1`: the
+  `go` directive now follows the policy "current Go minus two minor versions".
+  Dependencies are unchanged.
+- `Close` documents that it must not run concurrently with other calls on the
+  dictionary.
+
 ## [1.1.0] - 2026-09-23
 
 Build dictionaries from your own wordforms and merge compiled

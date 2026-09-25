@@ -33,7 +33,9 @@ type Options struct {
 	Language string
 
 	// CharPolicy overrides the language-inferred default (nil means
-	// infer from Language: "ru" -> internal.RussianCharPolicy()).
+	// infer from Language: "ru" -> internal.RussianCharPolicy()). A
+	// policy with more than internal.MaxCharPolicySubstitutions
+	// substitutions is rejected with a wrapped error.
 	CharPolicy *internal.CharPolicy
 
 	// OnMalformed is called for each row that isn't exactly 3
@@ -52,9 +54,10 @@ type Options struct {
 	SourceVersion string
 }
 
-// formBundle is a single row's wordform and its UniMorph feature bundle
-// (e.g. "N;ACC;SG"), stored verbatim — see Options.Language's doc
-// comment on why tags aren't reordered or mapped onto another schema.
+// formBundle is a single row's wordform (lower-cased on read, see
+// ImportFromTSV's Phase 1) and its UniMorph feature bundle (e.g.
+// "N;ACC;SG"), stored verbatim — see Options.Language's doc comment on
+// why tags aren't reordered or mapped onto another schema.
 type formBundle struct {
 	text   string
 	bundle string
@@ -222,6 +225,9 @@ func ImportFromTSV(r io.Reader, tagSet *internal.TagSet, opts Options) (*interna
 	if charPolicy == nil {
 		charPolicy = internal.RussianCharPolicy()
 	}
+	if err := internal.ValidateCharPolicy(charPolicy); err != nil {
+		return nil, fmt.Errorf("unimorph: %w", err)
+	}
 	if tagSet == nil {
 		tagSet = internal.NewTagSet("unimorph")
 	}
@@ -249,7 +255,12 @@ func ImportFromTSV(r io.Reader, tagSet *internal.TagSet, opts Options) (*interna
 			}
 			continue
 		}
-		lemma, form, bundle := fields[0], fields[1], fields[2]
+		// Lemma and wordform text are lower-cased (strings.ToLower, same
+		// function Parse/Fuzzy/IsKnown use) so mixed-case UniMorph input
+		// (e.g. "Аббас") stays reachable by exact lookup, consistent with
+		// Builder/ImportTSV (builder.go's AddForm, import_tsv.go). The
+		// bundle (tag) is never lower-cased or normalized.
+		lemma, form, bundle := strings.ToLower(fields[0]), strings.ToLower(fields[1]), fields[2]
 		if lemma == "" {
 			lemma = form
 		}

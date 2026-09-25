@@ -37,7 +37,7 @@ func TestFuzzyWalkShardDenseAlphabetWidth2(t *testing.T) {
 	words := []string{"кот", "код", "дом", "яснее"}
 	dawg, alphabet := buildDenseFuzzyDAWG(t, 2, words)
 
-	got := fuzzyWalkShard(dawg, alphabet, "код", 1)
+	got := fuzzyWalkShard(dawg, alphabet, nil, "код", 1)
 	sort.Slice(got, func(i, j int) bool { return got[i].Word < got[j].Word })
 
 	want := []FuzzyMatch{

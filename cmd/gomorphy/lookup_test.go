@@ -30,6 +30,29 @@ func TestDoLookup_NotFound(t *testing.T) {
 	assert.Error(t, doLookup(&buf, m, "несуществующееслово"))
 }
 
+// lookupPredictedDat saves a tiny Builder dictionary (кот/кота). Builder
+// dictionaries carry a prediction DAWG, so "бота" is predicted.
+func lookupPredictedDat(t *testing.T) string {
+	t.Helper()
+	return buildBuilderDat(t,
+		[3]string{"кот", "кот", "NOUN,anim,masc,sing,nomn"},
+		[3]string{"кота", "кот", "NOUN,anim,masc,sing,gent"},
+	)
+}
+
+func TestDoLookup_MarksPredicted(t *testing.T) {
+	m := mustResolveOne(t, lookupPredictedDat(t))
+	defer func() { _ = m.Close() }()
+
+	var buf bytes.Buffer
+	require.NoError(t, doLookup(&buf, m, "бота"))
+	assert.Contains(t, buf.String(), "\t(predicted)\n")
+
+	buf.Reset()
+	require.NoError(t, doLookup(&buf, m, "кота"))
+	assert.NotContains(t, buf.String(), "(predicted)")
+}
+
 func TestLookupCommand_EndToEnd(t *testing.T) {
 	path := buildFixtureDat(t, fixtureXML("кот"))
 

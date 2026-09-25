@@ -36,12 +36,17 @@ gomorphy lookup -d opencorpora.dat кота
 Output (one line per reading, tab-separated fields):
 
 ```
-кота	кот	sing,nomn	para#0/33/1
+кота	кот	sing,nomn	para#0/33/1	opencorpora/0.92/417127
 ```
 
-Format: `<word>\t<lemma>\t<tag>\tpara#<dict>/<shard>/<para>` — the `dict`
+Format: `<word>\t<lemma>\t<tag>\tpara#<dict>/<shard>/<para>\t<dictionary>` — the `dict`
 component indicates which merged dictionary (0-based) the reading came
-from, when multiple `-d` flags were given.
+from, when multiple `-d` flags were given; `<dictionary>` is its name and
+version. A reading guessed by suffix prediction (the word is not in the
+dictionary) ends with one more column, `(predicted)`. The `(predicted)`
+marker is this optional 6th column: a dictionary reading's line has 5
+tab-separated fields, a predicted reading's line has 6 — the column count
+varies per line, not fixed across the whole output.
 
 ### `lemmas` — lemma lookup
 

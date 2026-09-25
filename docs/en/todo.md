@@ -56,6 +56,7 @@ A short status with links to details — the write-ups themselves live in
 | — Stage 18 (documentation + tests + godoc audit; the CLI part was closed separately, see above) | DONE 2026-09-17 | [implementation/stage-18-finalize.md](implementation/stage-18-finalize.md) |
 | 16. UniMorph import (importer, loader, public API, CLI, dense by default) | DONE 2026-09-19 | [implementation/stage-16-import-unimorph.md](implementation/stage-16-import-unimorph.md) |
 | 19.1. Structural merge (id-preserving `Merge`, replaces the entries-based one) | DONE 2026-09-23 | [implementation/stage-19-builder-tsv-merge.md](implementation/stage-19-builder-tsv-merge.md#structural-merge-2026-09-23) |
+| — NER support for lexicon: 1.2.0 (known-word flag, OpenBytes, case/ё, CharPolicy, ContentHash, go 1.25) | DONE | [implementation/ner-support.md](implementation/ner-support.md) |
 
 ## Unfinished/future stages
 
@@ -402,6 +403,9 @@ the import report, the batch query modes, the skill, and the CLI
 
 ## Stage 20. Synonym database: groups, tags, sidecar file — PLANNED (scenarios are an open question)
 
+Consumer note (2026-09-24): the lexicon module does not need synonyms for
+NER; this stage stays unscheduled.
+
 **Summary**: Alongside the wordform dictionary — a separate database of
 **synonyms and derived concepts** (sidecar file `.syn`). Problems it
 solves that can't be derived from wordforms:
@@ -490,4 +494,5 @@ yet" error: the implementation only reads the file via
 (`CreateFileMapping`/`MapViewOfFile`), covering the same contract
 (`Open`/`Bytes`/`Len`/`Close`), and verify it on a real Windows machine
 (CI or by hand) — cross-compilation with no real test of the mapping
-itself isn't enough.
+itself isn't enough. Until then, `morphology.OpenBytes` (no mmap) is the
+workaround for loading a dictionary on Windows.

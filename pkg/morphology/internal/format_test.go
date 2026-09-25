@@ -214,6 +214,30 @@ func TestMetaTruncated(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestValidateCharPolicy(t *testing.T) {
+	assert.NoError(t, ValidateCharPolicy(nil))
+	assert.NoError(t, ValidateCharPolicy(RussianCharPolicy()))
+
+	subs := make([]Substitution, MaxCharPolicySubstitutions)
+	assert.NoError(t, ValidateCharPolicy(&CharPolicy{Substitutions: subs}))
+
+	tooMany := make([]Substitution, MaxCharPolicySubstitutions+1)
+	err := ValidateCharPolicy(&CharPolicy{Substitutions: tooMany})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "256")
+}
+
+// TestEncodeMetaPanicsOnOversizedPolicy documents EncodeMeta's panic as a
+// last-resort invariant guard for a CharPolicy that bypassed
+// ValidateCharPolicy (every public build path calls it first — see
+// buildFromEntries and unimorph.ImportFromTSV).
+func TestEncodeMetaPanicsOnOversizedPolicy(t *testing.T) {
+	tooMany := make([]Substitution, MaxCharPolicySubstitutions+1)
+	assert.Panics(t, func() {
+		EncodeMeta("ru", &CharPolicy{Substitutions: tooMany})
+	})
+}
+
 func TestStringsRoundtrip(t *testing.T) {
 	in := []string{"", "а", "по", "наи", "международный", "ёжик"}
 	data := EncodeStrings(in)

@@ -141,6 +141,22 @@ func TestBuilderBuildNoEntries(t *testing.T) {
 	assert.ErrorIs(t, err, morphology.ErrNoEntries)
 }
 
+// TestBuilderBuildOversizedCharPolicy verifies a CharPolicy with more than
+// 255 substitutions is rejected at Build time with a wrapped error,
+// instead of panicking later inside EncodeMeta (SaveTo/ContentHash).
+func TestBuilderBuildOversizedCharPolicy(t *testing.T) {
+	subs := make([]morphology.Substitution, 256)
+	for i := range subs {
+		subs[i] = morphology.Substitution{From: rune('a' + i), To: rune('A' + i)}
+	}
+	b := morphology.NewBuilder(morphology.BuilderOptions{CharPolicy: morphology.NewCharPolicy(subs...)})
+	require.NoError(t, b.AddLemma("кот", "NOUN,anim,masc,sing,nomn"))
+
+	_, err := b.Build()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "256")
+}
+
 // TestBuilderClosedAfterBuild verifies the Builder is consumed by Build:
 // further AddForm and Build calls are rejected with ErrBuilderClosed.
 func TestBuilderClosedAfterBuild(t *testing.T) {

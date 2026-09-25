@@ -34,8 +34,9 @@ const tsvTagSetName = "tsv"
 //
 // The resulting dictionary reports Source "tsv" when the caller leaves
 // opts.Source empty (mirroring how Builder defaults Source to "builder"); a
-// caller-supplied opts.Source is honored as-is. Input is never lower-cased
-// and tags are never normalized; one entry per line is fully general.
+// caller-supplied opts.Source is honored as-is. The wordform and lemma
+// columns are lower-cased (as Builder.AddForm does); tags are stored
+// verbatim. One entry per line is fully general.
 func ImportTSV(r io.Reader, opts BuilderOptions) (*Dictionary, error) {
 	if opts.Source == "" {
 		opts.Source = "tsv"
@@ -73,7 +74,11 @@ func ImportTSV(r io.Reader, opts BuilderOptions) (*Dictionary, error) {
 		if lemma == "" {
 			lemma = word
 		}
-		entries = append(entries, internal.BuildEntry{Word: word, Lemma: lemma, Tag: tag})
+		entries = append(entries, internal.BuildEntry{
+			Word:  strings.ToLower(word),
+			Lemma: strings.ToLower(lemma),
+			Tag:   tag,
+		})
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("morphology: tsv: scan: %w", err)

@@ -59,4 +59,3 @@ func TestCompileFromXMLFile(t *testing.T) {
 	// Save and verify file created.
 	require.NoError(t, d.SaveTo(datPath))
 }
-

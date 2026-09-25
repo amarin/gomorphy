@@ -2,6 +2,7 @@ package morphology
 
 import (
 	"sort"
+	"strings"
 	"sync"
 	"unicode/utf8"
 
@@ -17,10 +18,13 @@ type FuzzyMatch struct {
 
 // Fuzzy returns dictionary words within Levenshtein distance maxDist of
 // word (a rune-wise metric: inserting/deleting/replacing one rune costs 1;
-// "ё/е" counts as one substitution). The result is sorted by
+// the dictionary's CharPolicy applies: a query rune that the policy
+// substitutes (е for Russian) matches the substituted stored rune (ё) at
+// cost 0, exactly as Parse finds «ёлка» for «елка»). The result is sorted by
 // (distance, word), with duplicate words (multiple readings, including
 // from different shards) collapsed. A negative maxDist is treated as 0
 // (exact lookup). An empty result means no words match.
+// The query is lower-cased, like Parse's input.
 //
 // Dictionaries with a fixed-width alphabet (Dictionary.Alphabet != nil,
 // e.g. opened via OpenPyMorphyDense) are supported: the internal walk
@@ -32,6 +36,7 @@ type FuzzyMatch struct {
 // Fuzzy return nil, the same fail-safe this had before dense-alphabet
 // support existed.
 func (x *Dictionary) Fuzzy(word string, maxDist int) []FuzzyMatch {
+	word = strings.ToLower(word)
 	if x.d.Alphabet != nil && x.d.Alphabet.Width() == 0 {
 		return nil
 	}
@@ -47,10 +52,12 @@ func (x *Dictionary) Fuzzy(word string, maxDist int) []FuzzyMatch {
 // shards), until either maxWords words are collected or the whole
 // dictionary has been walked. maxWords ≤ 0 means exact lookup (the word
 // itself, or nothing).
+// The query is lower-cased, like Parse's input.
 //
 // Like Fuzzy, this supports a fixed-width Dictionary.Alphabet and returns
 // nil only for a variable-width non-nil Alphabet (Width() == 0).
 func (x *Dictionary) FuzzyTop(word string, maxWords int) []FuzzyMatch {
+	word = strings.ToLower(word)
 	if x.d.Alphabet != nil && x.d.Alphabet.Width() == 0 {
 		return nil
 	}
@@ -117,7 +124,7 @@ func (x *Dictionary) fuzzyWalk(word string, k int) []FuzzyMatch {
 		wg.Add(1)
 		go func(shard int, dawg *internal.DAWG) {
 			defer wg.Done()
-			results[shard] = fuzzyWalkShard(dawg, x.d.Alphabet, word, k)
+			results[shard] = fuzzyWalkShard(dawg, x.d.Alphabet, x.d.CharPolicy, word, k)
 		}(shard, dawg)
 	}
 	wg.Wait()
@@ -137,11 +144,12 @@ func (x *Dictionary) fuzzyWalk(word string, k int) []FuzzyMatch {
 
 // fuzzyWalkShard — a single pass of the joint traversal of one DAWG shard
 // and banded Levenshtein DP. alphabet is the dictionary's Alphabet (nil
-// for raw UTF-8 DAWGs).
-func fuzzyWalkShard(words *internal.DAWG, alphabet internal.Alphabet, word string, k int) []FuzzyMatch {
+// for raw UTF-8 DAWGs); pol is its CharPolicy (nil = exact runes only).
+func fuzzyWalkShard(words *internal.DAWG, alphabet internal.Alphabet, pol *internal.CharPolicy, word string, k int) []FuzzyMatch {
 	f := &fuzzySearch{
 		words:    words,
 		alphabet: alphabet,
+		pol:      pol,
 		q:        []rune(word),
 		k:        k,
 		path:     make([]byte, 0, 32),
@@ -157,15 +165,17 @@ func fuzzyWalkShard(words *internal.DAWG, alphabet internal.Alphabet, word strin
 
 // fuzzySearch carries the state of a single traversal: rows[depth] is the
 // DP row after depth runes of the path, path is the current DAWG path's
-// bytes. alphabet decodes path's bytes into runes (nil = raw UTF-8).
+// bytes. alphabet decodes path's bytes into runes (nil = raw UTF-8); pol
+// makes a substituted query rune match its target at cost 0.
 type fuzzySearch struct {
 	words    *internal.DAWG
 	alphabet internal.Alphabet
+	pol      *internal.CharPolicy
 	q        []rune
 	k        int
 	rows     [][]int
-	path  []byte
-	out   []FuzzyMatch
+	path     []byte
+	out      []FuzzyMatch
 }
 
 func (f *fuzzySearch) visit(state uint32, depth int, row []int) {
@@ -269,12 +279,26 @@ func (f *fuzzySearch) nextRow(depth int, row []int, r rune) []int {
 
 	for j := 1; j <= len(f.q); j++ {
 		cost := 1
-		if f.q[j-1] == r {
+		if f.q[j-1] == r || f.substitutes(f.q[j-1], r) {
 			cost = 0
 		}
 		nrow[j] = min3(row[j]+1, nrow[j-1]+1, row[j-1]+cost)
 	}
 	return nrow
+}
+
+// substitutes reports whether the CharPolicy lets query rune q match the
+// stored rune r (one direction only, like SimilarItems).
+func (f *fuzzySearch) substitutes(q, r rune) bool {
+	if f.pol == nil {
+		return false
+	}
+	for _, s := range f.pol.Substitutions {
+		if s.From == q && s.To == r {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *fuzzySearch) rowFor(depth int) []int {

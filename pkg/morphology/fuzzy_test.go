@@ -37,10 +37,13 @@ func TestFuzzyKot(t *testing.T) {
 	assert.Equal(t, want, countByDistance(t, got))
 }
 
+// The fixture uses RussianCharPolicy (е→ё): a query «е» matches a stored
+// «ё» at cost 0, like Parse. The substitution is one-way: a query «ё» still
+// costs 1 against a stored «е».
 func TestFuzzyRuneMetricYo(t *testing.T) {
 	d := fuzzyDict(t)
 
-	assert.Equal(t, map[string]int{"ежик": 0, "ёжик": 1},
+	assert.Equal(t, map[string]int{"ежик": 0, "ёжик": 0},
 		countByDistance(t, d.Fuzzy("ежик", 1)))
 	assert.Equal(t, map[string]int{"ёж": 0, "ёжик": 2},
 		countByDistance(t, d.Fuzzy("ёж", 2)))

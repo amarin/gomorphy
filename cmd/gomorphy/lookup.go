@@ -13,14 +13,20 @@ import (
 // Tag, a para#Dict/Shard/Para composite (Dict is always 0 for a
 // single-dictionary resolution, since resolveDictionaries always produces
 // a MultiDictionary), and the source dictionary's name/version (dictLabel).
+// Readings produced by suffix prediction (the word is not in the
+// dictionary) get one more column, "(predicted)".
 func doLookup(w io.Writer, m *morphology.MultiDictionary, word string) error {
 	readings := m.Parse(word)
 	if len(readings) == 0 {
 		return fmt.Errorf("lookup %q: no readings", word)
 	}
 	for _, r := range readings {
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\tpara#%d/%d/%d\t%s\n",
-			r.Word, r.Normal, r.Tag, r.Dict, r.Shard, r.Para, dictLabel(m, r.Dict))
+		marker := ""
+		if r.Predicted {
+			marker = "\t(predicted)"
+		}
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\tpara#%d/%d/%d\t%s%s\n",
+			r.Word, r.Normal, r.Tag, r.Dict, r.Shard, r.Para, dictLabel(m, r.Dict), marker)
 	}
 	return nil
 }

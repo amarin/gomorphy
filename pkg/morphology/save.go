@@ -26,18 +26,34 @@ func (x *Dictionary) SaveTo(path string) error {
 	info.BuiltAt = time.Now().UTC()
 	info.LibraryVersion = Version
 
-	// Compression is not yet implemented (see docs/en/todo.md, "Stage 17")
-	// — all sections are written as-is. words.dawg-N will always stay
-	// CompressionNone: it is aliased from mmap without copying, while a
-	// compressed section would require full decompression into memory on
-	// load.
+	sections, err := x.sections(&info)
+	if err != nil {
+		return fmt.Errorf("morphology: SaveTo: %w", err)
+	}
+	return internal.SaveContainer(path, sections)
+}
+
+// sections encodes the dictionary into GMOR sections in container order —
+// the single encoder behind SaveTo and ContentHash. info == nil omits the
+// "info" section.
+//
+// Compression is not yet implemented (see docs/en/todo.md, "Stage 17") —
+// all sections are written as-is. words.dawg-N will always stay
+// CompressionNone: it is aliased from mmap without copying, while a
+// compressed section would require full decompression into memory on
+// load.
+func (x *Dictionary) sections(info *internal.BuildInfo) ([]internal.Section, error) {
 	const noCompression = internal.CompressionNone
 	sections := []internal.Section{
 		{Name: "meta", Data: internal.EncodeMeta(x.d.Language, x.d.CharPolicy), Flags: noCompression},
-		{Name: "info", Data: internal.EncodeBuildInfo(&info), Flags: noCompression},
-		{Name: "tagset", Data: internal.EncodeTagSet(x.d.TagSet), Flags: noCompression},
-		{Name: "prefixes", Data: internal.EncodeStrings(x.d.Prefixes), Flags: noCompression},
 	}
+	if info != nil {
+		sections = append(sections, internal.Section{Name: "info", Data: internal.EncodeBuildInfo(info), Flags: noCompression})
+	}
+	sections = append(sections,
+		internal.Section{Name: "tagset", Data: internal.EncodeTagSet(x.d.TagSet), Flags: noCompression},
+		internal.Section{Name: "prefixes", Data: internal.EncodeStrings(x.d.Prefixes), Flags: noCompression},
+	)
 	for i, suffixes := range x.d.Suffixes {
 		sections = append(sections, internal.Section{
 			Name: fmt.Sprintf("suffixes-%d", i), Data: internal.EncodeStrings(suffixes), Flags: noCompression,
@@ -69,11 +85,11 @@ func (x *Dictionary) SaveTo(path string) error {
 	if x.d.Alphabet != nil {
 		data, err := internal.EncodeAlphabet(x.d.Alphabet)
 		if err != nil {
-			return fmt.Errorf("morphology: SaveTo: %w", err)
+			return nil, err
 		}
 		sections = append(sections, internal.Section{
 			Name: "alphabet", Data: data, Flags: noCompression,
 		})
 	}
-	return internal.SaveContainer(path, sections)
+	return sections, nil
 }
