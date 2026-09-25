@@ -45,4 +45,7 @@ func main() {
 			fmt.Println(r.Word, "->", r.Normal, "("+r.Tag+")")
 		}
 	}
+	// Output:
+	// кот -> кот (NOUN,anim,masc,sing,nomn)
+	// котёнок -> котёнок (NOUN,anim,masc,sing,nomn)
 }

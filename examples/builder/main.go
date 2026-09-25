@@ -31,4 +31,6 @@ func main() {
 	for _, r := range d.Parse("кота") {
 		fmt.Println(r.Word, "->", r.Normal, "("+r.Tag+")")
 	}
+	// Output:
+	// кота -> кот (NOUN,anim,masc,sing,gent)
 }
