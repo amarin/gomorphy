@@ -18,6 +18,7 @@ import (
 )
 
 // Loader provides pymorphy2 dictionary download and unpacking utilities.
+// A Loader is not safe for concurrent use.
 type Loader struct {
 	logging.Logger
 	dataPath string

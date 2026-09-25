@@ -178,8 +178,8 @@ the wordform and lemma columns, the same `CharPolicy` default). Blank
 lines and `#` comments are skipped; every field, tags included, is trimmed
 of surrounding whitespace; an empty wordform or a row with other than 2–3
 columns is an error naming the offending line. Lines are limited to 1 MiB.
-Unlike `Builder.Build`, an empty or comment-only stream is not an error:
-it returns an empty dictionary (every lookup misses) with a `nil` error.
+An empty or comment-only stream returns an error wrapping `ErrNoEntries`,
+as `Builder.Build` does (before 1.2.1 it returned an empty dictionary).
 A file variant is not provided — wrap the caller's path yourself.
 
 Use case: [scenarios.md](scenarios.md#5-a-thematic-dictionary-from-a-tsv-file).
@@ -253,6 +253,18 @@ if err := loader.Sync(false); err != nil {
 }
 d, err := morphology.CompileFromUniMorphFile(loader.UnpackedFilePath(), morphology.UniMorphOptions{Language: "ru"})
 ```
+
+`Sync(false)` asks the source whether a newer release exists, downloads
+it, and unpacks it over the previous copy; if the source can't be reached
+but an archive is already on disk, it goes on with that one.
+`Sync(true)` makes no network requests and only unpacks an archive already
+on disk. Downloads and unpacking write to a temporary file (directory, for
+pymorphy2) and replace the previous one only on success, so a failed or
+interrupted download keeps the old data; files go under the loader's data
+path, which is created if missing. (Before 1.2.1 a new download was not
+unpacked over an existing copy, a custom data path was ignored when
+creating directories, `Sync(true)` still queried the source, and
+OpenCorpora saved an HTTP error page as the archive.)
 
 Logging: the loaders need no setup. `NewLoader` checks, at the call,
 whether the process-wide logger was configured with `logging.Init`
@@ -526,7 +538,8 @@ The package defines four exported sentinel errors:
 
 ```go
 var (
-    ErrNoEntries               // Builder.Build with no registered entries
+    ErrNoEntries               // Builder.Build with no registered entries;
+                                // wrapped by ImportTSV (no rows) and Merge
     ErrBuilderClosed           // Builder used after Build
     ErrIncompatibleDictionaries // Merge: overlay language or tag vocabulary
                                 // can't share the base's

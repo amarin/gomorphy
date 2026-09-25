@@ -177,6 +177,8 @@ prediction is built from your own words. The result round-trips through
   dictionaries built by 1.1.0 from mixed-case input.
 - 1.2.0 — the default е→ё substitution applies only to `Language` "ru"
   (see [scenario 9](#9-её-and-other-character-substitutions)).
+- 1.2.1 — a stream with no entries is an error (`ErrNoEntries`), as for
+  `Builder`; it used to give an empty dictionary.
 
 ## 6. Extend or override a base dictionary
 
@@ -384,8 +386,11 @@ from your own program, as `gomorphy download`/`unpack` do.
 `unimorph.NewLoader("ru", dir)`, then `loader.Sync(false)`, then compile
 from `loader.UnpackedDirPath()` / `UnpackedFilePath()` — see
 [library.md — Fetching source data](library.md#fetching-source-data).
-The loaders need no logging setup: without `logging.Init` they log
-nothing; assign the exported `Logger` field to use your own logger.
+`Sync(false)` checks for a newer release and refreshes the local copy;
+`Sync(true)` stays offline and uses what is on disk. A failed download
+keeps the previous data. The loaders need no logging setup: without
+`logging.Init` they log nothing; assign the exported `Logger` field to use
+your own logger.
 
 **Example:** [pymorphy](../../examples/pymorphy/main.go) (reads an
 already-downloaded directory).
@@ -395,3 +400,7 @@ already-downloaded directory).
 **History:**
 - 1.2.1 — the loaders no longer panic when the program never called
   `logging.Init` (only the `gomorphy` CLI did).
+- 1.2.1 — `Sync` unpacks a new download over the old copy (the old data
+  used to stay), files go under the given data path (not `./.data`),
+  downloads are atomic and check the HTTP status, and `Sync(true)` makes
+  no network requests.

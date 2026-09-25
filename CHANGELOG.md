@@ -12,12 +12,19 @@ full list with links.
 
 ## [Unreleased]
 
-## [1.2.1] - 2026-09-25
+## [1.2.1] - 2026-09-26
 
-A documentation release: godoc, the markdown docs and the examples were
-reviewed against the 1.2.0 code as a whole (see
-[implementation/docs-audit-1.2.1.md](docs/en/implementation/docs-audit-1.2.1.md)),
-plus one loader fix. The dictionary API and the `.dat` format are unchanged.
+Godoc, the markdown docs and the examples were reviewed against the 1.2.0
+code as a whole, and the defects that review found are fixed (see
+[implementation/docs-audit-1.2.1.md](docs/en/implementation/docs-audit-1.2.1.md)).
+The `.dat` format is unchanged.
+
+**Upgrading from 1.2.0:**
+- `ImportTSV` (and `gomorphy import tsv`) with no entries now fails with
+  `ErrNoEntries` instead of returning an empty dictionary.
+- The messages of `ErrIncompatibleDictionaries` and `ErrPredictionSharded`
+  gained a `morphology: ` prefix; `errors.Is` checks are unaffected, exact
+  string comparisons are not.
 
 ### Added
 - Usage scenarios — what each feature is for, which calls and example
@@ -27,7 +34,8 @@ plus one loader fix. The dictionary API and the `.dat` format are unchanged.
 - Examples `ner` (IsKnown/Predicted), `typos` (Fuzzy, е/ё), `embed`
   (`//go:embed` + OpenBytes), `contenthash`, `tagmap`; `go test ./examples/`
   runs every example that needs no data and checks its `// Output:` block.
-- `common.NewLoaderLogger` — the logger the download loaders use (see Fixed).
+- `common.NewLoaderLogger` — the logger the download loaders use (see Fixed);
+  `common.DownloadFile`, `common.WriteFileAtomic` — atomic download/write.
 - `ExampleDictionary_Parse`, `ExampleNewCharPolicy`, `ExampleNoCharPolicy`,
   `ExampleDictionary_ContentHash`, `ExampleMultiDictionary_IsKnown`,
   `tagmap.ExampleMap`, `tagmap.ExampleKnown`.
@@ -38,6 +46,25 @@ plus one loader fix. The dictionary API and the `.dat` format are unchanged.
   `logging.Init` — the usual case for library code; only the `gomorphy` CLI
   configured it. Without `logging.Init` the loaders now log nothing; with it
   they log as before. Assign the exported `Logger` field to use your own logger.
+- Loaders' `Sync` now unpacks a newly downloaded archive over the existing
+  copy; before, the old `dict.xml` / pymorphy2 `data/` stayed after an
+  update. pymorphy2's `data/` is replaced as a whole, so files of an older
+  release don't linger.
+- The opencorpora and pymorphy loaders create their files under the
+  `dataPath` passed to `NewLoader`; before, they created `./.data/<domain>`
+  and failed when a custom `dataPath` did not exist yet.
+- Downloads are atomic and check the HTTP status: a failed or interrupted
+  download keeps the previous file, and the opencorpora loader no longer
+  saves an error page as the archive.
+- `Sync(skipDownload=true)` makes no network requests (it used to query
+  the source first).
+- `Dictionary.Language`, `Fuzzy` and `FuzzyTop` return zero values for a
+  nil dictionary instead of panicking, like `Parse` and `Lemma`; a nil
+  `MultiDictionary` member behaves as an empty dictionary.
+- `ImportTSV` returns `ErrNoEntries` for a stream with no entries, as
+  `Builder.Build` does (see Upgrading).
+- `ErrIncompatibleDictionaries` and `ErrPredictionSharded` messages start
+  with `morphology: ` like the package's other sentinel errors.
 - Documentation that contradicted the code: the Russian `library.md` (dense
   dictionaries can be saved and fuzzy-searched; е/ё distance), CLI output
   samples (`fuzzy`/`top` print a dictionary column), the glossary's
@@ -45,6 +72,10 @@ plus one loader fix. The dictionary API and the `.dat` format are unchanged.
   `TagSetName`, `ContentHash`, `FuzzyTop`, `AddForm`, `ImportTSV` and the
   OpenCorpora `Progress` callback.
 - `morphology.Version` is `1.2.1`.
+
+### Changed
+- `make test-integration` runs with a 60-minute timeout: two packages take
+  more than the default 10 minutes under `-race`.
 
 ## [1.2.0] - 2026-09-25
 

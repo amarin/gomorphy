@@ -22,6 +22,7 @@ import (
 // IsUnpackedExists are thin pass-throughs over the download itself,
 // kept only so the CLI's download/unpack/build/update commands can
 // treat every source type uniformly.
+// A Loader is not safe for concurrent use.
 type Loader struct {
 	logging.Logger
 	dataPath string
@@ -79,10 +80,11 @@ func (loader *Loader) IsUnpackedExists() bool {
 	return loader.IsDownloadExists()
 }
 
-// IsUpdateRequired checks the remote for a newer version, the same way
-// pkg/opencorpora does (a HEAD request + Last-Modified comparison
-// against the local file's mtime) — GitHub's raw-file CDN serves this
-// header. A missing local file always counts as an update.
+// IsUpdateRequired reports whether the remote has a newer file: a missing
+// local file is always an update (no request made); otherwise a HEAD
+// request (10 s timeout) compares Last-Modified with the local file's
+// mtime, and a missing or unparseable Last-Modified counts as an update. A
+// network error or a non-200 status is returned as an error.
 func (loader *Loader) IsUpdateRequired() (bool, error) {
 	loader.Info("check if update required")
 	fileStat, err := os.Stat(loader.UnpackedFilePath())
@@ -139,10 +141,10 @@ func (loader *Loader) download() error {
 	return nil
 }
 
-// UnpackUpdate is a no-op — see the Loader doc comment. It exists only
-// so callers that treat every source type uniformly (the CLI's
-// download/unpack/build/update commands) don't need a special case for
-// UniMorph.
+// UnpackUpdate does nothing but report an error when the TSV has not been
+// downloaded — see the Loader doc comment. It exists only so callers that
+// treat every source type uniformly (the CLI's download/unpack/build/update
+// commands) don't need a special case for UniMorph.
 func (loader *Loader) UnpackUpdate() error {
 	if !loader.IsDownloadExists() {
 		return fmt.Errorf("%w: no downloaded file at %v", ErrUnimorph, loader.UnpackedFilePath())

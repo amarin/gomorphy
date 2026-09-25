@@ -222,7 +222,8 @@ lemma<TAB>wordform[<TAB>tags]
   grammemes — no mapping onto the OpenCorpora set.
 
 Anything else — a row with 1 column or more than 3 — is an error naming
-the offending line number.
+the offending line number. A file with no entries at all (empty, or only
+blank and comment lines) is an error too (since 1.2.1).
 
 `-o` is required (the importer has no default domain path to fall back
 to).

@@ -8,8 +8,9 @@ pass reviewed godoc, every user-facing markdown page and the examples
 against the code as a whole, and added a page the docs lacked: usage
 scenarios — what each feature is *for*.
 
-One code fix rides along: the download loaders panicked in any program
-that had not called `logging.Init`.
+Code fixes ride along: the download loaders panicked in any program that
+had not called `logging.Init` (reported by the owner), and the audit found
+further defects, fixed before the release — see below.
 
 ## What changed
 
@@ -59,26 +60,41 @@ Russian `library.md` claimed that dense dictionaries could not be saved
 and had no fuzzy search, and gave the old е/ё distance; it is now a full
 mirror of the English page, as are `cli.md` and `installation.md`.
 
-## Open issues (not fixed in 1.2.1)
+## Defects found by the audit, fixed in 1.2.1
 
-Found by the audit, need code changes, and are left for a decision:
+The audit turned up code defects, not just stale docs. The owner chose to
+fix them before releasing (2026-09-26); each fix has a test that failed
+first.
 
-- `Sync` never refreshes an existing unpacked copy: after a new download
-  the old `dict.xml` / `data/` stays (opencorpora, pymorphy).
-- `DownloadUpdate`/`UnpackUpdate` create `./.data/<domain>` via
-  `common.MakeDomainDataPath`, ignoring a custom `dataPath` (opencorpora,
-  pymorphy; unimorph already avoids it).
-- opencorpora `DownloadUpdate` does not check the HTTP status and would
-  save an error page as the archive.
-- `Sync(skipDownload=true)` still makes a network request
-  (`IsUpdateRequired` runs first).
-- Downloads are not atomic: a failed download leaves a truncated file.
-- `Dictionary.Language`, `Fuzzy`, `FuzzyTop` panic on a nil receiver while
-  `Parse`, `Lemma`, `Info`, `TagSetName` return zero values.
-- `ImportTSV` of an empty stream returns an empty dictionary, while
-  `Builder.Build` with no entries returns `ErrNoEntries`.
-- `ErrIncompatibleDictionaries` lacks the `morphology:` prefix the other
-  sentinel errors use.
+- **Loaders never refreshed an unpacked copy.** `Sync` unpacked only when
+  nothing was unpacked yet, so after a new download the old `dict.xml` /
+  `data/` stayed. `Sync` now unpacks after every download; pymorphy2
+  extracts into a temporary directory that replaces `data/` as a whole.
+- **Custom `dataPath` ignored.** `DownloadUpdate`/`UnpackUpdate` called
+  `common.MakeDomainDataPath`, which always creates `./.data/<domain>`;
+  with a custom path that did not exist yet the download failed. Files are
+  now created under the loader's own path (unimorph already did this).
+- **No HTTP status check** in the opencorpora download: an error page was
+  saved as the archive.
+- **`Sync(skipDownload=true)` queried the source** before deciding to skip.
+- **Non-atomic downloads** left a truncated file after a failure.
+  `common.DownloadFile` checks the status and writes through
+  `common.WriteFileAtomic` (temporary file, then rename); the loaders'
+  tests run against an `httptest` server, their URLs set through an
+  `export_test.go` hook.
+- **Nil receivers.** `Language`, `Fuzzy`, `FuzzyTop` panicked on a nil
+  `*Dictionary` while `Parse`, `Lemma`, `Info`, `TagSetName` returned zero
+  values; now all do, and a nil `MultiDictionary` member acts as empty.
+- **`ImportTSV` vs `Builder` on empty input.** `ImportTSV` returned an
+  empty dictionary, `Builder.Build` returned `ErrNoEntries`; `ImportTSV`
+  now returns `ErrNoEntries` too (a behaviour change, noted under
+  "Upgrading" in CHANGELOG).
+- **Sentinel error prefixes.** `ErrIncompatibleDictionaries` and
+  `ErrPredictionSharded` lacked the `morphology: ` prefix.
+
+`make test-integration` also got a 60-minute timeout: the OpenCorpora
+importer and tagmap integration packages take longer than the default 10
+minutes under `-race`.
 
 ## Testing
 

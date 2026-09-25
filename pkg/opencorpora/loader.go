@@ -21,6 +21,7 @@ import (
 
 // Loader provides OpenCorpora dictionary download and unpacking utilities.
 // Compilation is handled externally via pkg/morphology.
+// A Loader is not safe for concurrent use.
 type Loader struct {
 	logging.Logger
 	dataPath  string
@@ -83,7 +84,11 @@ func (loader *Loader) downloadedFilePath() string {
 	return loader.filePath(LocalSourceFilename)
 }
 
-// IsUpdateRequired checks the remote for a newer version.
+// IsUpdateRequired reports whether the remote has a newer archive: a
+// missing local archive is always an update (no request made); otherwise a
+// HEAD request compares Last-Modified with the archive's mtime. A missing
+// Last-Modified means no update, an unparseable one means an update. A
+// network error or a non-200 status is returned as an error.
 func (loader *Loader) IsUpdateRequired() (bool, error) {
 	loader.Info("check if update required")
 	expectedFile := loader.downloadedFilePath()

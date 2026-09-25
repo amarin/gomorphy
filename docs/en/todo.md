@@ -81,8 +81,10 @@ and docs were updated task by task, not reviewed as a whole. Write-up:
       and how its behaviour changed (a per-feature excerpt of CHANGELOG).
 - [x] Added to the same release: the download loaders panicked without
       `logging.Init` — fixed (`common.NewLoaderLogger`).
-- [ ] Loader defects found by the audit, not fixed in 1.2.1 — see the
-      write-up's "Open issues".
+- [x] Code defects found by the audit (loaders: refresh, dataPath, HTTP
+      status, offline `Sync(true)`, atomic downloads; nil receivers;
+      `ImportTSV` empty input; sentinel prefixes) — fixed in 1.2.1, see the
+      write-up.
 
 ### Stage 19.1 — Structural merge — DONE 2026-09-23
 
