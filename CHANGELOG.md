@@ -17,6 +17,16 @@ full list with links.
 Support for dictionary-based NER in the lexicon module (see
 [implementation/ner-support.md](docs/en/implementation/ner-support.md)).
 
+**Upgrading from 1.1.0:**
+- Rebuild UniMorph dictionaries and Builder/TSV dictionaries built from
+  mixed-case input — otherwise their capitalised forms stay unreachable by
+  exact lookup (see Fixed).
+- Dictionaries built with a non-Russian `Language` and no explicit
+  `CharPolicy` no longer get е→ё; pass `RussianCharPolicy()` to keep it.
+- `Fuzzy` distances between е and ё drop from 1 to 0 for Russian
+  dictionaries; adjust thresholds that relied on the old metric.
+- Existing `.dat` files open unchanged; the binary format is the same.
+
 ### Added
 - `Reading.Predicted`, `LemmaRef.Predicted`: tell a dictionary reading from a
   suffix-prediction guess. `Dictionary.IsKnown` / `MultiDictionary.IsKnown`:
@@ -40,6 +50,9 @@ Support for dictionary-based NER in the lexicon module (see
   dictionaries and Builder/TSV dictionaries built by 1.1.0 from mixed-case
   input must be rebuilt** to be reachable by exact lookup — rebuilding is
   the only way to apply this fix to existing `.dat` files.
+- A `CharPolicy` with more than 255 substitutions is rejected with an error
+  when the dictionary is built (Builder, ImportTSV, the UniMorph importer).
+  Before, it was accepted and the process panicked later, on `SaveTo`.
 
 ### Changed
 - `Fuzzy`/`FuzzyTop` apply the dictionary's CharPolicy: for Russian, е in the
