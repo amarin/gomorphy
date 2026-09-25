@@ -57,3 +57,17 @@ func TestImportTSVLowercases(t *testing.T) {
 	assert.Equal(t, "москва", rs[0].Normal)
 	assert.False(t, rs[0].Predicted)
 }
+
+func TestFuzzyLowercasesQuery(t *testing.T) {
+	d := fuzzyDict(t)
+
+	got := d.Fuzzy("КОТ", 0)
+	require.Len(t, got, 1)
+	assert.Equal(t, "кот", got[0].Word)
+	assert.Equal(t, d.Fuzzy("кот", 1), d.Fuzzy("Кот", 1))
+	assert.Equal(t, d.FuzzyTop("кот", 3), d.FuzzyTop("КОТ", 3))
+
+	m := morphology.NewMultiDictionary(d)
+	assert.Equal(t, m.Fuzzy("кот", 1), m.Fuzzy("КОТ", 1))
+	assert.Equal(t, m.FuzzyTop("кот", 3), m.FuzzyTop("КОТ", 3))
+}

@@ -2,6 +2,7 @@ package morphology
 
 import (
 	"sort"
+	"strings"
 	"sync"
 	"unicode/utf8"
 
@@ -21,6 +22,7 @@ type FuzzyMatch struct {
 // (distance, word), with duplicate words (multiple readings, including
 // from different shards) collapsed. A negative maxDist is treated as 0
 // (exact lookup). An empty result means no words match.
+// The query is lower-cased, like Parse's input.
 //
 // Dictionaries with a fixed-width alphabet (Dictionary.Alphabet != nil,
 // e.g. opened via OpenPyMorphyDense) are supported: the internal walk
@@ -32,6 +34,7 @@ type FuzzyMatch struct {
 // Fuzzy return nil, the same fail-safe this had before dense-alphabet
 // support existed.
 func (x *Dictionary) Fuzzy(word string, maxDist int) []FuzzyMatch {
+	word = strings.ToLower(word)
 	if x.d.Alphabet != nil && x.d.Alphabet.Width() == 0 {
 		return nil
 	}
@@ -47,10 +50,12 @@ func (x *Dictionary) Fuzzy(word string, maxDist int) []FuzzyMatch {
 // shards), until either maxWords words are collected or the whole
 // dictionary has been walked. maxWords ≤ 0 means exact lookup (the word
 // itself, or nothing).
+// The query is lower-cased, like Parse's input.
 //
 // Like Fuzzy, this supports a fixed-width Dictionary.Alphabet and returns
 // nil only for a variable-width non-nil Alphabet (Width() == 0).
 func (x *Dictionary) FuzzyTop(word string, maxWords int) []FuzzyMatch {
+	word = strings.ToLower(word)
 	if x.d.Alphabet != nil && x.d.Alphabet.Width() == 0 {
 		return nil
 	}
@@ -164,8 +169,8 @@ type fuzzySearch struct {
 	q        []rune
 	k        int
 	rows     [][]int
-	path  []byte
-	out   []FuzzyMatch
+	path     []byte
+	out      []FuzzyMatch
 }
 
 func (f *fuzzySearch) visit(state uint32, depth int, row []int) {
