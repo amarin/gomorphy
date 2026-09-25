@@ -33,6 +33,13 @@ Support for dictionary-based NER in the lexicon module (see
 - `Builder.AddForm`/`AddLemma` and `ImportTSV` lower-case words and lemmas. Before,
   a form added as «Москва» was reachable only as a prediction.
 - `Fuzzy`/`FuzzyTop` lower-case the query.
+- The UniMorph importer (`unimorph.ImportFromTSV`) now lower-cases lemma and
+  wordform text on read, same as Builder/ImportTSV. Before, a mixed-case
+  UniMorph row (e.g. «Аббас») was stored verbatim and unreachable by exact
+  lookup, since `Parse`/`Fuzzy`/`IsKnown` lower-case their query. **UniMorph
+  dictionaries and Builder/TSV dictionaries built by 1.1.0 from mixed-case
+  input must be rebuilt** to be reachable by exact lookup — rebuilding is
+  the only way to apply this fix to existing `.dat` files.
 
 ### Changed
 - `Fuzzy`/`FuzzyTop` apply the dictionary's CharPolicy: for Russian, е in the

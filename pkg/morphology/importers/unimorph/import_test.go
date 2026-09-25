@@ -160,6 +160,22 @@ func TestImportFromTSV_EmptyInput(t *testing.T) {
 	assert.Nil(t, d.Words[0].SimilarItems("кот", d.CharPolicy, d.Alphabet))
 }
 
+// TestImportFromTSV_OversizedCharPolicyRejected verifies a caller-supplied
+// Options.CharPolicy with more than 255 substitutions is rejected with a
+// wrapped error at import time, instead of panicking later inside
+// EncodeMeta (SaveTo/ContentHash) — see internal.ValidateCharPolicy.
+func TestImportFromTSV_OversizedCharPolicyRejected(t *testing.T) {
+	subs := make([]internal.Substitution, 256)
+	for i := range subs {
+		subs[i] = internal.Substitution{From: rune('a' + i), To: rune('A' + i)}
+	}
+	opts := unimorph.Options{Language: "ru", CharPolicy: internal.NewCharPolicy(subs...)}
+
+	_, err := unimorph.CompileFromTSV(strings.NewReader(miniTSV), opts)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "256")
+}
+
 // paradigmFor decodes value (a words.dawg payload: 2 bytes BE paraID +
 // 2 bytes BE formIdx) into the shard's paradigm.
 func paradigmFor(t *testing.T, d *internal.Dictionary, shard int, value []byte) (internal.Paradigm, bool) {

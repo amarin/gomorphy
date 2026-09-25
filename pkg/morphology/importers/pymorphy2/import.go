@@ -1,4 +1,12 @@
 // Package pymorphy2 loads a pymorphy2 dictionary from a directory.
+//
+// Unlike the OpenCorpora/UniMorph importers, this one reads words.dawg and
+// the other dictionary files as pre-built binary blobs (ReadDAWG,
+// readParadigms) rather than raw word strings — there is no string-level
+// entry point here to lower-case, so the mixed-case-unreachable class of
+// bug (see the UniMorph importer's case handling) does not apply: any
+// case normalization has to happen upstream, in the pymorphy2/Python
+// compiler that produced words.dawg.
 package pymorphy2
 
 import (
