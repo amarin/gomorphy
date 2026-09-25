@@ -28,13 +28,14 @@ type Loader struct {
 
 // NewLoader creates a new opencorpora loader instance.
 // Takes path to data storage. If empty path provided, uses .data/opencorpora by default.
+// Logging needs no setup: see common.NewLoaderLogger.
 func NewLoader(dataPath string) *Loader {
 	if dataPath == "" {
 		dataPath = common.DomainDataPath(DomainName)
 	}
 
 	return &Loader{
-		Logger:   logging.NewNamedLogger("loader").WithLevel(logging.LevelDebug),
+		Logger:   common.NewLoaderLogger("loader"),
 		dataPath: dataPath,
 	}
 }

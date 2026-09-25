@@ -33,6 +33,7 @@ type Loader struct {
 // NewLoader creates a UniMorph loader for language (gomorphy's own
 // code, e.g. "ru" — only "ru" is supported today, see isoCodes).
 // dataPath, if empty, defaults to .data/unimorph/<language>.
+// Logging needs no setup: see common.NewLoaderLogger.
 func NewLoader(language, dataPath string) (*Loader, error) {
 	iso, ok := isoCodes[language]
 	if !ok {
@@ -42,7 +43,7 @@ func NewLoader(language, dataPath string) (*Loader, error) {
 		dataPath = path.Join(common.DomainDataPath(DomainName), language)
 	}
 	return &Loader{
-		Logger:   logging.NewNamedLogger("loader").WithLevel(logging.LevelDebug),
+		Logger:   common.NewLoaderLogger("loader"),
 		dataPath: dataPath,
 		language: language,
 		iso:      iso,

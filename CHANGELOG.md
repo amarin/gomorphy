@@ -12,6 +12,13 @@ full list with links.
 
 ## [Unreleased]
 
+### Fixed
+- `pymorphy.NewLoader`, `opencorpora.NewLoader` and `unimorph.NewLoader` no
+  longer panic («logging: set backend first») when the caller never called
+  `logging.Init` — the usual case for library code; only the `gomorphy` CLI
+  configured it. Without `logging.Init` the loaders now log nothing; with it
+  they log as before. Assign the exported `Logger` field to use your own logger.
+
 ## [1.2.0] - 2026-09-25
 
 Support for dictionary-based NER in the lexicon module (see
