@@ -28,10 +28,12 @@ type Reading struct {
 }
 
 // Parse parses word and returns all dictionary readings, sorted by
-// probability (descending). For out-of-dictionary words, it tries to
-// predict readings from the prediction-DAWG (suffixes); such readings
-// have Predicted set. Returns nil if no readings are found. The input is
-// lowercased.
+// probability (descending) when the dictionary carries probability data
+// (pymorphy2), otherwise in storage order. For out-of-dictionary words, it
+// tries to predict readings from the prediction-DAWG (suffixes); such
+// readings have Predicted set. Returns nil if no readings are found, or
+// for a nil receiver. The input is lower-cased and the dictionary's
+// CharPolicy applied. Use IsKnown to check membership without prediction.
 func (x *Dictionary) Parse(word string) []Reading {
 	if x == nil || x.d == nil || len(x.d.Words) == 0 {
 		return nil

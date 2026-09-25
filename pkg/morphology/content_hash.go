@@ -17,11 +17,11 @@ import (
 //
 // The first call encodes every section (for a large dictionary that is a
 // copy of its words DAWG); the result is cached. Returns "" in two cases:
-// a nil dictionary (or a nil/closed receiver), and an internal encoding
-// failure while assembling the sections (today only Alphabet's
-// EncodeAlphabet can fail this way; a CharPolicy that would make encoding
-// fail is instead rejected at build time — see NewCharPolicy). Like every
-// other method it must not be called after Close.
+// a nil receiver, and an internal encoding failure while assembling the
+// sections (today only Alphabet's EncodeAlphabet can fail this way; a
+// CharPolicy that would make encoding fail is instead rejected at build
+// time — see CharPolicy). Like every other method it must not be called
+// after Close: on an Open'ed dictionary that reads unmapped memory.
 func (x *Dictionary) ContentHash() string {
 	if x == nil || x.d == nil {
 		return ""

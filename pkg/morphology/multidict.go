@@ -1,6 +1,3 @@
-// MultiDictionary aggregates Parse/Lemma/Close across an arbitrary set of
-// already-open dictionaries. See
-// docs/en/superpowers/specs/2026-09-16-multi-dict-design.md.
 package morphology
 
 import (
@@ -12,7 +9,9 @@ import (
 // MultiDictionary — a set of independently opened dictionaries, queried as
 // a single whole. Each *Dictionary in the set retains its own lifecycle
 // (mmap etc.) — MultiDictionary itself opens or imports nothing, it only
-// aggregates Parse/Lemma and owns closing the whole set at once.
+// aggregates Parse, Lemma, IsKnown, Fuzzy and FuzzyTop and owns closing
+// the whole set at once. Safe for concurrent use under the same rules as
+// Dictionary. See docs/en/superpowers/specs/2026-09-16-multi-dict-design.md.
 type MultiDictionary struct {
 	dicts []*Dictionary
 }
@@ -20,7 +19,8 @@ type MultiDictionary struct {
 // NewMultiDictionary wraps already-open dictionaries into a single set.
 // The order of dicts fixes the indexing of Reading.Dict/LemmaRef.Dict and
 // the order in which Parse/Lemma results are concatenated — both always
-// follow registration order and are never re-sorted.
+// follow registration order and are never re-sorted. Every entry must be
+// a non-nil *Dictionary.
 func NewMultiDictionary(dicts ...*Dictionary) *MultiDictionary {
 	return &MultiDictionary{dicts: dicts}
 }
@@ -146,8 +146,11 @@ func (m *MultiDictionary) Fuzzy(word string, maxDist int) []FuzzyMatch {
 // enough — any candidate of the global top-maxWords must also be in its
 // own dictionary's top-maxWords, otherwise that same dictionary would
 // have maxWords candidates at least as good), after which all candidates
-// are re-sorted and truncated to maxWords. maxWords <= 0 means exact
-// lookup, same as Dictionary.FuzzyTop.
+// are re-sorted and truncated to maxWords. maxWords <= 0 means distance-0
+// matches only, same as Dictionary.FuzzyTop. A word found in several
+// dictionaries appears once per dictionary (no cross-dictionary dedup);
+// the relative order of equal (distance, word) pairs from different
+// dictionaries is unspecified.
 func (m *MultiDictionary) FuzzyTop(word string, maxWords int) []FuzzyMatch {
 	if maxWords <= 0 {
 		return m.Fuzzy(word, 0)

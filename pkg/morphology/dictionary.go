@@ -30,6 +30,35 @@
 // in the overlay's (the last overlay wins); see ExampleMerge and
 // [MergeWithOptions]. The CLI equivalent is
 // `gomorphy merge --mode add -o merged.dat base.dat overlay.dat`.
+//
+// # Dictionary words and guesses
+//
+// [Dictionary.Parse] and [Dictionary.Lemma] lower-case their input and fall
+// back to ending-based prediction for words the dictionary does not have;
+// such results carry [Reading].Predicted / [LemmaRef].Predicted.
+// [Dictionary.IsKnown] checks membership without predicting — the building
+// block for dictionary-based named-entity lookup.
+//
+// # Character policy
+//
+// A dictionary stores a [CharPolicy]: one-way rune substitutions applied to
+// every lookup, including [Dictionary.Fuzzy]. The default is е→ё («елка»
+// finds «ёлка») for Russian and none for other languages; set
+// [BuilderOptions].CharPolicy to [NoCharPolicy], [RussianCharPolicy] or
+// [NewCharPolicy] to change it.
+//
+// # Opening and lifecycle
+//
+// [Open] maps a GMOR file with mmap (not supported on Windows); [OpenBytes]
+// opens one already in memory, typically embedded with //go:embed, and
+// works everywhere. Query methods are safe for concurrent use;
+// [Dictionary.Close] must not race with them. [MultiDictionary] queries
+// several dictionaries as one, and [Dictionary.ContentHash] identifies a
+// dictionary's content independently of when and how it was saved. Package
+// tagmap compares tags across sources.
+//
+// Usage scenarios with runnable examples: docs/en/scenarios.md in the
+// repository.
 package morphology
 
 import (
@@ -43,6 +72,9 @@ import (
 // Builder/ImportTSV/Merge, opened from a GMOR file (Open, mmap-backed) or
 // from memory (OpenBytes). Dictionaries opened via Open must be closed with
 // Close when no longer needed; see Close for when that is safe.
+// All query methods (Parse, Lemma, IsKnown, Fuzzy, FuzzyTop, Info,
+// ContentHash, …) are safe for concurrent use by multiple goroutines;
+// Close is not.
 type Dictionary struct {
 	d  *internal.Dictionary
 	mm *mmapx.Region

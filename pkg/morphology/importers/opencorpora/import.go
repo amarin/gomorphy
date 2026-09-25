@@ -15,8 +15,9 @@ import (
 	"github.com/amarin/gomorphy/pkg/morphology/internal"
 )
 
-// Progress callback — called periodically (every 10s) during import.
-// a: processed items, b: total items (0 if unknown).
+// Progress callback — called while the words DAWG is built (not while
+// dict.xml is parsed), roughly every 1% of keys but at least every 1000.
+// a: keys processed so far across all shards, b: total keys. nil disables.
 // For printing to stderr: func(a, b int) { fmt.Fprintf(os.Stderr, "...") }
 type Progress func(a, b int)
 

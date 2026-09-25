@@ -35,8 +35,15 @@ const tsvTagSetName = "tsv"
 // The resulting dictionary reports Source "tsv" when the caller leaves
 // opts.Source empty (mirroring how Builder defaults Source to "builder"); a
 // caller-supplied opts.Source is honored as-is. The wordform and lemma
-// columns are lower-cased (as Builder.AddForm does); tags are stored
-// verbatim. One entry per line is fully general.
+// columns are lower-cased (as Builder.AddForm does); tags are trimmed and
+// otherwise stored verbatim. One entry per line is fully general. A line
+// longer than 1 MiB is a read error.
+//
+// Language, CharPolicy and Source defaults are those of BuilderOptions: an
+// empty Language means "ru", a nil CharPolicy means the language default
+// (е→ё for Russian). Unlike Builder.Build, a stream with no entries (empty,
+// or only blank and comment lines) is not an error: the result is an empty
+// dictionary that knows no words.
 func ImportTSV(r io.Reader, opts BuilderOptions) (*Dictionary, error) {
 	if opts.Source == "" {
 		opts.Source = "tsv"

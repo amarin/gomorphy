@@ -23,7 +23,10 @@ type CharPolicy = internal.CharPolicy
 // NewCharPolicy returns a policy with the given substitutions. It does not
 // itself validate the count — a policy with more than 255 substitutions
 // is only rejected later, when it is used to build a dictionary (Builder,
-// ImportTSV, UniMorphOptions); see CharPolicy's doc comment.
+// ImportTSV, UniMorphOptions); see CharPolicy's doc comment. From runes
+// should be lower-case: every query is lower-cased before substitution.
+// The policy is not copied — treat it as immutable once it is passed to a
+// builder.
 func NewCharPolicy(subs ...Substitution) *CharPolicy { return internal.NewCharPolicy(subs...) }
 
 // RussianCharPolicy returns the Russian policy: е→ё.
