@@ -6,7 +6,6 @@ package unimorph
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path"
@@ -28,6 +27,7 @@ type Loader struct {
 	dataPath string
 	language string
 	iso      string
+	url      string // remoteURL(iso); replaced in tests
 }
 
 // NewLoader creates a UniMorph loader for language (gomorphy's own
@@ -47,6 +47,7 @@ func NewLoader(language, dataPath string) (*Loader, error) {
 		dataPath: dataPath,
 		language: language,
 		iso:      iso,
+		url:      remoteURL(iso),
 	}, nil
 }
 
@@ -89,7 +90,7 @@ func (loader *Loader) IsUpdateRequired() (bool, error) {
 		return true, nil
 	}
 
-	url := remoteURL(loader.iso)
+	url := loader.url
 	loader.Debugf("check remote %v", url)
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Head(url) //nolint:gosec,noctx
@@ -113,7 +114,10 @@ func (loader *Loader) IsUpdateRequired() (bool, error) {
 	return true, nil
 }
 
-// DownloadUpdate downloads the language's TSV if an update is needed.
+// DownloadUpdate downloads the language's TSV if IsUpdateRequired says so,
+// and reports whether it did. The file is replaced atomically: a failed
+// download (network error, non-200 status, truncated body) keeps the
+// previous file. dataPath is created if missing.
 func (loader *Loader) DownloadUpdate() (updated bool, err error) {
 	updateRequired, err := loader.IsUpdateRequired()
 	if err != nil {
@@ -122,37 +126,17 @@ func (loader *Loader) DownloadUpdate() (updated bool, err error) {
 	if !updateRequired {
 		return false, nil
 	}
-
-	// os.MkdirAll on loader.dataPath directly, not common.MakeDomainDataPath
-	// (which only ever creates the default .data/<domain> path, ignoring
-	// a caller-supplied custom dataPath — this loader's dataPath already
-	// includes the language subdirectory, whether default or custom).
-	if err := os.MkdirAll(loader.dataPath, os.ModePerm); err != nil {
+	if err := loader.download(); err != nil {
 		return false, err
 	}
-
-	url := remoteURL(loader.iso)
-	resp, err := http.Get(url) //nolint:gosec,noctx
-	if err != nil {
-		return false, fmt.Errorf("%w: download %s: %w", ErrUnimorph, url, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("%w: %s: unexpected status %d", ErrUnimorph, url, resp.StatusCode)
-	}
-
-	file, err := os.Create(loader.UnpackedFilePath())
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = file.Close() }()
-
-	if _, err := io.Copy(file, resp.Body); err != nil {
-		return false, fmt.Errorf("%w: write %s: %w", ErrUnimorph, loader.UnpackedFilePath(), err)
-	}
-
 	return true, nil
+}
+
+func (loader *Loader) download() error {
+	if err := common.DownloadFile(loader.url, loader.UnpackedFilePath()); err != nil {
+		return fmt.Errorf("%w: %w", ErrUnimorph, err)
+	}
+	return nil
 }
 
 // UnpackUpdate is a no-op — see the Loader doc comment. It exists only
@@ -166,32 +150,29 @@ func (loader *Loader) UnpackUpdate() error {
 	return nil
 }
 
-// Sync downloads the TSV if needed, without compiling. After Sync
-// completes, the caller can use loader.UnpackedFilePath() to load the
-// dictionary via pkg/morphology.CompileFromUniMorphFile.
+// Sync brings the downloaded TSV up to date without compiling it. Unless
+// skipDownload is set, it asks the remote whether a newer file exists and
+// downloads it; if the remote cannot be reached but a file is already on
+// disk, Sync goes on with that one. With skipDownload set, Sync makes no
+// network requests. After Sync, UnpackedFilePath is ready for
+// pkg/morphology.CompileFromUniMorphFile.
 func (loader *Loader) Sync(skipDownload bool) error {
-	downloadedExists := loader.IsDownloadExists()
-	updateRequired, err := loader.IsUpdateRequired()
-	if err != nil {
-		loader.Warnf("check updates: %v", err)
-	}
-
-	downloadRequired := !skipDownload && (updateRequired || !downloadedExists)
-
-	if downloadRequired {
-		loader.Info("update required, downloading")
-		updated, err := loader.DownloadUpdate()
+	if !skipDownload {
+		required, err := loader.IsUpdateRequired()
 		if err != nil {
-			loader.Errorf("download: %v", err)
-			return err
+			if !loader.IsDownloadExists() {
+				return err
+			}
+			loader.Warnf("check updates: %v; using the local file", err)
 		}
-		if updated {
+		if required {
+			loader.Info("update required, downloading")
+			if err := loader.download(); err != nil {
+				loader.Errorf("download: %v", err)
+				return err
+			}
 			loader.Info("downloaded")
-		} else {
-			loader.Warn("files not updated, no errors")
 		}
-	} else {
-		loader.Info("skip download")
 	}
 
 	if !loader.IsDownloadExists() {

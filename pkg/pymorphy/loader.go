@@ -7,7 +7,6 @@ import (
 	"archive/zip"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -22,6 +21,7 @@ import (
 type Loader struct {
 	logging.Logger
 	dataPath string
+	pypiURL  string // PyPIJSONURL; replaced in tests
 }
 
 // NewLoader creates a new pymorphy loader instance.
@@ -35,6 +35,7 @@ func NewLoader(dataPath string) *Loader {
 	return &Loader{
 		Logger:   common.NewLoaderLogger("loader"),
 		dataPath: dataPath,
+		pypiURL:  PyPIJSONURL,
 	}
 }
 
@@ -100,17 +101,21 @@ func (loader *Loader) IsUpdateRequired() (bool, error) {
 		return true, nil
 	}
 
-	loader.Debugf("check remote %v", PyPIJSONURL)
-	remoteVersion, _, err := fetchLatestWheel(PyPIJSONURL)
+	loader.Debugf("check remote %v", loader.pypiURL)
+	remoteVersion, _, err := fetchLatestWheel(loader.pypiURL)
 	if err != nil {
-		loader.Warnf("remote %v: error: %v", PyPIJSONURL, err)
+		loader.Warnf("remote %v: error: %v", loader.pypiURL, err)
 		return false, err
 	}
 
 	return remoteVersion != localVersion, nil
 }
 
-// DownloadUpdate downloads the latest wheel from PyPI if an update is needed.
+// DownloadUpdate downloads the latest wheel from PyPI if IsUpdateRequired
+// says so, and reports whether it did. The archive is replaced atomically
+// and the recorded version only after it: a failed download (network
+// error, non-200 status, truncated body) keeps the previous release.
+// dataPath is created if missing.
 func (loader *Loader) DownloadUpdate() (updated bool, err error) {
 	updateRequired, err := loader.IsUpdateRequired()
 	if err != nil {
@@ -119,33 +124,35 @@ func (loader *Loader) DownloadUpdate() (updated bool, err error) {
 	if !updateRequired {
 		return false, nil
 	}
-
-	if err := common.MakeDomainDataPath(DomainName); err != nil {
+	if err := loader.download(); err != nil {
 		return false, err
 	}
-
-	version, wheelURL, err := fetchLatestWheel(PyPIJSONURL)
-	if err != nil {
-		return false, err
-	}
-
-	if err := downloadFile(wheelURL, loader.archiveFilePath()); err != nil {
-		return false, err
-	}
-
-	if err := os.WriteFile(loader.versionFilePath(), []byte(version), 0o644); err != nil {
-		return false, fmt.Errorf("%w: write version file: %w", ErrPymorphy, err)
-	}
-
 	return true, nil
 }
 
-// UnpackUpdate extracts the wheel's WheelDataSubtree into UnpackedDirPath.
-func (loader *Loader) UnpackUpdate() error {
-	if err := common.MakeDomainDataPath(DomainName); err != nil {
+func (loader *Loader) download() error {
+	version, wheelURL, err := fetchLatestWheel(loader.pypiURL)
+	if err != nil {
 		return err
 	}
+	if err := common.DownloadFile(wheelURL, loader.archiveFilePath()); err != nil {
+		return fmt.Errorf("%w: %w", ErrPymorphy, err)
+	}
+	err = common.WriteFileAtomic(loader.versionFilePath(), func(w io.Writer) error {
+		_, err := io.WriteString(w, version)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("%w: write version file: %w", ErrPymorphy, err)
+	}
+	return nil
+}
 
+// UnpackUpdate extracts the wheel's WheelDataSubtree into UnpackedDirPath.
+// It extracts into a temporary directory first and replaces the previous
+// unpacked copy only when that succeeded, so files of an older release do
+// not linger and a failed unpack keeps the old copy.
+func (loader *Loader) UnpackUpdate() error {
 	r, err := zip.OpenReader(loader.archiveFilePath())
 	if err != nil {
 		return fmt.Errorf("%w: open archive: %w", ErrPymorphy, err)
@@ -153,9 +160,11 @@ func (loader *Loader) UnpackUpdate() error {
 	defer func() { _ = r.Close() }()
 
 	targetDir := loader.UnpackedDirPath()
-	if err := os.MkdirAll(targetDir, os.ModePerm); err != nil {
-		return err
+	tmpDir, err := os.MkdirTemp(loader.dataPath, "."+LocalUnpackedDirName+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrPymorphy, err)
 	}
+	defer func() { _ = os.RemoveAll(tmpDir) }() // a no-op after the rename
 
 	extracted := 0
 	for _, f := range r.File {
@@ -164,8 +173,8 @@ func (loader *Loader) UnpackUpdate() error {
 			continue
 		}
 
-		destPath := filepath.Join(targetDir, filepath.FromSlash(rel))
-		if !strings.HasPrefix(destPath, filepath.Clean(targetDir)+string(os.PathSeparator)) {
+		destPath := filepath.Join(tmpDir, filepath.FromSlash(rel))
+		if !strings.HasPrefix(destPath, filepath.Clean(tmpDir)+string(os.PathSeparator)) {
 			return fmt.Errorf("%w: unsafe archive path %q", ErrPymorphy, f.Name)
 		}
 
@@ -179,48 +188,52 @@ func (loader *Loader) UnpackUpdate() error {
 		return fmt.Errorf("%w: no files found under %q in archive", ErrPymorphy, WheelDataSubtree)
 	}
 
+	if err := os.RemoveAll(targetDir); err != nil {
+		return fmt.Errorf("%w: remove old unpacked copy: %w", ErrPymorphy, err)
+	}
+	if err := os.Rename(tmpDir, targetDir); err != nil {
+		return fmt.Errorf("%w: %w", ErrPymorphy, err)
+	}
 	return nil
 }
 
-// Sync downloads and unpacks the dictionary archive if needed, without
-// compiling. After Sync completes, the caller can use loader.UnpackedDirPath()
-// to load the dictionary via pkg/morphology.OpenPyMorphy (raw UTF-8) or
-// OpenPyMorphyDense (the dense 1-byte alphabet gomorphy's own CLI
-// defaults to, see cmd/gomorphy's build command).
+// Sync brings the unpacked dictionary up to date without compiling it.
+// Unless skipDownload is set, it asks PyPI whether a newer release exists
+// and downloads it; if PyPI cannot be reached but an archive is already on
+// disk, Sync goes on with that one. It then unpacks the archive when it was
+// just downloaded or nothing is unpacked yet. With skipDownload set, Sync
+// makes no network requests and only unpacks an archive already on disk.
+// After Sync, UnpackedDirPath is ready for pkg/morphology.OpenPyMorphy
+// (raw UTF-8) or OpenPyMorphyDense (the dense 1-byte alphabet the gomorphy
+// CLI uses).
 func (loader *Loader) Sync(skipDownload bool) error {
-	downloadedExists := loader.IsDownloadExists()
-	updateRequired, err := loader.IsUpdateRequired()
-	if err != nil {
-		loader.Warnf("check updates: %v", err)
-	}
-
-	downloadRequired := !skipDownload && (updateRequired || !downloadedExists)
-
-	if downloadRequired {
-		loader.Info("update required, downloading")
-		updated, err := loader.DownloadUpdate()
+	updated := false
+	if !skipDownload {
+		required, err := loader.IsUpdateRequired()
 		if err != nil {
-			loader.Errorf("download: %v", err)
-			return err
+			if !loader.IsDownloadExists() {
+				return err
+			}
+			loader.Warnf("check updates: %v; using the local archive", err)
 		}
-		if updated {
+		if required {
+			loader.Info("update required, downloading")
+			if err := loader.download(); err != nil {
+				loader.Errorf("download: %v", err)
+				return err
+			}
+			updated = true
 			loader.Info("downloaded")
-		} else {
-			loader.Warn("files not updated, no errors")
 		}
-	} else {
-		loader.Info("skip download")
 	}
 
-	if !loader.IsUnpackedExists() && loader.IsDownloadExists() {
+	if loader.IsDownloadExists() && (updated || !loader.IsUnpackedExists()) {
 		loader.Info("unpacking")
 		if err := loader.UnpackUpdate(); err != nil {
 			loader.Errorf("unpack: %v", err)
 			return err
 		}
 		loader.Info("unpacked")
-	} else {
-		loader.Info("skip unpack")
 	}
 
 	if !loader.IsUnpackedExists() {
@@ -249,30 +262,6 @@ func extractZipFile(f *zip.File, destPath string) error {
 
 	if _, err := io.Copy(dst, src); err != nil { //nolint:gosec // size bounded by the source wheel, not attacker-controlled input
 		return fmt.Errorf("%w: extract %q: %w", ErrPymorphy, f.Name, err)
-	}
-
-	return nil
-}
-
-func downloadFile(url, destPath string) error {
-	resp, err := http.Get(url) //nolint:gosec,noctx
-	if err != nil {
-		return fmt.Errorf("%w: download %s: %w", ErrPymorphy, url, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%w: %s: unexpected status %d", ErrPymorphy, url, resp.StatusCode)
-	}
-
-	file, err := os.Create(destPath)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = file.Close() }()
-
-	if _, err := io.Copy(file, resp.Body); err != nil {
-		return fmt.Errorf("%w: write %s: %w", ErrPymorphy, destPath, err)
 	}
 
 	return nil
