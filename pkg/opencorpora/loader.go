@@ -21,21 +21,25 @@ import (
 
 // Loader provides OpenCorpora dictionary download and unpacking utilities.
 // Compilation is handled externally via pkg/morphology.
+// A Loader is not safe for concurrent use.
 type Loader struct {
 	logging.Logger
-	dataPath string
+	dataPath  string
+	remoteURL string // RemoteURL; replaced in tests
 }
 
 // NewLoader creates a new opencorpora loader instance.
 // Takes path to data storage. If empty path provided, uses .data/opencorpora by default.
+// Logging needs no setup: see common.NewLoaderLogger.
 func NewLoader(dataPath string) *Loader {
 	if dataPath == "" {
 		dataPath = common.DomainDataPath(DomainName)
 	}
 
 	return &Loader{
-		Logger:   logging.NewNamedLogger("loader").WithLevel(logging.LevelDebug),
-		dataPath: dataPath,
+		Logger:    common.NewLoaderLogger("loader"),
+		dataPath:  dataPath,
+		remoteURL: RemoteURL,
 	}
 }
 
@@ -80,7 +84,11 @@ func (loader *Loader) downloadedFilePath() string {
 	return loader.filePath(LocalSourceFilename)
 }
 
-// IsUpdateRequired checks the remote for a newer version.
+// IsUpdateRequired reports whether the remote has a newer archive: a
+// missing local archive is always an update (no request made); otherwise a
+// HEAD request compares Last-Modified with the archive's mtime. A missing
+// Last-Modified means no update, an unparseable one means an update. A
+// network error or a non-200 status is returned as an error.
 func (loader *Loader) IsUpdateRequired() (bool, error) {
 	loader.Info("check if update required")
 	expectedFile := loader.downloadedFilePath()
@@ -93,10 +101,10 @@ func (loader *Loader) IsUpdateRequired() (bool, error) {
 		return false, err
 	}
 
-	loader.Debugf("check remote %v", RemoteURL)
-	response, err := http.Head(RemoteURL)
+	loader.Debugf("check remote %v", loader.remoteURL)
+	response, err := http.Head(loader.remoteURL)
 	if err != nil {
-		loader.Warnf("remote %v: error: %v", RemoteURL, err)
+		loader.Warnf("remote %v: error: %v", loader.remoteURL, err)
 		return false, err
 	}
 	defer func() { _ = response.Body.Close() }()
@@ -119,7 +127,10 @@ func (loader *Loader) IsUpdateRequired() (bool, error) {
 	return false, nil
 }
 
-// DownloadUpdate downloads the dictionary archive if update is needed.
+// DownloadUpdate downloads the dictionary archive if IsUpdateRequired says
+// so, and reports whether it did. The archive is replaced atomically: a
+// failed download (network error, non-200 status, truncated body) keeps the
+// previous archive. dataPath is created if missing.
 func (loader *Loader) DownloadUpdate() (updated bool, err error) {
 	updateRequired, err := loader.IsUpdateRequired()
 	if err != nil {
@@ -128,94 +139,72 @@ func (loader *Loader) DownloadUpdate() (updated bool, err error) {
 	if !updateRequired {
 		return false, nil
 	}
-
-	if err := common.MakeDomainDataPath(DomainName); err != nil {
+	if err := loader.download(); err != nil {
 		return false, err
 	}
-
-	response, err := http.Get(RemoteURL) // nolint:gosec,noctx
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = response.Body.Close() }()
-
-	file, err := os.Create(loader.downloadedFilePath())
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = file.Close() }()
-
-	if _, err = io.Copy(file, response.Body); err != nil {
-		return false, err
-	}
-
 	return true, nil
 }
 
-// UnpackUpdate extracts dict.xml from the bzip2 archive.
-func (loader *Loader) UnpackUpdate() error {
-	if err := common.MakeDomainDataPath(DomainName); err != nil {
-		return err
+func (loader *Loader) download() error {
+	if err := common.DownloadFile(loader.remoteURL, loader.downloadedFilePath()); err != nil {
+		return fmt.Errorf("%w: %w", ErrOpenCorpora, err)
 	}
-
-	source, err := os.Open(loader.downloadedFilePath())
-	if err != nil {
-		return err
-	}
-	defer func() { _ = source.Close() }()
-
-	bzipSource := bzip2.NewReader(source)
-
-	target, err := os.Create(loader.UnpackedFilePath())
-	if err != nil {
-		return err
-	}
-	defer func() { _ = target.Close() }()
-
-	if _, err = io.Copy(target, bzipSource); err != nil {
-		return err
-	}
-
 	return nil
 }
 
-// Sync downloads and unpacks the dictionary archive if needed, without compiling.
-// After Sync completes, the caller can use loader.UnpackedFilePath() to get the
-// path to dict.xml and compile it via pkg/morphology.
-func (loader *Loader) Sync(skipDownload bool) error {
-	downloadedExists := loader.IsDownloadExists()
-	updateRequired, err := loader.IsUpdateRequired()
+// UnpackUpdate extracts dict.xml from the downloaded bzip2 archive,
+// replacing an existing dict.xml atomically (a failed unpack keeps it).
+func (loader *Loader) UnpackUpdate() error {
+	source, err := os.Open(loader.downloadedFilePath())
 	if err != nil {
-		loader.Warnf("check updates: %v", err)
+		return fmt.Errorf("%w: open archive: %w", ErrOpenCorpora, err)
 	}
+	defer func() { _ = source.Close() }()
 
-	downloadRequired := !skipDownload && (updateRequired || !downloadedExists)
+	return common.WriteFileAtomic(loader.UnpackedFilePath(), func(w io.Writer) error {
+		if _, err := io.Copy(w, bzip2.NewReader(source)); err != nil {
+			return fmt.Errorf("%w: unpack: %w", ErrOpenCorpora, err)
+		}
+		return nil
+	})
+}
 
-	if downloadRequired {
-		loader.Info("update required, downloading")
-		updated, err := loader.DownloadUpdate()
+// Sync brings the unpacked dict.xml up to date without compiling it.
+// Unless skipDownload is set, it asks the remote whether a newer archive
+// exists and downloads it; if the remote cannot be reached but an archive
+// is already on disk, Sync goes on with that one. It then unpacks the
+// archive when it was just downloaded or dict.xml is missing. With
+// skipDownload set, Sync makes no network requests and only unpacks an
+// archive already on disk. After Sync, UnpackedFilePath is ready for
+// pkg/morphology.CompileFromXMLFile.
+func (loader *Loader) Sync(skipDownload bool) error {
+	updated := false
+	if !skipDownload {
+		required, err := loader.IsUpdateRequired()
 		if err != nil {
-			loader.Errorf("download: %v", err)
-			return err
+			if !loader.IsDownloadExists() {
+				return err
+			}
+			loader.Warnf("check updates: %v; using the local archive", err)
 		}
-		if updated {
+		if required {
+			loader.Info("update required, downloading")
+			if err := loader.download(); err != nil {
+				loader.Errorf("download: %v", err)
+				return err
+			}
+			updated = true
 			loader.Info("downloaded")
-		} else {
-			loader.Warn("files not updated, no errors")
 		}
-	} else {
-		loader.Info("skip download")
 	}
 
-	if !loader.IsUnpackedExists() && loader.IsDownloadExists() {
+	if loader.IsDownloadExists() && (updated || !loader.IsUnpackedExists()) {
 		loader.Info("unpacking")
 		if err := loader.UnpackUpdate(); err != nil {
 			loader.Errorf("unpack: %v", err)
 			return err
 		}
 		loader.Info("unpacked")
-	} else {
-		loader.Info("skip unpack")
 	}
 
 	if !loader.IsUnpackedExists() {

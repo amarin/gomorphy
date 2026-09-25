@@ -11,7 +11,8 @@ import (
 // Sentinel errors of the public Builder API.
 var (
 	// ErrNoEntries is returned by Builder.Build when no entries have been
-	// registered.
+	// registered, and wrapped by ImportTSV for a stream with no entries and
+	// by MergeWithOptions when the merge leaves nothing to build.
 	ErrNoEntries = errors.New("morphology: builder: no entries")
 
 	// ErrBuilderClosed is returned by Builder.AddForm (and repeated Build
@@ -66,11 +67,11 @@ func NewBuilder(opts BuilderOptions) *Builder {
 
 // AddForm registers one entry: wordform text "word", its lemma "lemma",
 // and an opaque grammeme tag "tag". tag may be "" (a reading with no
-// grammemes). An empty word is an error (as are whitespace-only words, per
-// the TSV trim rule). An empty lemma means the wordform is its own lemma
-// (auto-lemma). word and lemma are lower-cased (strings.ToLower): Parse
-// lower-cases its input, so a mixed-case form would otherwise be
-// unreachable. tag is stored verbatim.
+// grammemes). An empty or whitespace-only word is an error; otherwise word
+// and lemma are not trimmed (unlike ImportTSV). An empty lemma means the
+// wordform is its own lemma (auto-lemma). word and lemma are lower-cased
+// (strings.ToLower): Parse lower-cases its input, so a mixed-case form
+// would otherwise be unreachable. tag is stored verbatim.
 func (b *Builder) AddForm(word, lemma, tag string) error {
 	if b.closed {
 		return ErrBuilderClosed
@@ -102,9 +103,11 @@ func (b *Builder) AddLemma(normal, tag string) error {
 // Build assembles the dictionary from all registered entries, deduplicating
 // (word, lemma, tag) triples by insertion order and rebuilding prediction.
 // The result is a fully functional *Dictionary (Parse, Lemma, Fuzzy,
-// prediction) usable directly or Savable via SaveTo. Build is not
-// idempotent-friendly: it consumes the Builder (further AddForm calls after
-// Build are rejected with ErrBuilderClosed).
+// prediction) usable directly or Savable via SaveTo. Build consumes the
+// Builder even when it fails (for example, on a CharPolicy over the
+// 255-substitution limit): later AddForm and Build calls return
+// ErrBuilderClosed. Build with no entries, or on a nil Builder, returns
+// ErrNoEntries and leaves the Builder open.
 func (b *Builder) Build() (*Dictionary, error) {
 	if b == nil || len(b.entries) == 0 {
 		return nil, ErrNoEntries

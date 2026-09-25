@@ -530,3 +530,107 @@ func ExampleOpenBytes() {
 	// Output:
 	// кот NOUN,anim,masc,sing,gent
 }
+
+// ExampleDictionary_Parse shows the readings of a dictionary word and of a
+// word the dictionary lacks: the latter are guessed from the ending and
+// carry Predicted.
+func ExampleDictionary_Parse() {
+	b := morphology.NewBuilder(morphology.BuilderOptions{Language: "ru"})
+	if err := b.AddLemma("кот", "NOUN,nomn"); err != nil {
+		log.Fatal(err)
+	}
+	if err := b.AddForm("кота", "кот", "NOUN,gent"); err != nil {
+		log.Fatal(err)
+	}
+	d, err := b.Build()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, word := range []string{"Кота", "бота"} {
+		for _, r := range d.Parse(word) {
+			fmt.Println(word, "->", r.Normal, r.Tag, "predicted:", r.Predicted)
+		}
+	}
+	// Output:
+	// Кота -> кот NOUN,gent predicted: false
+	// бота -> бот NOUN,gent predicted: true
+}
+
+// ExampleNewCharPolicy shows a custom character policy: here a query «и»
+// also finds a stored «і», so «кіт» is reachable by typing «кит».
+func ExampleNewCharPolicy() {
+	b := morphology.NewBuilder(morphology.BuilderOptions{
+		Language:   "uk",
+		CharPolicy: morphology.NewCharPolicy(morphology.Substitution{From: 'и', To: 'і'}),
+	})
+	if err := b.AddLemma("кіт", "NOUN"); err != nil {
+		log.Fatal(err)
+	}
+	d, err := b.Build()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(d.IsKnown("кит"), d.IsKnown("кіт"))
+	// Output:
+	// true true
+}
+
+// ExampleNoCharPolicy shows turning the Russian е→ё default off: with
+// NoCharPolicy, «елка» no longer finds «ёлка».
+func ExampleNoCharPolicy() {
+	build := func(policy *morphology.CharPolicy) *morphology.Dictionary {
+		b := morphology.NewBuilder(morphology.BuilderOptions{Language: "ru", CharPolicy: policy})
+		if err := b.AddLemma("ёлка", "NOUN"); err != nil {
+			log.Fatal(err)
+		}
+		d, err := b.Build()
+		if err != nil {
+			log.Fatal(err)
+		}
+		return d
+	}
+
+	fmt.Println("default:", build(nil).IsKnown("елка"))
+	fmt.Println("NoCharPolicy:", build(morphology.NoCharPolicy()).IsKnown("елка"))
+	// Output:
+	// default: true
+	// NoCharPolicy: false
+}
+
+// ExampleDictionary_ContentHash shows that the content hash survives a
+// save and reopen: it ignores the "info" section (build time, library
+// version), so it can key a cache that should only reset when words change.
+func ExampleDictionary_ContentHash() {
+	d := mustCompileExampleDict()
+	path := filepath.Join(os.TempDir(), "gomorphy-example-hash.dat")
+	if err := d.SaveTo(path); err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = os.Remove(path) }()
+
+	reopened, err := morphology.Open(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = reopened.Close() }()
+
+	fmt.Println(len(d.ContentHash()), d.ContentHash() == reopened.ContentHash())
+	// Output:
+	// 32 true
+}
+
+// ExampleMultiDictionary_IsKnown shows membership across a set: a word is
+// known if any member dictionary has it.
+func ExampleMultiDictionary_IsKnown() {
+	d2, err := morphology.CompileFromXML(strings.NewReader(exampleDictXML2), nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	m := morphology.NewMultiDictionary(mustCompileExampleDict(), d2)
+
+	fmt.Println(m.IsKnown("кота"), m.IsKnown("дома"), m.IsKnown("бота"))
+	// Output:
+	// true true false
+}

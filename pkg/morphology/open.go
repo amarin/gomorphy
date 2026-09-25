@@ -138,15 +138,23 @@ func CompileFromUniMorphFileDense(path string, opts UniMorphOptions) (*Dictionar
 	return CompileFromUniMorphDense(f, opts)
 }
 
-// Language returns the dictionary's language code.
-func (x *Dictionary) Language() string { return x.d.Language }
+// Language returns the dictionary's language code ("ru" for every bundled
+// importer; BuilderOptions.Language for Builder/ImportTSV, "ru" when
+// empty), or "" for a nil dictionary.
+func (x *Dictionary) Language() string {
+	if x == nil || x.d == nil {
+		return ""
+	}
+	return x.d.Language
+}
 
 // TagSetName returns the dictionary's TagSet.Name — the dictName
 // pkg/morphology/tagmap.Map expects as its first argument to normalize
-// this dictionary's tags — or "" if the dictionary has no TagSet (only
-// possible for a Builder-assembled dictionary that never registered
-// one; every importer sets one). See
-// docs/en/implementation/tag-mapping.md's "known gap" note.
+// this dictionary's tags — or "" for a nil dictionary. Importers set
+// "opencorpora", "opencorpora-int" (pymorphy2) or "unimorph"; Builder and
+// ImportTSV set "builder" and "tsv", which tagmap does not know
+// (tagmap.Known reports false, tagmap.Map returns ok=false): their tags
+// are the caller's own strings. Merge keeps the base's name.
 func (x *Dictionary) TagSetName() string {
 	if x == nil || x.d == nil || x.d.TagSet == nil {
 		return ""

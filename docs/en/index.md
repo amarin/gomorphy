@@ -1,6 +1,16 @@
 # gomorphy Documentation
 
-> Russian version (installation/CLI/library basics only): [docs/ru/index.md](../ru/index.md).
+> Russian version (scenarios, installation, CLI, library): [docs/ru/index.md](../ru/index.md).
+
+## Usage
+
+- [Usage scenarios: what each feature is for, since which version](scenarios.md)
+- [Installation](installation.md)
+- [CLI: gomorphy](cli.md)
+- [Programmatic library usage](library.md)
+- [Runnable examples](../../examples/README.md)
+- [Release history (CHANGELOG)](../../CHANGELOG.md)
+- [Comparison with other Go morphological analyzers](comparison.md)
 
 ## Requirements
 
@@ -30,7 +40,7 @@
 - [Stage 9. FT6 fuzzy search](implementation/stage-9-fuzzy.md)
 - [Stage 10. Finalization](implementation/stage-10-finalize.md)
 
-## Stages of the new implementation (paradigm + DAWG; 11-16, 18 done, 17 partial)
+## Stages of the new implementation (paradigm + DAWG; 11-16, 18, 19 done, 17 partial)
 
 - [Storage redesign rationale](implementation/redesign-rationale.md)
 - [Stage 11. Internal format: TagSet + Paradigm + DAWG reader](implementation/stage-11-internal-format.md)
@@ -50,16 +60,9 @@
 - [Universal tag mapping between dictionaries (`pkg/morphology/tagmap`)](implementation/tag-mapping.md)
 - [Stage 18. Finalization: documentation, tests](implementation/stage-18-finalize.md)
 - [Path to version 1.0.0 (release checklist history)](implementation/path-to-1.0.md)
-- [Stage 19. Topical dictionaries: TSV import, CLI batches, skills, MCP decision](todo.md)
-- [Stage 20. Synonym database: groups, tags, sidecar file](todo.md)
-
-## Usage
-
-- [CLI: gomorphy](cli.md)
-- [Programmatic library usage](library.md)
-- [Installation](installation.md)
-- [Runnable examples](../../examples/README.md)
-- [Comparison with other Go morphological analyzers](comparison.md)
+- [Stage 19. Topical dictionaries: Builder, TSV import, structural merge (1.1.0)](implementation/stage-19-builder-tsv-merge.md)
+- [NER support (1.2.0): known-word flag, OpenBytes, case and е/ё, CharPolicy, ContentHash](implementation/ner-support.md)
+- [Stage 20. Synonym database: groups, tags, sidecar file (planned)](todo.md)
 
 ## Review and findings
 

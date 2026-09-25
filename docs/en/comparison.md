@@ -26,7 +26,7 @@ fresh with `gomorphy build`.
 | | **gomorphy** (this project) | [jus1d/gomorphy](https://github.com/jus1d/gomorphy) | [AlexMaxy/gomorphy](https://github.com/AlexMaxy/gomorphy) | [SteosOfficial/SteosMorphy](https://github.com/SteosOfficial/SteosMorphy) |
 |---|---|---|---|---|
 | Dictionary sources | pymorphy2, OpenCorpora `dict.xml`, UniMorph TSV — three, pluggable, built with the CLI/library from data you fetch yourself | OpenCorpora v0.92 via pymorphy3, one fixed snapshot, embedded at compile time | OpenCorpora (a pymorphy3 DAWG dump dated 22.05.2026), one fixed snapshot, copied alongside the binary | One custom, team-curated dictionary, embedded in the repo |
-| Storage format | Own sectioned `GMOR` format; mmap-backed; dense 1-byte DAWG alphabet by default | pymorphy2/3's own `dawgdic` (`words.dawg` + `paradigms.array`), `go:embed`, loaded fully into memory | Same `dawgdic` format, plus prediction-suffix DAWGs and a probability `intdawg`; `go:embed` | Own flat node/edge trie format, real `mmap` (`edsrzf/mmap-go`), zero-copy reads |
+| Storage format | Own sectioned `GMOR` format; mmap-backed, or in-memory via `OpenBytes` (`//go:embed`, works on Windows); dense 1-byte DAWG alphabet by default | pymorphy2/3's own `dawgdic` (`words.dawg` + `paradigms.array`), `go:embed`, loaded fully into memory | Same `dawgdic` format, plus prediction-suffix DAWGs and a probability `intdawg`; `go:embed` | Own flat node/edge trie format, real `mmap` (`edsrzf/mmap-go`), zero-copy reads |
 | Dictionary size | ~10 MB (OpenCorpora), ~15.7 MB (pymorphy2, incl. prediction+probability), ~11 MB (UniMorph) | ~8.8 MB added to the binary | ~15.9 MB dictionary directory, shipped alongside the binary | ~444.6 MB embedded in the repository (10 chunked blobs, reassembled at build time) |
 | Exact lookup | `Parse` — every reading, sorted by probability | `Tag` — a single best tag only, no full reading list | `Parse` — every reading, with probability and an analyzer trace (`MethodsStack`) | `Analyze` — every reading (`[]*Parsed`) |
 | Lemma | `Lemma` | not exposed directly (`WordForms()[0]` is presumably the lemma, but this isn't documented as guaranteed) | `parse.Normalized()` | `Parsed.Lemma` field |
@@ -37,7 +37,7 @@ fresh with `gomorphy build`.
 | Multiple dictionaries at once | `MultiDictionary` | no — one embedded dictionary | no — one dictionary directory | no — one embedded dictionary |
 | Universal tag mapping across sources | `pkg/morphology/tagmap` (native tags -> a UniMorph-schema feature bundle) | n/a — single source | n/a — single source | n/a — single source |
 | Built-in batch/concurrent processing | not built in (calls are already sub-microsecond; callers loop themselves) | no | no | yes — `ParseList`/`InflectList`, a CPU-core-sized worker pool |
-| CLI tool | yes — `gomorphy` (`lookup`/`lemmas`/`fuzzy`/`top`/`cli`/`download`/`unpack`/`build`/`update`) | no (library only) | no (library only) | no (library only; a CGo/Python binding is offered instead) |
+| CLI tool | yes — `gomorphy` (`lookup`/`lemmas`/`fuzzy`/`top`/`cli`/`download`/`unpack`/`build`/`update`/`import tsv`/`merge`) | no (library only) | no (library only) | no (library only; a CGo/Python binding is offered instead) |
 | External Go dependencies | `cobra`, `readline`, `testify`, `xxh3`, `x/term`, `amarin/logging` (+ indirect) | zero | zero | one direct (`edsrzf/mmap-go`) + one indirect |
 | Code license | MIT | MIT | MIT | Apache-2.0 |
 | Dictionary data license | not bundled — you fetch your own dictionary, under that source's own license (OpenCorpora CC BY-SA 4.0, `pymorphy2-dicts-ru`'s own PyPI license, UniMorph CC BY-SA 3.0) | CC BY-SA 4.0 (OpenCorpora), stated explicitly, embedded in the binary | CC BY-SA 4.0 (OpenCorpora), stated explicitly, shipped alongside the binary | not stated in the repository |
@@ -84,10 +84,14 @@ gomorphy instead ships **no dictionary data at all**: `gomorphy
 download/unpack/build <type>` fetches and compiles pymorphy2,
 OpenCorpora, or UniMorph data yourself, and the same is available from
 the Go API (`CompileFromXMLFile`, `OpenPyMorphy`,
-`CompileFromUniMorphFile`). This is a real trade-off, not a strict
-improvement: gomorphy needs a build/download step (network access, or
-a pre-fetched file) before first use, where the other three work out
-of the box with `go get`.
+`CompileFromUniMorphFile`). You can also build a dictionary from your
+own data (`Builder`, `ImportTSV`, `gomorphy import tsv`) and overlay it
+on a base dictionary (`Merge`, `gomorphy merge`). This is a real
+trade-off, not a strict improvement: gomorphy needs a build/download
+step (network access, or a pre-fetched file) before first use, where
+the other three work out of the box with `go get`. Once built, a `.dat`
+can be embedded in your own binary with `//go:embed` and opened with
+`OpenBytes` (see `examples/embed`).
 
 ## API coverage
 
@@ -188,6 +192,9 @@ that — gomorphy is the only option here. If you need **word
 inflection/generation** (producing a specific grammatical form of a
 word, not just parsing one), AlexMaxy/gomorphy or SteosMorphy are
 closer fits than gomorphy today. If you want the dictionary to work
-immediately with no download/build step, all three alternatives beat
-gomorphy on that specific point, at the cost of a fixed, aging
-snapshot embedded in the binary.
+immediately with no download/build step, all three alternatives still
+have the edge: no dictionary ships with gomorphy, so you build one
+once. After that, gomorphy closes most of the gap — the `.dat` can be
+embedded with `//go:embed` and opened with `OpenBytes`
+(`examples/embed`) — while the alternatives pay for their convenience
+with a fixed, aging snapshot embedded in the binary.

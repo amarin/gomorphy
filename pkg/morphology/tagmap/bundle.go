@@ -1,7 +1,10 @@
 // Package tagmap normalizes a dictionary's native grammatical tag string
 // into a universal feature bundle (the UniMorph Schema), so tags from
-// different dictionary sources (OpenCorpora, pymorphy2) can be compared
-// for the same grammatical meaning. See
+// different dictionary sources can be compared for the same grammatical
+// meaning. Known sources, by Dictionary.TagSetName: "opencorpora"
+// (dict.xml), "opencorpora-int" (pymorphy2) and "unimorph". Builder and
+// ImportTSV dictionaries ("builder", "tsv") carry the caller's own tags and
+// are not mapped (Known reports false). See
 // docs/en/superpowers/specs/2026-09-17-tag-mapping-design.md.
 package tagmap
 

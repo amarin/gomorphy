@@ -11,9 +11,9 @@ import (
 
 // FuzzyMatch — a word found by fuzzy search, with its distance to the query.
 type FuzzyMatch struct {
-	Word     string
-	Distance int
-	Dict     int // dictionary index in MultiDictionary; always 0 for Dictionary.Fuzzy/FuzzyTop directly
+	Word     string // the word as stored in the dictionary (with ё)
+	Distance int    // Levenshtein distance to the query, in runes
+	Dict     int    // dictionary index in MultiDictionary; always 0 for Dictionary.Fuzzy/FuzzyTop directly
 }
 
 // Fuzzy returns dictionary words within Levenshtein distance maxDist of
@@ -26,16 +26,13 @@ type FuzzyMatch struct {
 // (exact lookup). An empty result means no words match.
 // The query is lower-cased, like Parse's input.
 //
-// Dictionaries with a fixed-width alphabet (Dictionary.Alphabet != nil,
-// e.g. opened via OpenPyMorphyDense) are supported: the internal walk
-// decodes each Dictionary.Alphabet.Width() bytes into a rune via
-// Dictionary.Alphabet.Decode instead of assuming raw UTF-8, and gives the
-// exact same matches as the identical dictionary without a dense
-// alphabet. A variable-width Alphabet other than nil (Width() == 0, not
-// produced by anything in this codebase today) isn't supported and makes
-// Fuzzy return nil, the same fail-safe this had before dense-alphabet
-// support existed.
+// Dictionaries with a dense alphabet (the …Dense constructors and every
+// Builder, ImportTSV and Merge result) give exactly the same matches as the
+// same dictionary without one. A nil dictionary returns nil.
 func (x *Dictionary) Fuzzy(word string, maxDist int) []FuzzyMatch {
+	if x == nil || x.d == nil {
+		return nil
+	}
 	word = strings.ToLower(word)
 	if x.d.Alphabet != nil && x.d.Alphabet.Width() == 0 {
 		return nil
@@ -50,13 +47,15 @@ func (x *Dictionary) Fuzzy(word string, maxDist int) []FuzzyMatch {
 // (distance, word). The distance is widened iteratively from 0 up to an
 // upper bound (len(query) + the longest word length in runes across all
 // shards), until either maxWords words are collected or the whole
-// dictionary has been walked. maxWords ≤ 0 means exact lookup (the word
-// itself, or nothing).
-// The query is lower-cased, like Parse's input.
-//
-// Like Fuzzy, this supports a fixed-width Dictionary.Alphabet and returns
-// nil only for a variable-width non-nil Alphabet (Width() == 0).
+// dictionary has been walked. maxWords ≤ 0 means distance-0 matches only,
+// as Fuzzy(word, 0): the word itself and its CharPolicy variants (e.g.
+// «ёлка» for «елка»).
+// The query is lower-cased, like Parse's input. A nil dictionary returns
+// nil.
 func (x *Dictionary) FuzzyTop(word string, maxWords int) []FuzzyMatch {
+	if x == nil || x.d == nil {
+		return nil
+	}
 	word = strings.ToLower(word)
 	if x.d.Alphabet != nil && x.d.Alphabet.Width() == 0 {
 		return nil

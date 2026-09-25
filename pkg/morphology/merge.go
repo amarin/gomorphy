@@ -30,7 +30,7 @@ const (
 // language differs from the base's, or when base and overlay use two
 // different tag vocabularies that pkg/morphology/tagmap both knows
 // (e.g. "opencorpora-int" and "unimorph") and so cannot share one TagSet.
-var ErrIncompatibleDictionaries = errors.New("incompatible dictionaries")
+var ErrIncompatibleDictionaries = errors.New("morphology: incompatible dictionaries")
 
 // ErrPredictionSharded is returned by MergeWithOptions when
 // RebuildPrediction is set but the merged dictionary has more than one

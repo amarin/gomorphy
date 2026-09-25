@@ -10,7 +10,7 @@ isn't revisited without new facts. Planning is tracked in
 ## What MCP means in this context
 
 MCP (Model Context Protocol) is a transport between an agent and a
-service: in our case, a *thin layer over `pkg/dictionary`* that, instead
+service: in our case, a *thin layer over `pkg/morphology`* that, instead
 of CLI calls, gives the agent tool calls for:
 
 - importing a prepared file -> `.dat`;
@@ -53,15 +53,15 @@ An MCP server isn't "one more method" — it's a new subsystem:
   vendors (`vendor/`);
 - a separate binary/subcommand (`gomorphy mcp`), stdio transport, session
   handling;
-- JSON schemas for tools and error mapping (`ErrNotFound`, `ErrClosed`,
-  `ErrInvalidMaxDist` -> structured responses);
+- JSON schemas for tools and error mapping (library errors and empty
+  results -> structured responses);
 - transport tests, packaging, documentation — estimated at ~300-500 lines
   versus ~100 lines for a TSV importer;
 - long-term burden: every import format and every new query API has to be
   duplicated in the MCP contract.
 
 CLI batch modes that solve the same token problem are ~20-40 lines of Go,
-zero dependencies, and reuse the existing `Lookup`/`Lemmas`/`Fuzzy`.
+zero dependencies, and reuse the existing `Parse`/`Lemma`/`Fuzzy`.
 
 ## What MCP would actually provide
 
@@ -88,10 +88,10 @@ thin transport over the same library primitives:
 - import tools accept a file or a TSV string in the same format;
 - queries are **batch tools** (`lookup_batch`, `lemmas_batch`,
   `fuzzy_batch`);
-- a single source of truth — `pkg/dictionary` / importers — with MCP only
+- a single source of truth — `pkg/morphology` / importers — with MCP only
   forwarding calls.
 
-Until such a consumer appears: a deliberately minimal CLI (import, batch
-queries) + the "using the gomorphy dictionary" skill (Stage 18) and the
-"topical dictionary" skill (Stage 19, see [todo.md](todo.md)) remain the
-agent's only interface to gomorphy.
+Until such a consumer appears: a deliberately minimal CLI (import today;
+batch queries planned) + the planned "using the gomorphy dictionary" skill
+(Stage 18) and "topical dictionary" skill (Stage 19) — neither started yet,
+see [todo.md](todo.md) — remain the agent's only interface to gomorphy.
