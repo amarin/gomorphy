@@ -11,7 +11,8 @@ import (
 // Sentinel errors of the public Builder API.
 var (
 	// ErrNoEntries is returned by Builder.Build when no entries have been
-	// registered.
+	// registered, and wrapped by ImportTSV for a stream with no entries and
+	// by MergeWithOptions when the merge leaves nothing to build.
 	ErrNoEntries = errors.New("morphology: builder: no entries")
 
 	// ErrBuilderClosed is returned by Builder.AddForm (and repeated Build

@@ -13,7 +13,7 @@ import (
 type FuzzyMatch struct {
 	Word     string // the word as stored in the dictionary (with ё)
 	Distance int    // Levenshtein distance to the query, in runes
-	Dict     int // dictionary index in MultiDictionary; always 0 for Dictionary.Fuzzy/FuzzyTop directly
+	Dict     int    // dictionary index in MultiDictionary; always 0 for Dictionary.Fuzzy/FuzzyTop directly
 }
 
 // Fuzzy returns dictionary words within Levenshtein distance maxDist of
@@ -28,8 +28,11 @@ type FuzzyMatch struct {
 //
 // Dictionaries with a dense alphabet (the …Dense constructors and every
 // Builder, ImportTSV and Merge result) give exactly the same matches as the
-// same dictionary without one. The receiver must not be nil.
+// same dictionary without one. A nil dictionary returns nil.
 func (x *Dictionary) Fuzzy(word string, maxDist int) []FuzzyMatch {
+	if x == nil || x.d == nil {
+		return nil
+	}
 	word = strings.ToLower(word)
 	if x.d.Alphabet != nil && x.d.Alphabet.Width() == 0 {
 		return nil
@@ -47,9 +50,12 @@ func (x *Dictionary) Fuzzy(word string, maxDist int) []FuzzyMatch {
 // dictionary has been walked. maxWords ≤ 0 means distance-0 matches only,
 // as Fuzzy(word, 0): the word itself and its CharPolicy variants (e.g.
 // «ёлка» for «елка»).
-// The query is lower-cased, like Parse's input. The receiver must not be
+// The query is lower-cased, like Parse's input. A nil dictionary returns
 // nil.
 func (x *Dictionary) FuzzyTop(word string, maxWords int) []FuzzyMatch {
+	if x == nil || x.d == nil {
+		return nil
+	}
 	word = strings.ToLower(word)
 	if x.d.Alphabet != nil && x.d.Alphabet.Width() == 0 {
 		return nil

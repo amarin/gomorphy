@@ -19,8 +19,8 @@ type MultiDictionary struct {
 // NewMultiDictionary wraps already-open dictionaries into a single set.
 // The order of dicts fixes the indexing of Reading.Dict/LemmaRef.Dict and
 // the order in which Parse/Lemma results are concatenated — both always
-// follow registration order and are never re-sorted. Every entry must be
-// a non-nil *Dictionary.
+// follow registration order and are never re-sorted. A nil entry behaves
+// as an empty dictionary.
 func NewMultiDictionary(dicts ...*Dictionary) *MultiDictionary {
 	return &MultiDictionary{dicts: dicts}
 }

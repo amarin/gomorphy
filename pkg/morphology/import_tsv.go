@@ -41,9 +41,9 @@ const tsvTagSetName = "tsv"
 //
 // Language, CharPolicy and Source defaults are those of BuilderOptions: an
 // empty Language means "ru", a nil CharPolicy means the language default
-// (е→ё for Russian). Unlike Builder.Build, a stream with no entries (empty,
-// or only blank and comment lines) is not an error: the result is an empty
-// dictionary that knows no words.
+// (е→ё for Russian). A stream with no entries (empty, or only blank and
+// comment lines) returns an error wrapping ErrNoEntries, as Builder.Build
+// does.
 func ImportTSV(r io.Reader, opts BuilderOptions) (*Dictionary, error) {
 	if opts.Source == "" {
 		opts.Source = "tsv"
@@ -89,6 +89,9 @@ func ImportTSV(r io.Reader, opts BuilderOptions) (*Dictionary, error) {
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("morphology: tsv: scan: %w", err)
+	}
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("morphology: tsv: %w", ErrNoEntries)
 	}
 
 	return buildFromEntries(opts, entries, tsvTagSetName)

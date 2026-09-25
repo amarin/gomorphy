@@ -140,8 +140,13 @@ func CompileFromUniMorphFileDense(path string, opts UniMorphOptions) (*Dictionar
 
 // Language returns the dictionary's language code ("ru" for every bundled
 // importer; BuilderOptions.Language for Builder/ImportTSV, "ru" when
-// empty). The receiver must not be nil.
-func (x *Dictionary) Language() string { return x.d.Language }
+// empty), or "" for a nil dictionary.
+func (x *Dictionary) Language() string {
+	if x == nil || x.d == nil {
+		return ""
+	}
+	return x.d.Language
+}
 
 // TagSetName returns the dictionary's TagSet.Name — the dictName
 // pkg/morphology/tagmap.Map expects as its first argument to normalize

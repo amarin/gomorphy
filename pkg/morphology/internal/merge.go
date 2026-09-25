@@ -387,7 +387,7 @@ type MergeOptions struct {
 // ErrPredictionSharded is returned when RebuildPrediction is requested
 // but the merged dictionary has more than one shard: the engine resolves
 // prediction against shard 0 only.
-var ErrPredictionSharded = errors.New("prediction rebuild needs a single-shard output")
+var ErrPredictionSharded = errors.New("morphology: prediction rebuild needs a single-shard output")
 
 // MergeDictionaries merges overlays into base structurally: base ids
 // (tags, prefixes, per-shard suffixes and paradigms) are kept verbatim

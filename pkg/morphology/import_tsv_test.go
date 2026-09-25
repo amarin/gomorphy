@@ -182,3 +182,12 @@ func TestImportTSVSaveOpenRoundTrip(t *testing.T) {
 		readingsSnapshot(got, "кот", "кота", "мышь", "мыши"),
 	)
 }
+
+// TestImportTSVNoEntries verifies that a stream with no entries (empty, or
+// only blank and comment lines) is ErrNoEntries, as for Builder.Build.
+func TestImportTSVNoEntries(t *testing.T) {
+	for _, in := range []string{"", "\n\n", "# only a comment\n"} {
+		_, err := morphology.ImportTSV(strings.NewReader(in), morphology.BuilderOptions{})
+		require.ErrorIs(t, err, morphology.ErrNoEntries, "input %q", in)
+	}
+}
