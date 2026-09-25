@@ -198,9 +198,21 @@ func openBytes(data []byte) (*internal.Dictionary, error) {
 	return parseContainer(cont)
 }
 
-// Close releases the resources of a dictionary opened via Open (the mmap
-// region). It is a no-op for importer dictionaries. The dictionary must
-// not be used after Close.
+// Close releases the mmap region of a dictionary opened with Open. It is a
+// no-op for dictionaries that are imported, built (Builder, ImportTSV,
+// Merge) or opened with OpenBytes.
+//
+// Close must not be called while other goroutines may still call methods
+// on the Dictionary (directly or through a MultiDictionary): in-flight
+// Parse/Lemma/IsKnown/Fuzzy/FuzzyTop/ContentHash calls read the
+// mapping, and unmapping it under them crashes the process with SIGSEGV or
+// SIGBUS — not a recoverable panic. Values already returned (Reading,
+// LemmaRef, FuzzyMatch, BuildInfo and all their strings) are independent
+// copies and stay valid after Close. A caller that swaps dictionaries at
+// runtime must retire the old one only after its in-flight calls have
+// finished (for example, hold a sync.RWMutex read lock around each call
+// and take the write lock before Close). The dictionary must not be used
+// after Close.
 func (x *Dictionary) Close() error {
 	if x == nil || x.mm == nil {
 		return nil
