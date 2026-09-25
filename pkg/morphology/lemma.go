@@ -8,6 +8,12 @@ type LemmaRef struct {
 	Para   uint16 // paradigm id — unique only together with Shard
 	Shard  int    // dictionary shard index; always 0 for unsharded dictionaries
 	Dict   int    // dictionary index in MultiDictionary; always 0 for Dictionary.Lemma directly
+	// Predicted is true when the lemma comes from predicted readings (the
+	// word is absent from the dictionary). A single Dictionary.Parse never
+	// mixes predicted and dictionary readings, and MultiDictionary.Lemma
+	// never merges refs across dictionaries, so every reading behind one
+	// LemmaRef shares this value.
+	Predicted bool
 }
 
 // Lemma returns the word's lemmas based on its readings. Deduplicated by
@@ -32,7 +38,7 @@ func (x *Dictionary) Lemma(word string) []LemmaRef {
 			continue
 		}
 		seen[key] = true
-		out = append(out, LemmaRef{Normal: r.Normal, Tag: tag, Para: r.Para, Shard: r.Shard})
+		out = append(out, LemmaRef{Normal: r.Normal, Tag: tag, Para: r.Para, Shard: r.Shard, Predicted: r.Predicted})
 	}
 	return out
 }

@@ -20,11 +20,16 @@ type Reading struct {
 	Shard  int     // dictionary shard index; always 0 for unsharded dictionaries
 	Dict   int     // dictionary index in MultiDictionary; always 0 for Dictionary.Parse directly
 	Prob   float64 // probability of this reading (0 if probability data is unavailable)
+	// Predicted is true when the reading was produced by suffix prediction
+	// (the word is absent from the dictionary), false for dictionary
+	// readings. Parse returns either only dictionary readings or only
+	// predicted ones for a given word; see also Dictionary.IsKnown.
+	Predicted bool
 }
 
 // Parse parses word and returns all dictionary readings, sorted by
 // probability (descending). For out-of-dictionary words, it tries to
-// predict readings from the prediction-DAWG (suffixes). Returns nil if no
+// predict readings from the prediction-DAWG (suffixes); such readings have Predicted set. Returns nil if no
 // readings are found. The input is lowercased.
 func (x *Dictionary) Parse(word string) []Reading {
 	if x == nil || x.d == nil || len(x.d.Words) == 0 {
@@ -174,6 +179,7 @@ func (x *Dictionary) predictForPrefix(id int, splits [][2]string, seen map[strin
 				totalCount += count
 
 				r := x.readingForm(predictionShard, wordStart+it.Key, paraNum, form)
+				r.Predicted = true
 				key := r.Word + "\x00" + r.Normal + "\x00" + r.Tag
 				if seen[key] {
 					continue
