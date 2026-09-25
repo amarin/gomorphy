@@ -505,3 +505,28 @@ func ExampleDictionary_IsKnown() {
 	// Output:
 	// true false
 }
+
+// ExampleOpenBytes shows opening a dictionary that is already in memory —
+// typically one embedded into the binary with //go:embed — without writing
+// it to disk and without mmap.
+func ExampleOpenBytes() {
+	path := filepath.Join(os.TempDir(), "gomorphy-example-bytes.dat")
+	if err := mustCompileExampleDict().SaveTo(path); err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = os.Remove(path) }()
+
+	data, err := os.ReadFile(path) // with //go:embed: var data []byte
+	if err != nil {
+		log.Fatal(err)
+	}
+	d, err := morphology.OpenBytes(data)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, r := range d.Parse("кота") {
+		fmt.Println(r.Normal, r.Tag)
+	}
+	// Output:
+	// кот NOUN,anim,masc,sing,gent
+}

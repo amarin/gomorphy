@@ -154,25 +154,46 @@ func (x *Dictionary) TagSetName() string {
 
 // Open loads a dictionary from a GMOR file (the single on-disk format,
 // SaveTo). Hot sections (words.dawg) are mapped via mmap without copying;
-// the result must be closed with the Close method.
+// the result must be closed with the Close method (see Close for the
+// lifecycle rules). Not supported on Windows yet — use OpenBytes there.
 func Open(path string) (*Dictionary, error) {
 	mm, err := mmapx.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("morphology: open %s: %w", path, err)
 	}
-
-	cont, err := internal.OpenContainer(mm.Bytes())
-	if err != nil {
-		_ = mm.Close()
-		return nil, fmt.Errorf("morphology: open %s: %w", path, err)
-	}
-
-	d, err := parseContainer(cont)
+	d, err := openBytes(mm.Bytes())
 	if err != nil {
 		_ = mm.Close()
 		return nil, fmt.Errorf("morphology: open %s: %w", path, err)
 	}
 	return &Dictionary{d: d, mm: mm}, nil
+}
+
+// OpenBytes opens a dictionary in the GMOR format (as written by SaveTo)
+// from data — typically a file embedded with //go:embed. The checksum is
+// verified like Open. data is not copied: DAWG sections whose unit array
+// is 4-byte aligned in memory are used in place (zero-copy), misaligned
+// ones are copied (//go:embed gives no alignment guarantee, so expect
+// copies there). data must stay unmodified and reachable for as long as
+// the Dictionary is used; Close releases nothing. Works on every platform,
+// Windows included (no mmap involved).
+func OpenBytes(data []byte) (*Dictionary, error) {
+	d, err := openBytes(data)
+	if err != nil {
+		return nil, fmt.Errorf("morphology: open bytes: %w", err)
+	}
+	return &Dictionary{d: d}, nil
+}
+
+// openBytes validates a GMOR container (magic, version, checksum, catalog)
+// and assembles the internal dictionary from its sections. The result may
+// alias data (see internal.ParseDAWG).
+func openBytes(data []byte) (*internal.Dictionary, error) {
+	cont, err := internal.OpenContainer(data)
+	if err != nil {
+		return nil, err
+	}
+	return parseContainer(cont)
 }
 
 // Close releases the resources of a dictionary opened via Open (the mmap

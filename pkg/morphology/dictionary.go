@@ -37,9 +37,10 @@ import (
 	"github.com/amarin/gomorphy/pkg/morphology/internal"
 )
 
-// Dictionary is an immutable dictionary, either loaded by an importer or
-// opened from a GMOR file (Open). Dictionaries opened via Open use mmap
-// and must be closed with Close when no longer needed.
+// Dictionary is an immutable dictionary: loaded by an importer, built with
+// Builder/ImportTSV/Merge, opened from a GMOR file (Open, mmap-backed) or
+// from memory (OpenBytes). Dictionaries opened via Open must be closed with
+// Close when no longer needed; see Close for when that is safe.
 type Dictionary struct {
 	d  *internal.Dictionary
 	mm *mmapx.Region
