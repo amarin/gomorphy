@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Go 1.27.1+
+- Go 1.25+ (the `go` directive follows the policy "current Go release minus two minor versions" and is raised when a new Go minor version ships)
 - OS: Linux, macOS (amd64/arm64); Windows is not supported — the library
   uses mmap directly through the `syscall` package (see
   `docs/code-review-pre-1.0.md`)
