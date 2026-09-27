@@ -101,9 +101,9 @@ func TestRecompileDenseEmptyShardIsHarmless(t *testing.T) {
 	require.Len(t, items, 1)
 }
 
-func TestRecompileDenseAlphabetOverflowReturnsError(t *testing.T) {
-	// 255 distinct runes exceeds width 1's capacity of 254 (see
-	// alphabet_test.go's TestDenseAlphabetWidth1OverflowsOnTooManyRunes).
+// 255 distinct runes exceed width 1's capacity of 254: RecompileDense
+// falls back to a width-2 alphabet instead of failing.
+func TestRecompileDenseFallsBackToWidth2(t *testing.T) {
 	var words []string
 	for r := rune(0x400); r < 0x400+255; r++ {
 		words = append(words, string(r))
@@ -114,6 +114,33 @@ func TestRecompileDenseAlphabetOverflowReturnsError(t *testing.T) {
 	}
 	d := buildTestDictionary(t, [][]string{words}, [][]uint32{values})
 
-	err := RecompileDense(d)
-	assert.Error(t, err)
+	require.NoError(t, RecompileDense(d))
+	require.NotNil(t, d.Alphabet)
+	assert.Equal(t, 2, d.Alphabet.Width())
+	for i, w := range words {
+		items := d.Words[0].SimilarItems(w, nil, d.Alphabet)
+		require.Len(t, items, 1, w)
+		require.Len(t, items[0].Values, 1)
+		assert.Equal(t, uint32(i), binary.BigEndian.Uint32(items[0].Values[0]))
+	}
+}
+
+func TestNewDenseAlphabetForWidths(t *testing.T) {
+	a, err := NewDenseAlphabetFor([]string{"кот", "мышь"})
+	require.NoError(t, err)
+	assert.Equal(t, 1, a.Width())
+
+	var many []string
+	for r := rune(0x10000); r < 0x10000+255; r++ {
+		many = append(many, string(r))
+	}
+	a, err = NewDenseAlphabetFor(many)
+	require.NoError(t, err)
+	assert.Equal(t, 2, a.Width())
+
+	for r := rune(0x10000 + 255); r < 0x10000+254*254+1; r++ {
+		many = append(many, string(r))
+	}
+	_, err = NewDenseAlphabetFor(many)
+	assert.Error(t, err, "64517 distinct runes exceed width 2")
 }

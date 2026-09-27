@@ -46,7 +46,10 @@ func TestHasWordExactKey(t *testing.T) {
 }
 
 func TestWordReadingsDecodesDenseKeys(t *testing.T) {
-	d := engineDict(t, e("кот", "кот", "N"), e("кота", "кот", "G"))
+	// "N,nomn" and "N,gent" share the "N" POS class (Task 2 groups entries
+	// by (lemma, POSClass)), so both forms land in one paradigm as this
+	// test expects.
+	d := engineDict(t, e("кот", "кот", "N,nomn"), e("кота", "кот", "N,gent"))
 	rs, err := wordReadings(d)
 	require.NoError(t, err)
 	assert.Len(t, rs["кот"], 1)
@@ -253,14 +256,35 @@ func TestMergeDictionariesReplaceWordInNonTargetShard(t *testing.T) {
 	assert.NotEqual(t, base.Words[0].Bytes(), out.Words[0].Bytes(), "shard 0 (where the replaced word lived) was rebuilt")
 }
 
+// twoShardBaseSamePOS is a local variant of twoShardBase for
+// TestMergeDictionariesAlphabetChangeCleanShard only: it glues two
+// single-shard builds into one 2-shard dense dictionary the same way, but
+// uses tags that share one POS class per lemma ("N,nomn"/"N,gent" instead
+// of "N"/"G"), so both forms of "кот" and of "мышь" still land in one
+// paradigm each under Task 2's (lemma, POSClass) grouping. Other tests
+// keep using the shared twoShardBase/engineDict helpers unchanged.
+func twoShardBaseSamePOS(t *testing.T) *Dictionary {
+	t.Helper()
+	a, err := BuildDictionaryFromEntries(BuildOptions{}, []BuildEntry{e("кот", "кот", "N,nomn"), e("кота", "кот", "N,gent")})
+	require.NoError(t, err)
+	b, err := BuildDictionaryFromEntries(BuildOptions{}, []BuildEntry{e("мышь", "мышь", "N,nomn"), e("мыши", "мышь", "N,gent")})
+	require.NoError(t, err)
+	d := NewDictionary("ru", a.TagSet,
+		[][]string{a.Suffixes[0], b.Suffixes[0]}, a.Prefixes,
+		[][]Paradigm{a.Paradigms[0], b.Paradigms[0]},
+		[]*DAWG{a.Words[0], b.Words[0]}, RussianCharPolicy())
+	require.NoError(t, RecompileDense(d))
+	return d
+}
+
 func TestMergeDictionariesAlphabetChangeCleanShard(t *testing.T) {
-	base := twoShardBase(t)
+	base := twoShardBaseSamePOS(t)
 	over := engineDict(t, e("wifi", "wifi", "N"))
 	out, err := MergeDictionaries(base, []*Dictionary{over}, MergeOptions{Mode: MergeAdd})
 	require.NoError(t, err)
 	assert.NotSame(t, base.Alphabet, out.Alphabet, "the alphabet must be rebuilt to cover \"wifi\"")
 
-	want := map[string]string{"кот": "N", "кота": "G", "мышь": "N", "мыши": "G", "wifi": "N"}
+	want := map[string]string{"кот": "N,nomn", "кота": "N,gent", "мышь": "N,nomn", "мыши": "N,gent", "wifi": "N"}
 	for word, wantTag := range want {
 		vals := readingsWithShard(out, word)
 		require.NotEmpty(t, vals, word)
@@ -350,6 +374,7 @@ func TestMergeDictionariesPrediction(t *testing.T) {
 	out, err := MergeDictionaries(base, []*Dictionary{over}, MergeOptions{Mode: MergeAdd})
 	require.NoError(t, err)
 	require.Len(t, out.Prediction, 1)
+	assert.False(t, out.PredictionSharded)
 	assert.Equal(t, base.Prediction[0].Bytes(), out.Prediction[0].Bytes(), "prediction carried verbatim by default")
 	assert.Empty(t, out.Prediction[0].SimilarItems("ок", nil, nil), "overlay words don't feed carried prediction")
 
@@ -357,8 +382,23 @@ func TestMergeDictionariesPrediction(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, out.Prediction[0].SimilarItems("ок", nil, nil), "rebuilt prediction covers overlay words")
 
-	_, err = MergeDictionaries(twoShardBase(t), []*Dictionary{over}, MergeOptions{Mode: MergeAdd, RebuildPrediction: true, Productive: allProductive})
-	assert.ErrorIs(t, err, ErrPredictionSharded)
+	out, err = MergeDictionaries(twoShardBase(t), []*Dictionary{over}, MergeOptions{Mode: MergeAdd, RebuildPrediction: true, Productive: allProductive})
+	require.NoError(t, err, "a sharded result rebuilds prediction too")
+	require.Len(t, out.Prediction, 1)
+	assert.True(t, out.PredictionSharded)
+	assert.NotEmpty(t, out.Prediction[0].SimilarItems("ок", nil, nil), "rebuilt sharded prediction covers overlay words")
+}
+
+func TestMergeDictionariesCarriesShardedPrediction(t *testing.T) {
+	base := twoShardBase(t)
+	require.NoError(t, BuildPrediction(base, allProductive))
+	require.True(t, base.PredictionSharded)
+
+	out, err := MergeDictionaries(base, []*Dictionary{engineDict(t, e("шок", "шок", "N"))}, MergeOptions{Mode: MergeAdd})
+	require.NoError(t, err)
+	assert.True(t, out.PredictionSharded, "the carried prediction keeps its value format")
+	require.Len(t, out.Prediction, 1)
+	assert.Equal(t, base.Prediction[0].Bytes(), out.Prediction[0].Bytes())
 }
 
 // engineDictRaw is engineDict without the dense recompile.

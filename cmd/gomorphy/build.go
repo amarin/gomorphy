@@ -16,8 +16,11 @@ import (
 // runBuild compiles typ's source into a .dat file. input, if non-empty,
 // is compiled directly (skipping the loader's own unpacked-file/dir
 // path); output, if empty, defaults to .data/<type>/<type>.dat. lang is
-// only consulted for typ == "unimorph" (see newBuildCommand's --lang flag).
-func runBuild(cmd *cobra.Command, typ, input, output, lang string) error {
+// only consulted for typ == "unimorph" (see newBuildCommand's --lang
+// flag). noPrediction skips ending-based prediction for opencorpora and
+// unimorph; it is rejected for pymorphy (its prediction comes from the
+// source files).
+func runBuild(cmd *cobra.Command, typ, input, output, lang string, noPrediction bool) error {
 	progress := newProgressReporterTo(cmd.OutOrStdout(), isInteractive())
 
 	var d *morphology.Dictionary
@@ -41,9 +44,12 @@ func runBuild(cmd *cobra.Command, typ, input, output, lang string) error {
 		// design decisions", item 2), same as the "pymorphy" case below.
 		// The raw/non-dense variant (morphology.CompileFromXML) is
 		// Go-API-only, for embedders who want it directly.
-		d, err = morphology.CompileFromXMLDense(f, progress)
+		d, err = morphology.CompileFromXMLWithOptions(f, morphology.XMLOptions{Progress: progress, Dense: true, NoPrediction: noPrediction})
 		defaultOut = common.DomainFilePath(opencorpora.DomainName, "opencorpora.dat")
 	case "pymorphy":
+		if noPrediction {
+			return fmt.Errorf("build pymorphy: --no-prediction is not supported: pymorphy2 prediction comes from the source files")
+		}
 		dir := input
 		if dir == "" {
 			dir = pymorphy.NewLoader("").UnpackedDirPath()
@@ -66,7 +72,7 @@ func runBuild(cmd *cobra.Command, typ, input, output, lang string) error {
 		}
 		defer func() { _ = f.Close() }()
 		// Same dense-by-default policy as "opencorpora"/"pymorphy" above.
-		d, err = morphology.CompileFromUniMorphDense(f, morphology.UniMorphOptions{Language: lang})
+		d, err = morphology.CompileFromUniMorphDense(f, morphology.UniMorphOptions{Language: lang, NoPrediction: noPrediction})
 		defaultOut = common.DomainFilePath(unimorph.DomainName+"/"+lang, "unimorph.dat")
 	default:
 		return fmt.Errorf("unknown dictionary type %q (use opencorpora, pymorphy, or unimorph)", typ)
@@ -94,6 +100,8 @@ func newBuildCommand() *cobra.Command {
 	cmd.Flags().StringP("input", "i", "", "compile this source path directly, skipping the loader")
 	cmd.Flags().StringP("output", "o", "", "output .dat path (default: .data/<type>/<type>.dat)")
 	cmd.Flags().String("lang", "ru", "language code (unimorph only; only \"ru\" is supported today)")
+	cmd.Flags().Bool("no-prediction", false,
+		"skip ending-based prediction for out-of-dictionary words (opencorpora, unimorph)")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if err := configureLogging(cmd); err != nil {
 			return err
@@ -101,7 +109,8 @@ func newBuildCommand() *cobra.Command {
 		input, _ := cmd.Flags().GetString("input")
 		output, _ := cmd.Flags().GetString("output")
 		lang, _ := cmd.Flags().GetString("lang")
-		return runBuild(cmd, args[0], input, output, lang)
+		noPrediction, _ := cmd.Flags().GetBool("no-prediction")
+		return runBuild(cmd, args[0], input, output, lang, noPrediction)
 	}
 	return cmd
 }

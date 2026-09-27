@@ -31,6 +31,7 @@ func CompileFromXML(r io.Reader, progress opencorpora.Progress) (*Dictionary, er
 func CompileFromXMLFile(path string, progress opencorpora.Progress) (*Dictionary, error)
 func CompileFromXMLDense(r io.Reader, progress opencorpora.Progress) (*Dictionary, error)
 func CompileFromXMLFileDense(path string, progress opencorpora.Progress) (*Dictionary, error)
+func CompileFromXMLWithOptions(r io.Reader, opts XMLOptions) (*Dictionary, error)
 func CompileFromUniMorph(r io.Reader, opts UniMorphOptions) (*Dictionary, error)
 func CompileFromUniMorphFile(path string, opts UniMorphOptions) (*Dictionary, error)
 func CompileFromUniMorphDense(r io.Reader, opts UniMorphOptions) (*Dictionary, error)
@@ -61,7 +62,9 @@ func CompileFromUniMorphFileDense(path string, opts UniMorphOptions) (*Dictionar
 - **`CompileFromXML`/`CompileFromXMLFile`** — compiles an OpenCorpora
   dictionary from `dict.xml`. `progress` is an optional callback
   `func(processed, total int)` for tracking compilation progress (`nil`
-  can be passed).
+  can be passed). Since 1.3.0, builds ending-based prediction by default
+  (see "Prediction for unknown words" below); both wrap
+  `CompileFromXMLWithOptions`.
 - **`CompileFromXMLDense`/`CompileFromXMLFileDense`** — like
   `CompileFromXML`/`CompileFromXMLFile`, but rebuilds every shard's
   `words.dawg` under one dense 1-byte alphabet shared across the whole
@@ -69,6 +72,11 @@ func CompileFromUniMorphFileDense(path string, opts UniMorphOptions) (*Dictionar
   never do). Same guarantees as `OpenPyMorphyDense`: identical readings,
   round-trips through `SaveTo`/`Open`. This is what `gomorphy build
   opencorpora` uses by default.
+- **`CompileFromXMLWithOptions(r, opts)`** — the constructor
+  `CompileFromXML`/`CompileFromXMLDense` wrap, for callers who need
+  `XMLOptions{Progress, Dense, NoPrediction}` directly: `Dense` is the
+  same flag the `…Dense` wrappers set, and `NoPrediction` skips building
+  ending-based prediction (see "Prediction for unknown words" below).
 - **`CompileFromUniMorph`/`CompileFromUniMorphFile`** — compiles a
   UniMorph dictionary from a `lemma<TAB>wordform<TAB>bundle` TSV file
   (e.g. `unimorph/rus`). Lemma and wordform text are lower-cased on read
@@ -84,6 +92,10 @@ func CompileFromUniMorphFileDense(path string, opts UniMorphOptions) (*Dictionar
     way (`nil` skips silently).
   - `Progress` — optional progress callback; `SourceVersion` — recorded in
     `BuildInfo.SourceVersion`.
+  - `NoPrediction` — since 1.3.0, skips building ending-based prediction
+    (see "Prediction for unknown words" below); only honoured by
+    `CompileFromUniMorph*`, not by `unimorph.ImportFromTSV`/`CompileFromTSV`
+    directly.
 
   See
   [implementation/stage-16-import-unimorph.md](implementation/stage-16-import-unimorph.md).
@@ -126,7 +138,11 @@ thematic dictionary, a name list, a small custom lexicon — use `Builder`,
 `CompileFrom*Dense` (dense 1-byte alphabet), round-tripping through
 `SaveTo`/`Open`. `Builder` and `ImportTSV` rebuild prediction from their
 own words; `Merge` instead keeps the base dictionary's prediction (see
-"`Merge` — combine compiled dictionaries" below).
+"`Merge` — combine compiled dictionaries" below). Since 1.3.0, if the
+built dictionary's alphabet exceeds 254 distinct runes, the dense
+recompile step falls back to a 2-byte alphabet instead of failing
+(shared by `Builder`, `ImportTSV`, `Merge` and the `…Dense` importers,
+which all go through the same `RecompileDense`).
 
 ### `Builder` — register wordforms programmatically
 
@@ -150,6 +166,15 @@ d, err := b.Build()
 - `AddForm`/`AddLemma` do **not** trim whitespace (unlike `ImportTSV`,
   which trims every field): `" кот "` is stored with its spaces. Only an
   empty or whitespace-only `word` is rejected with an error.
+- Since 1.3.0, forms are grouped into lexemes (paradigms) by lemma **and**
+  part-of-speech class — the tag's first grammeme, with
+  INFN/VERB/PRTF/PRTS/GRND, ADJF/ADJS/COMP and V/V.PTCP/V.CVB/V.MSDR each
+  counted as one class — instead of by lemma text alone: «знать» NOUN and
+  «знать» INFN now become two lemmas/paradigms. A form with an empty or
+  POS-less tag joins the lemma's first lexeme, as before. Always on, no
+  option; dictionaries rebuilt from homonymous input differ from 1.2.x
+  output, existing `.dat` files are unaffected. `ImportTSV` follows the
+  same rule (it builds on `Builder`).
 - `CharPolicy` — `nil` (the default) picks the policy by `Language`: е→ё for
   `"ru"` and for an empty `Language` (which means "ru"), no substitutions
   for any other language. Pass `NoCharPolicy()` to disable substitutions
@@ -209,7 +234,11 @@ are added into that structure.
 - `MergeOptions.RebuildPrediction` — rebuild prediction from all merged
   words (useful when merging thematic dictionaries with each other); by
   default the base's prediction is kept, and overlay words don't feed it.
-  Requires a single-shard result (`ErrPredictionSharded` otherwise).
+  The rebuilt prediction is unpruned and covers all merged words, so over
+  a large base (pymorphy2, OpenCorpora) the result can be much larger
+  than the base. Since 1.3.0 this works for a merged result with any number of shards
+  (`ErrPredictionSharded` is never returned any more; the sentinel stays
+  exported, marked `Deprecated`, for source compatibility).
 - Inputs must share a language exactly (a dictionary with an empty
   language is rejected against a `"ru"` base); two different known tag
   vocabularies (e.g. `opencorpora-int` and `unimorph`) are rejected too
@@ -293,6 +322,22 @@ for _, r := range readings {
 
 Use case: [scenarios.md](scenarios.md#1-morphological-analysis-of-a-word).
 
+`ParseAppend(dst, word)` is `Parse` with a caller-supplied destination
+slice, for callers that parse many words in a loop and want to reuse one
+buffer instead of letting each `Parse` call allocate its own result slice:
+
+```go
+var buf []morphology.Reading
+for _, word := range words {
+    buf = d.ParseAppend(buf[:0], word)
+    // use buf
+}
+```
+
+It appends to `dst` and returns the grown slice (`Parse` is `x.ParseAppend(nil, word)`
+under the hood); a nil receiver or empty result leave `dst` unchanged
+(possibly `nil`).
+
 The `Reading` type:
 
 ```go
@@ -349,6 +394,61 @@ for dictionary-based named-entity lookup built on `IsKnown`.
 Use cases: [scenarios.md](scenarios.md#3-tell-a-dictionary-word-from-a-guess),
 [named entities](scenarios.md#4-dictionary-based-named-entity-lookup).
 
+### Prediction for unknown words
+
+Every dictionary source can predict readings for a word it doesn't
+contain, from the word's ending: pymorphy2's own dictionaries (prediction
+comes from their source files), dictionaries built with `Builder`/
+`ImportTSV`/`Merge` (rebuilt from their own words), and, since 1.3.0,
+OpenCorpora and UniMorph imports (`CompileFromXML*`/`CompileFromUniMorph*`)
+— built by default, pruned like pymorphy2's own compiler (paradigms used
+by at least 3 lemmas, endings attested at least twice, the most attested
+(paradigm, form) per ending and part of speech; `Builder`/`ImportTSV`/
+`Merge` keep unpruned prediction). Opt out with `XMLOptions.NoPrediction`
+(via `CompileFromXMLWithOptions`), `UniMorphOptions.NoPrediction`, or
+`gomorphy build opencorpora|unimorph --no-prediction` from the CLI (not
+accepted for `gomorphy build pymorphy`, whose prediction comes from its
+source files). Single-shard dictionaries (OpenCorpora) store it as
+`prediction-N`, readable by 1.2.x; multi-shard ones (UniMorph) as
+`pred-sharded-N`, which 1.2.x skips (such a file opens there without
+prediction). `MergeOptions.RebuildPrediction` works for a merged result
+with any shard count (see "`Merge`" above). Use `IsKnown` to tell a
+dictionary reading from a prediction — see "Dictionary words vs.
+predictions" above.
+
+## Tags
+
+`Reading.Tag` is a native, source-specific string (see "Exact wordform
+lookup" above); since 1.3.0 there are three allocation-conscious helpers
+for working with it without splitting it yourself:
+
+```go
+func Grammemes(tag string) []string       // splits tag into grammeme tokens
+func HasGrammeme(tag, g string) bool       // whole-token membership, no allocation
+func POS(tag string) string                // tag's first grammeme
+func (r Reading) HasGrammeme(g string) bool // HasGrammeme(r.Tag, g)
+```
+
+Separators are exactly `,`, ` ` (space) and `;`, which covers every
+bundled tag format:
+
+```go
+morphology.Grammemes("NOUN,anim,masc,Surn sing,ablt")
+// ["NOUN", "anim", "masc", "Surn", "sing", "ablt"] — OpenCorpora/pymorphy2
+morphology.Grammemes("N;GEN;SG")
+// ["N", "GEN", "SG"] — UniMorph
+
+morphology.HasGrammeme("NOUN,anim,masc,sing,nomn", "anim") // true
+morphology.POS("N;GEN;SG")                                 // "N"
+r.HasGrammeme("gent")                                       // same as HasGrammeme(r.Tag, "gent")
+```
+
+Tags stay native strings: `tagmap` is not extended with these tokens
+(`Surn`/`Name`/`Patr`/`Geox` are OpenCorpora/pymorphy2 grammemes with no
+UniMorph Schema equivalent, so they are plain grammeme tokens like any
+other, not mapped by `pkg/morphology/tagmap`). `Grammemes`/`HasGrammeme`/
+`POS` return "" or nil for an empty tag rather than erroring.
+
 ## Lemmas (base forms)
 
 `Lemma` returns the lemma (base form) and its own tag for each homonym of
@@ -377,6 +477,56 @@ type LemmaRef struct {
     Predicted bool
 }
 ```
+
+## Word forms
+
+Since 1.3.0, `Forms` and `Inflect` (on `*Dictionary` and, dispatching by
+`Reading.Dict`, on `*MultiDictionary`) return other forms of a reading's
+lexeme, reusing `Parse`'s own homonym disambiguation instead of taking a
+bare word:
+
+```go
+func (x *Dictionary) Forms(r Reading) []Reading
+func (x *Dictionary) Inflect(r Reading, want ...string) []Reading
+```
+
+`Forms(r)` returns every form of `r`'s lexeme — the paradigm `r.Para` in
+`r.Shard`, with the stem derived from `r.Word` and `r.Form` — in paradigm
+order (form 0 is the lemma, `Normal` on every returned `Reading`). `r`
+must be a reading of this dictionary (from `Parse`, `ParseAppend` or
+`Forms` itself); a mismatched `Reading` yields `nil`. Every returned
+`Reading` carries `r`'s `Para`, `Shard`, `Dict` and `Predicted`; `Prob` is
+always 0 (probabilities describe the parsed word, not generated forms).
+
+```go
+readings := d.Parse("кота")
+forms := d.Forms(readings[0])
+for _, f := range forms {
+    fmt.Println(f.Word, f.Tag)
+}
+// кот  NOUN,anim,masc,sing,nomn
+// кота NOUN,anim,masc,sing,gent
+// ...
+```
+
+`Inflect(r, want...)` returns the forms of `r`'s lexeme whose tags contain
+every grammeme in `want` (native tokens, see "Tags" above — e.g. `"gent"`,
+`"plur"` or `"GEN"`), best match first: fewest grammemes differing from
+`r.Tag` (the symmetric difference of the two grammeme sets), ties broken
+by paradigm order. With no `want` it returns every form, `r`'s own first.
+`nil` when no form matches.
+
+```go
+readings := d.Parse("кот")
+plural := d.Inflect(readings[0], "plur", "nomn")
+// plural[0].Word == "коты"
+```
+
+Predicted readings: `Forms`/`Inflect` on a `Reading` with `Predicted ==
+true` generate forms from the predicted paradigm and keep `Predicted ==
+true` on every result — as much a guess as the reading itself.
+
+Use case: [implementation/ner-support.md](implementation/ner-support.md).
 
 ## Fuzzy search
 
@@ -471,6 +621,9 @@ for _, r := range m.Parse("кота") {
 
 - `Reading.Dict`/`LemmaRef.Dict`/`FuzzyMatch.Dict` — the dictionary's index
   in the order passed to `NewMultiDictionary` (0-based).
+- `Forms(r)`/`Inflect(r, want...)` — since 1.3.0, dispatch to
+  `r.Dict`'s `Dictionary.Forms`/`Inflect` (`nil` if `r.Dict` is out of
+  range). See "Word forms" above.
 - `Parse`/`Lemma`/`Fuzzy` — the concatenation of results from every
   dictionary where the word was found, in registration order, with no
   cross-dictionary prioritization or deduplication (each dictionary
@@ -543,9 +696,9 @@ var (
     ErrBuilderClosed           // Builder used after Build
     ErrIncompatibleDictionaries // Merge: overlay language or tag vocabulary
                                 // can't share the base's
-    ErrPredictionSharded        // MergeWithOptions: RebuildPrediction set
-                                // but the merged dictionary has more than
-                                // one shard
+    ErrPredictionSharded        // Deprecated: never returned since 1.3.0
+                                // (RebuildPrediction now works for any
+                                // shard count); kept for compatibility
 )
 ```
 

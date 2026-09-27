@@ -221,11 +221,14 @@ func (d *Dictionary) Close() error
 | .dat size with zstd | — | ~10-15 MB |
 | Building the .dat (OpenCorpora, 3.06M lemmas) | ~24 h (before the free-list fix) | ~24 s |
 | Loading | mmap, ms | mmap, ms |
-| Parse (exact) | < 10 us | < 10 us |
-| Parse (prediction) | none | < 50 us |
-| Lemmas | < 10 us | < 10 us |
+| Parse (exact) | < 10 us | ~0.27–1.3 µs — pymorphy.dat: кота 437 ns, стали 1300 ns, ежик 275 ns; opencorpora.dat: кота 282 ns, стали 758 ns, ежик 274 ns (measured 1.3.0, Apple M4 Pro) — target met |
+| Parse (prediction) | none | ~1.1–1.4 µs — pymorphy.dat: бутявкающий 1420 ns, глокая 1100 ns (measured 1.3.0, Apple M4 Pro) — target met (< 50 µs) |
+| Lemmas | < 10 us | ~1.6 µs — pymorphy.dat (measured 1.3.0, Apple M4 Pro) — target met |
 | Fuzzy k<=2 | fractions of a second | fractions of a second |
 | pymorphy2 support | no | yes |
 | UniMorph support | no | yes (only `"ru"` is accepted today) |
 | Multiple dictionaries | at the application level | `MultiDictionary` |
 | Language neutrality | no (Russian) | yes |
+
+Measurement detail and every benchmark's before/after numbers:
+[implementation/ner-support.md](implementation/ner-support.md).

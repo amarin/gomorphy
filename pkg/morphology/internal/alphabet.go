@@ -213,3 +213,30 @@ func (a *DenseAlphabet) Decode(b []byte) (string, error) {
 func (a *DenseAlphabet) Runes() []rune {
 	return slices.Clone(a.runeOf)
 }
+
+// NewDenseAlphabetFor builds the narrowest DenseAlphabet for corpus: width
+// 1 when it has at most 254 distinct runes, width 2 otherwise (at most
+// 64516). Returns NewDenseAlphabet's error when even width 2 is too narrow.
+func NewDenseAlphabetFor(corpus []string) (*DenseAlphabet, error) {
+	if a, err := NewDenseAlphabet(1, corpus); err == nil {
+		return a, nil
+	}
+	return NewDenseAlphabet(2, corpus)
+}
+
+// EncodeRune returns r's code (its first n bytes; n == width) without
+// allocating. ok is false when r is not in the alphabet. Encode(string(r))
+// returns the same bytes.
+func (a *DenseAlphabet) EncodeRune(r rune) (code [2]byte, n int, ok bool) {
+	c, found := a.codeOf[r]
+	if !found {
+		return code, 0, false
+	}
+	if a.width == 1 {
+		code[0] = byte(c)
+		return code, 1, true
+	}
+	k := c - 2 // base-254 two-digit encoding, see Encode
+	code[0], code[1] = byte(2+k/254), byte(2+k%254)
+	return code, 2, true
+}

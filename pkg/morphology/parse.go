@@ -1,11 +1,12 @@
 package morphology
 
 import (
+	"cmp"
 	"encoding/binary"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/amarin/gomorphy/pkg/morphology/internal"
 )
@@ -35,15 +36,27 @@ type Reading struct {
 // for a nil receiver. The input is lower-cased and the dictionary's
 // CharPolicy applied. Use IsKnown to check membership without prediction.
 func (x *Dictionary) Parse(word string) []Reading {
-	if x == nil || x.d == nil || len(x.d.Words) == 0 {
+	out := x.ParseAppend(nil, word)
+	if len(out) == 0 {
 		return nil
 	}
-	word = strings.ToLower(word)
+	return out
+}
 
-	if readings := x.exact(word); len(readings) > 0 {
-		return readings
+// ParseAppend is Parse that appends the readings to dst and returns the
+// extended slice (dst unchanged when there are none). Reusing dst across
+// calls avoids allocating the result slice; the appended readings are in
+// the same order as Parse returns them.
+func (x *Dictionary) ParseAppend(dst []Reading, word string) []Reading {
+	if x == nil || x.d == nil || len(x.d.Words) == 0 {
+		return dst
 	}
-	return x.predict(word)
+	word = strings.ToLower(word)
+	n := len(dst)
+	if dst = x.exactAppend(dst, word); len(dst) > n {
+		return dst
+	}
+	return x.predictAppend(dst, word)
 }
 
 // shardExactResult — the result of exactInShard for a single shard.
@@ -52,82 +65,78 @@ type shardExactResult struct {
 	hasProb  bool
 }
 
-// exact collects readings for a word found in the dictionary, accounting
-// for CharPolicy substitutions (е→ё), and sorts them by probability.
-// Shards are queried in parallel (one goroutine per shard), and results
-// are concatenated.
-func (x *Dictionary) exact(word string) []Reading {
-	results := make([]shardExactResult, len(x.d.Words))
-
-	var wg sync.WaitGroup
-	for shard, dawg := range x.d.Words {
-		wg.Add(1)
-		go func(shard int, dawg *internal.DAWG) {
-			defer wg.Done()
-			results[shard] = x.exactInShard(shard, dawg, word)
-		}(shard, dawg)
-	}
-	wg.Wait()
-
-	var readings []Reading
+// exactAppend appends the readings of a word found in the dictionary,
+// accounting for CharPolicy substitutions (е→ё), sorted by probability.
+// A single-shard dictionary is searched inline; several shards are
+// queried in parallel (one goroutine per shard) and concatenated in shard
+// order.
+func (x *Dictionary) exactAppend(dst []Reading, word string) []Reading {
+	start := len(dst)
 	hasProb := false
-	for _, r := range results {
-		readings = append(readings, r.readings...)
-		hasProb = hasProb || r.hasProb
-	}
-
-	if hasProb {
-		sort.SliceStable(readings, func(i, j int) bool {
-			return readings[i].Prob > readings[j].Prob
-		})
-	}
-	return readings
-}
-
-// exactInShard collects a word's readings from a single shard. It is
-// called in parallel with other shards from exact — read-only, no mutable
-// state shared between goroutines.
-func (x *Dictionary) exactInShard(shard int, dawg *internal.DAWG, word string) shardExactResult {
-	items := dawg.SimilarItems(word, x.d.CharPolicy, x.d.Alphabet)
-	if len(items) == 0 {
-		return shardExactResult{}
-	}
-
-	var res shardExactResult
-	res.readings = make([]Reading, 0, len(items))
-	for _, it := range items {
-		for _, v := range it.Values {
-			r, ok := x.reading(shard, it.Key, v)
-			if !ok {
-				continue
-			}
-			if x.d.Probability != nil {
-				r.Prob = float64(x.d.Probability.Find(it.Key+":"+r.Tag)) / 1e6
-				if r.Prob > 0 {
-					res.hasProb = true
-				}
-			}
-			res.readings = append(res.readings, r)
+	if len(x.d.Words) == 1 {
+		dst, hasProb = x.exactInShard(dst, 0, x.d.Words[0], word)
+	} else {
+		results := make([]shardExactResult, len(x.d.Words))
+		var wg sync.WaitGroup
+		for shard, dawg := range x.d.Words {
+			wg.Add(1)
+			go func(shard int, dawg *internal.DAWG) {
+				defer wg.Done()
+				rs, hp := x.exactInShard(nil, shard, dawg, word)
+				results[shard] = shardExactResult{readings: rs, hasProb: hp}
+			}(shard, dawg)
+		}
+		wg.Wait()
+		for _, r := range results {
+			dst = append(dst, r.readings...)
+			hasProb = hasProb || r.hasProb
 		}
 	}
-	return res
+	if hasProb {
+		slices.SortStableFunc(dst[start:], func(a, b Reading) int { return cmp.Compare(b.Prob, a.Prob) })
+	}
+	return dst
 }
 
-// predict looks up readings for an out-of-dictionary word by its endings
-// in the prediction-DAWG (pymorphy2's KnownSuffixAnalyzer algorithm, as in
-// opennota/morph).
-func (x *Dictionary) predict(word string) []Reading {
+// exactInShard appends a word's readings from a single shard. Read-only:
+// safe to run in parallel with other shards.
+func (x *Dictionary) exactInShard(dst []Reading, shard int, dawg *internal.DAWG, word string) ([]Reading, bool) {
+	hasProb := false
+	dawg.LookupEach(word, x.d.CharPolicy, x.d.Alphabet, func(found string, v []byte) {
+		r, ok := x.reading(shard, found, v)
+		if !ok {
+			return
+		}
+		if x.d.Probability != nil {
+			r.Prob = float64(x.d.Probability.FindJoined(found, ':', r.Tag)) / 1e6
+			if r.Prob > 0 {
+				hasProb = true
+			}
+		}
+		dst = append(dst, r)
+	})
+	return dst, hasProb
+}
+
+// predictMaxSuffix is the longest word ending (in runes) looked up in the
+// prediction-DAWG (internal.predictionMaxSuffix).
+const predictMaxSuffix = 5
+
+// readingKey dedups predicted readings by (Word, Normal, Tag).
+type readingKey struct{ word, normal, tag string }
+
+// predictAppend appends readings for an out-of-dictionary word predicted
+// from its ending (pymorphy2's KnownSuffixAnalyzer, as in opennota/morph).
+func (x *Dictionary) predictAppend(dst []Reading, word string) []Reading {
 	if len(x.d.Prediction) == 0 {
-		return nil
+		return dst
 	}
-	splits, ok := suffixSplits(word, 5)
-	if !ok {
-		return nil
+	var splitBuf [predictMaxSuffix]int
+	splits := suffixSplits(splitBuf[:0], word, predictMaxSuffix)
+	if len(splits) == 0 {
+		return dst
 	}
-
-	var readings []Reading
-	seen := make(map[string]bool)
-
+	seen := make(map[readingKey]bool)
 	for id, pref := range x.d.Prefixes {
 		if id >= len(x.d.Prediction) || x.d.Prediction[id] == nil {
 			continue
@@ -135,67 +144,74 @@ func (x *Dictionary) predict(word string) []Reading {
 		if !strings.HasPrefix(word, pref) {
 			continue
 		}
-		readings = append(readings, x.predictForPrefix(id, splits, seen)...)
+		dst = x.predictForPrefix(dst, id, word, splits, seen)
 	}
-	return readings
+	return dst
 }
 
 // predictForPrefix predicts readings against a single prefix's
 // prediction-DAWG (x.d.Prediction[id]), widening from the longest suffix
-// split (splits[len(splits)-1]) toward shorter ones until at least 2 total
-// matches accumulate — pymorphy2's KnownSuffixAnalyzer heuristic: trust a
-// long, specific suffix match over a short, common one when it exists.
-// seen dedups (word, lemma, tag) triples across all prefixes tried by the
-// caller and is mutated in place.
+// split toward shorter ones until at least 2 total matches accumulate —
+// pymorphy2's KnownSuffixAnalyzer heuristic. splits are byte offsets into
+// word (see suffixSplits). seen dedups (word, lemma, tag) across all
+// prefixes tried by the caller and is mutated in place.
 //
-// Predictions always resolve against shard 0: the prediction-DAWG feature
-// currently exists only for pymorphy2 imports, which are never sharded
-// (see docs/en/superpowers/specs/2026-09-14-suffix-sharding-design.md).
-func (x *Dictionary) predictForPrefix(id int, splits [][2]string, seen map[string]bool) []Reading {
-	const predictionShard = 0
-
-	var readings []Reading
+// A 6-byte value (count|para|form) resolves against shard 0; an 8-byte
+// value (count|para|form|shard, sharded dictionaries) carries its shard.
+// Values naming a missing shard or paradigm are skipped, and so are values
+// whose form prefix/suffix the candidate word does not start/end with
+// (they neither count toward the 2-match threshold nor yield a reading).
+func (x *Dictionary) predictForPrefix(dst []Reading, id int, word string, splits []int, seen map[readingKey]bool) []Reading {
 	totalCount := 0
 
 	for i := len(splits) - 1; i >= 0; i-- {
-		wordStart, wordEnd := splits[i][0], splits[i][1]
+		wordStart, wordEnd := word[:splits[i]], word[splits[i]:]
 		// Prediction DAWGs are never recompiled under Dictionary.Alphabet
-		// (out of scope — see docs/en/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md's
-		// non-goals): always nil here, even for a dictionary whose Words
-		// DAWG uses a dense alphabet.
-		for _, it := range x.d.Prediction[id].SimilarItems(wordEnd, x.d.CharPolicy, nil) {
-			for _, v := range it.Values {
-				if len(v) < 6 {
-					continue
-				}
-				count := int(binary.BigEndian.Uint16(v[:2]))
-				paraNum := binary.BigEndian.Uint16(v[2:4])
-				form := binary.BigEndian.Uint16(v[4:6])
-
-				para, ok := x.paradigm(predictionShard, paraNum)
-				if !ok || form >= uint16(para.Len()) {
-					continue
-				}
-				if !productive(x.paradigmTag(para, int(form))) {
-					continue
-				}
-				totalCount += count
-
-				r := x.readingForm(predictionShard, wordStart+it.Key, paraNum, form)
-				r.Predicted = true
-				key := r.Word + "\x00" + r.Normal + "\x00" + r.Tag
-				if seen[key] {
-					continue
-				}
-				seen[key] = true
-				readings = append(readings, r)
+		// (see docs/en/superpowers/specs/2026-09-16-pymorphy2-dense-recompile-design.md's
+		// non-goals): the alphabet is always nil here.
+		x.d.Prediction[id].LookupEach(wordEnd, x.d.CharPolicy, nil, func(found string, v []byte) {
+			if len(v) < 6 {
+				return
 			}
-		}
+			count := int(binary.BigEndian.Uint16(v[:2]))
+			paraNum := binary.BigEndian.Uint16(v[2:4])
+			form := binary.BigEndian.Uint16(v[4:6])
+			shard := 0 // 6-byte values (prediction-N) always mean shard 0
+			if len(v) >= 8 {
+				shard = int(binary.BigEndian.Uint16(v[6:8]))
+			}
+
+			para, ok := x.paradigm(shard, paraNum) // false for a missing shard
+			if !ok || form >= uint16(para.Len()) {
+				return
+			}
+			if !productive(x.paradigmTag(para, int(form))) {
+				return
+			}
+			// A value whose form affixes the candidate lacks would build a
+			// lemma from a suffix the word does not have (keys shorter than
+			// the form suffix in Builder/merged files before ruling R14).
+			candidate := wordStart + found
+			prefix, suffix := x.paradigmAffix(shard, para, int(form))
+			if !strings.HasPrefix(candidate, prefix) || !strings.HasSuffix(candidate, suffix) {
+				return
+			}
+			totalCount += count
+
+			r := x.readingForm(shard, candidate, paraNum, form)
+			r.Predicted = true
+			k := readingKey{r.Word, r.Normal, r.Tag}
+			if seen[k] {
+				return
+			}
+			seen[k] = true
+			dst = append(dst, r)
+		})
 		if totalCount > 1 {
 			break
 		}
 	}
-	return readings
+	return dst
 }
 
 // reading decodes a words.dawg payload entry (4 bytes BE: para, form) in
@@ -297,18 +313,15 @@ func productive(tag string) bool {
 // productive readings (pymorphy2).
 var nonproductiveGrammemes = []string{"NUMR", "NPRO", "PRED", "PREP", "CONJ", "PRCL", "INTJ", "Apro"}
 
-func suffixSplits(word string, max int) ([][2]string, bool) {
-	rr := []rune(word)
-	n := len(rr)
-	if n == 0 {
-		return nil, false
+// suffixSplits appends to dst the byte offsets that split word into
+// (start, end) with end = the last 1, 2, …, max runes (shortest end
+// first). No allocation beyond dst's growth.
+func suffixSplits(dst []int, word string, max int) []int {
+	i := len(word)
+	for n := 0; n < max && i > 0; n++ {
+		_, size := utf8.DecodeLastRuneInString(word[:i])
+		i -= size
+		dst = append(dst, i)
 	}
-	if max > n {
-		max = n
-	}
-	out := make([][2]string, 0, max)
-	for i := 1; i <= max; i++ {
-		out = append(out, [2]string{string(rr[:n-i]), string(rr[n-i:])})
-	}
-	return out, true
+	return dst
 }

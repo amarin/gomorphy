@@ -1,6 +1,7 @@
 package morphology
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/amarin/gomorphy/pkg/morphology/internal"
@@ -68,4 +69,36 @@ func TestBuildFromEntriesSourceFallback(t *testing.T) {
 
 	require.NotNil(t, d.Info())
 	assert.Equal(t, "thematic", d.Info().Source)
+}
+
+// TestBuilderWideAlphabetFallback builds a dictionary over 300 distinct
+// runes — more than a 1-byte dense alphabet holds — and checks it works end
+// to end: 2-byte alphabet, Parse, Fuzzy, SaveTo/Open.
+func TestBuilderWideAlphabetFallback(t *testing.T) {
+	b := NewBuilder(BuilderOptions{Language: "zh"})
+	var words []string
+	for i := 0; i < 300; i++ {
+		w := string(rune(0x4E00 + i))
+		words = append(words, w)
+		require.NoError(t, b.AddLemma(w, "X"))
+	}
+	d, err := b.Build()
+	require.NoError(t, err)
+	require.NotNil(t, d.d.Alphabet)
+	assert.Equal(t, 2, d.d.Alphabet.Width())
+
+	path := filepath.Join(t.TempDir(), "wide.dat")
+	require.NoError(t, d.SaveTo(path))
+	opened, err := Open(path)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, opened.Close()) }()
+
+	for _, dict := range []*Dictionary{d, opened} {
+		for _, w := range []string{words[0], words[150], words[299]} {
+			rs := dict.Parse(w)
+			require.Len(t, rs, 1, w)
+			assert.False(t, rs[0].Predicted)
+			assert.Equal(t, []FuzzyMatch{{Word: w}}, dict.Fuzzy(w, 0))
+		}
+	}
 }

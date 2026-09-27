@@ -19,19 +19,31 @@ func (d *DAWG) SimilarItems(key string, pol *CharPolicy, alphabet Alphabet) []It
 }
 
 // followRuneVia follows one rune r from index, encoding it via alphabet.
-// alphabet == nil preserves the old behavior (FollowRune, raw UTF-8).
-// Returns 0 if alphabet cannot encode r (a rune outside the corpus the
-// alphabet was built from) — the same "no edge" contract as
-// FollowByte/FollowRune.
+// alphabet == nil follows raw UTF-8 (FollowRune). A *DenseAlphabet is
+// encoded without allocating (EncodeRune). Returns 0 if alphabet cannot
+// encode r — the same "no edge" contract as FollowByte/FollowRune.
 func (d *DAWG) followRuneVia(alphabet Alphabet, r rune, index uint32) uint32 {
-	if alphabet == nil {
+	switch a := alphabet.(type) {
+	case nil:
 		return d.FollowRune(r, index)
+	case *DenseAlphabet:
+		code, n, ok := a.EncodeRune(r)
+		if !ok {
+			return 0
+		}
+		for i := 0; i < n; i++ {
+			if index = d.FollowByte(code[i], index); index == 0 {
+				return 0
+			}
+		}
+		return index
+	default:
+		code, err := alphabet.Encode(string(r))
+		if err != nil {
+			return 0
+		}
+		return d.followBytes(code, index)
 	}
-	code, err := alphabet.Encode(string(r))
-	if err != nil {
-		return 0
-	}
-	return d.followBytes(code, index)
 }
 
 func (d *DAWG) similarItemsRecursive(prefix string, key []rune, index uint32, pol *CharPolicy, alphabet Alphabet) []Item {

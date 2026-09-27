@@ -32,10 +32,12 @@ const (
 // (e.g. "opencorpora-int" and "unimorph") and so cannot share one TagSet.
 var ErrIncompatibleDictionaries = errors.New("morphology: incompatible dictionaries")
 
-// ErrPredictionSharded is returned by MergeWithOptions when
-// RebuildPrediction is set but the merged dictionary has more than one
-// shard.
-var ErrPredictionSharded = internal.ErrPredictionSharded
+// ErrPredictionSharded was returned by MergeWithOptions when
+// RebuildPrediction met a result with more than one shard.
+//
+// Deprecated: since 1.3.0 prediction is rebuilt for any shard count and
+// this error is never returned.
+var ErrPredictionSharded = errors.New("morphology: prediction rebuild needs a single-shard output")
 
 // MergeOptions configures MergeWithOptions.
 type MergeOptions struct {
@@ -46,7 +48,7 @@ type MergeOptions struct {
 	// from every word of the merged dictionary, overlays included. By
 	// default the base's prediction is carried over unchanged (overlay
 	// words don't feed it) — the right choice for a large base such as
-	// pymorphy2. Requires a single-shard result (ErrPredictionSharded).
+	// pymorphy2. Works for any number of shards.
 	RebuildPrediction bool
 }
 
@@ -75,7 +77,7 @@ func Merge(base *Dictionary, overlays []*Dictionary, mode MergeMode) (*Dictionar
 // Description, and the base's language and CharPolicy.
 //
 // Errors: ErrIncompatibleDictionaries (language or tag vocabulary
-// mismatch), ErrPredictionSharded, ErrNoEntries (the result has no
+// mismatch), ErrNoEntries (the result has no
 // words), and nil-input / unknown-mode errors.
 func MergeWithOptions(base *Dictionary, overlays []*Dictionary, opts MergeOptions) (*Dictionary, error) {
 	if base == nil || base.d == nil {

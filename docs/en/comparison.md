@@ -30,10 +30,10 @@ fresh with `gomorphy build`.
 | Dictionary size | ~10 MB (OpenCorpora), ~15.7 MB (pymorphy2, incl. prediction+probability), ~11 MB (UniMorph) | ~8.8 MB added to the binary | ~15.9 MB dictionary directory, shipped alongside the binary | ~444.6 MB embedded in the repository (10 chunked blobs, reassembled at build time) |
 | Exact lookup | `Parse` — every reading, sorted by probability | `Tag` — a single best tag only, no full reading list | `Parse` — every reading, with probability and an analyzer trace (`MethodsStack`) | `Analyze` — every reading (`[]*Parsed`) |
 | Lemma | `Lemma` | not exposed directly (`WordForms()[0]` is presumably the lemma, but this isn't documented as guaranteed) | `parse.Normalized()` | `Parsed.Lemma` field |
-| All wordforms of a lemma | not a dedicated API | `WordForms` | `parse.Lexeme()` (handles suppletion) | `Analyze`'s 2nd return value (handles suppletion) |
+| All wordforms of a lemma | `Forms` (1.3.0) | `WordForms` | `parse.Lexeme()` (handles suppletion) | `Analyze`'s 2nd return value (handles suppletion) |
 | Fuzzy/typo search | `Fuzzy`, `FuzzyTop` — a Levenshtein automaton joined with the DAWG traversal | not implemented | not implemented | not implemented |
-| Prediction for unknown words | yes — an ending-based prediction DAWG for pymorphy2 dictionaries and for dictionaries built with Builder/ImportTSV (not for OpenCorpora or UniMorph imports); readings carry a Predicted flag | not found in the public API | yes — the full pymorphy2 heuristic stack (by-analogy, by-hyphen, by-shape, abbreviations, unknown) | yes — its own suffix-based OOV predictor (`ParsePredicted`/`Predict`) |
-| Inflection / form generation | not implemented | only phrase-level adjective-noun agreement (`PhraseFormsConcordant`), not a general per-word inflect call | `parse.Inflect`/`InflectVar`, `MakeAgreeWithNumber` | `Inflect`/`InflectList` |
+| Prediction for unknown words | yes — an ending-based prediction DAWG for every dictionary source (pymorphy2's own, built for OpenCorpora/UniMorph imports and Builder/ImportTSV; opt-out); readings carry a Predicted flag | not found in the public API | yes — the full pymorphy2 heuristic stack (by-analogy, by-hyphen, by-shape, abbreviations, unknown) | yes — its own suffix-based OOV predictor (`ParsePredicted`/`Predict`) |
+| Inflection / form generation | `Forms`/`Inflect` (1.3.0) | only phrase-level adjective-noun agreement (`PhraseFormsConcordant`), not a general per-word inflect call | `parse.Inflect`/`InflectVar`, `MakeAgreeWithNumber` | `Inflect`/`InflectList` |
 | Multiple dictionaries at once | `MultiDictionary` | no — one embedded dictionary | no — one dictionary directory | no — one embedded dictionary |
 | Universal tag mapping across sources | `pkg/morphology/tagmap` (native tags -> a UniMorph-schema feature bundle) | n/a — single source | n/a — single source | n/a — single source |
 | Built-in batch/concurrent processing | not built in (calls are already sub-microsecond; callers loop themselves) | no | no | yes — `ParseList`/`InflectList`, a CPU-core-sized worker pool |
@@ -188,13 +188,14 @@ the current README).
 If you need **fuzzy/typo-tolerant lookup**, **more than one dictionary
 source or open dictionary at once**, or a **CLI you can script without
 writing Go**, none of the three alternatives currently offer any of
-that — gomorphy is the only option here. If you need **word
-inflection/generation** (producing a specific grammatical form of a
-word, not just parsing one), AlexMaxy/gomorphy or SteosMorphy are
-closer fits than gomorphy today. If you want the dictionary to work
-immediately with no download/build step, all three alternatives still
-have the edge: no dictionary ships with gomorphy, so you build one
-once. After that, gomorphy closes most of the gap — the `.dat` can be
-embedded with `//go:embed` and opened with `OpenBytes`
-(`examples/embed`) — while the alternatives pay for their convenience
-with a fixed, aging snapshot embedded in the binary.
+that — gomorphy is the only option here. Since 1.3.0, gomorphy also has
+its own **word inflection/generation** (`Forms`/`Inflect`, producing a
+specific grammatical form of a word or listing a lemma's whole
+paradigm), so AlexMaxy/gomorphy and SteosMorphy are no longer the only
+fits for that need. If you want the dictionary to work immediately with
+no download/build step, all three alternatives still have the edge: no
+dictionary ships with gomorphy, so you build one once. After that,
+gomorphy closes most of the gap — the `.dat` can be embedded with
+`//go:embed` and opened with `OpenBytes` (`examples/embed`) — while the
+alternatives pay for their convenience with a fixed, aging snapshot
+embedded in the binary.

@@ -40,14 +40,41 @@ func OpenPyMorphyDense(dir string) (*Dictionary, error) {
 	return &Dictionary{d: d}, nil
 }
 
-// CompileFromXML compiles an OpenCorpora dictionary from dict.xml.
-// progress is an optional callback for reporting progress.
-func CompileFromXML(r interface{ Read([]byte) (int, error) }, progress opencorpora.Progress) (*Dictionary, error) {
-	d, err := opencorpora.CompileFromXML(r, progress)
+// XMLOptions configures CompileFromXMLWithOptions.
+type XMLOptions struct {
+	// Progress reports import progress; nil means no reporting.
+	Progress opencorpora.Progress
+	// Dense recompiles every shard's words DAWG to one dense 1-byte
+	// alphabet (see CompileFromXMLDense).
+	Dense bool
+	// NoPrediction skips the ending-based prediction for
+	// out-of-dictionary words, built by default: Parse then returns nil
+	// for a word the dictionary does not contain. Prediction is pruned
+	// like pymorphy2's (paradigms of at least 3 lemmas, endings attested
+	// at least twice, the most attested form per ending and part of
+	// speech).
+	NoPrediction bool
+}
+
+// CompileFromXMLWithOptions compiles an OpenCorpora dictionary from
+// dict.xml. Unless opts.NoPrediction is set it builds ending-based
+// prediction, so Parse returns Predicted readings for unknown words.
+// Prediction is pruned like pymorphy2's (paradigms of at least 3 lemmas,
+// endings attested at least twice, the most attested form per ending and
+// part of speech).
+func CompileFromXMLWithOptions(r interface{ Read([]byte) (int, error) }, opts XMLOptions) (*Dictionary, error) {
+	d, err := opencorpora.CompileFromXML(r, opts.Progress)
 	if err != nil {
 		return nil, err
 	}
-	return &Dictionary{d: d}, nil
+	return finishCompiled(d, opts.Dense, !opts.NoPrediction)
+}
+
+// CompileFromXML compiles an OpenCorpora dictionary from dict.xml, with
+// prediction; progress is an optional callback for reporting progress.
+// See CompileFromXMLWithOptions.
+func CompileFromXML(r interface{ Read([]byte) (int, error) }, progress opencorpora.Progress) (*Dictionary, error) {
+	return CompileFromXMLWithOptions(r, XMLOptions{Progress: progress})
 }
 
 // CompileFromXMLFile opens path (dict.xml) and calls CompileFromXML.
@@ -64,16 +91,10 @@ func CompileFromXMLFile(path string, progress opencorpora.Progress) (*Dictionary
 // shard's words.dawg to one dense 1-byte alphabet shared across the whole
 // dictionary before wrapping it into a Dictionary (see
 // internal.RecompileDense and
-// docs/en/implementation/pymorphy2-dense-alphabet.md).
+// docs/en/implementation/pymorphy2-dense-alphabet.md). Builds prediction
+// unless told otherwise, see CompileFromXMLWithOptions.
 func CompileFromXMLDense(r interface{ Read([]byte) (int, error) }, progress opencorpora.Progress) (*Dictionary, error) {
-	d, err := opencorpora.CompileFromXML(r, progress)
-	if err != nil {
-		return nil, err
-	}
-	if err := internal.RecompileDense(d); err != nil {
-		return nil, fmt.Errorf("morphology: compile dense: %w", err)
-	}
-	return &Dictionary{d: d}, nil
+	return CompileFromXMLWithOptions(r, XMLOptions{Progress: progress, Dense: true})
 }
 
 // CompileFromXMLFileDense opens path (dict.xml) and calls
@@ -88,14 +109,16 @@ func CompileFromXMLFileDense(path string, progress opencorpora.Progress) (*Dicti
 }
 
 // CompileFromUniMorph compiles a UniMorph dictionary from a TSV stream
-// (lemma<TAB>wordform<TAB>bundle). See unimorph.Options and
-// docs/en/implementation/stage-16-import-unimorph.md.
+// (lemma<TAB>wordform<TAB>bundle), with prediction. See unimorph.Options
+// and docs/en/implementation/stage-16-import-unimorph.md. Builds
+// prediction unless opts.NoPrediction is set (see
+// UniMorphOptions.NoPrediction).
 func CompileFromUniMorph(r interface{ Read([]byte) (int, error) }, opts UniMorphOptions) (*Dictionary, error) {
 	d, err := unimorph.CompileFromTSV(r, opts)
 	if err != nil {
 		return nil, err
 	}
-	return &Dictionary{d: d}, nil
+	return finishCompiled(d, false, !opts.NoPrediction)
 }
 
 // CompileFromUniMorphFile opens path (a UniMorph TSV) and calls
@@ -115,16 +138,14 @@ func CompileFromUniMorphFile(path string, opts UniMorphOptions) (*Dictionary, er
 // internal.RecompileDense and
 // docs/en/implementation/pymorphy2-dense-alphabet.md — the same
 // source-agnostic mechanism CompileFromXMLDense and OpenPyMorphyDense
-// use).
+// use). Builds prediction unless opts.NoPrediction is set (see
+// UniMorphOptions.NoPrediction).
 func CompileFromUniMorphDense(r interface{ Read([]byte) (int, error) }, opts UniMorphOptions) (*Dictionary, error) {
 	d, err := unimorph.CompileFromTSV(r, opts)
 	if err != nil {
 		return nil, err
 	}
-	if err := internal.RecompileDense(d); err != nil {
-		return nil, fmt.Errorf("morphology: compile dense: %w", err)
-	}
-	return &Dictionary{d: d}, nil
+	return finishCompiled(d, true, !opts.NoPrediction)
 }
 
 // CompileFromUniMorphFileDense opens path (a UniMorph TSV) and calls
@@ -136,6 +157,23 @@ func CompileFromUniMorphFileDense(path string, opts UniMorphOptions) (*Dictionar
 	}
 	defer func() { _ = f.Close() }()
 	return CompileFromUniMorphDense(f, opts)
+}
+
+// finishCompiled builds prediction (unless prediction is false) and then,
+// if dense is set, recompiles the words DAWGs to a dense alphabet — the
+// same order Builder uses.
+func finishCompiled(d *internal.Dictionary, dense, prediction bool) (*Dictionary, error) {
+	if prediction {
+		if err := internal.BuildPredictionPruned(d, productive, internal.ImportPredictionPruning); err != nil {
+			return nil, fmt.Errorf("morphology: build prediction: %w", err)
+		}
+	}
+	if dense {
+		if err := internal.RecompileDense(d); err != nil {
+			return nil, fmt.Errorf("morphology: compile dense: %w", err)
+		}
+	}
+	return &Dictionary{d: d}, nil
 }
 
 // Language returns the dictionary's language code ("ru" for every bundled
@@ -212,7 +250,7 @@ func openBytes(data []byte) (*internal.Dictionary, error) {
 //
 // Close must not be called while other goroutines may still call methods
 // on the Dictionary (directly or through a MultiDictionary): in-flight
-// Parse/Lemma/IsKnown/Fuzzy/FuzzyTop/ContentHash calls read the
+// Parse/ParseAppend/Lemma/IsKnown/Fuzzy/FuzzyTop/ContentHash calls read the
 // mapping, and unmapping it under them crashes the process with SIGSEGV or
 // SIGBUS — not a recoverable panic. Values already returned (Reading,
 // LemmaRef, FuzzyMatch, BuildInfo and all their strings) are independent
@@ -310,16 +348,21 @@ func parseContainer(cont *internal.Container) (*internal.Dictionary, error) {
 
 	d := internal.NewDictionary(language, tagSet, suffixes, prefixes, paradigms, words, policy)
 
-	for i := 0; ; i++ {
-		predData, _, err := cont.Section(fmt.Sprintf("prediction-%d", i))
-		if err != nil {
-			break
-		}
-		pred, err := internal.ParseDAWG(predData)
-		if err != nil {
-			return nil, err
-		}
-		d.Prediction = append(d.Prediction, pred)
+	plain, err := predictionSections(cont, "prediction-%d")
+	if err != nil {
+		return nil, err
+	}
+	sharded, err := predictionSections(cont, "pred-sharded-%d")
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case len(plain) > 0 && len(sharded) > 0:
+		return nil, fmt.Errorf("morphology: both prediction-N and pred-sharded-N sections present")
+	case len(sharded) > 0:
+		d.Prediction, d.PredictionSharded = sharded, true
+	default:
+		d.Prediction = plain
 	}
 
 	if probData, _, err := cont.Section("probability"); err == nil {
@@ -347,4 +390,21 @@ func parseContainer(cont *internal.Container) (*internal.Dictionary, error) {
 	}
 
 	return d, nil
+}
+
+// predictionSections parses the consecutive sections named by format
+// (N = 0, 1, …) up to the first missing one.
+func predictionSections(cont *internal.Container, format string) ([]*internal.DAWG, error) {
+	var out []*internal.DAWG
+	for i := 0; ; i++ {
+		data, _, err := cont.Section(fmt.Sprintf(format, i))
+		if err != nil {
+			return out, nil
+		}
+		pred, err := internal.ParseDAWG(data)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, pred)
+	}
 }
