@@ -1,4 +1,4 @@
-# NER support: known-word flag, in-memory open, case/ё consistency, tag helpers, lexeme forms, Parse performance
+# NER support: known-word flag, in-memory open, case/ё consistency, tag helpers, lexeme forms, Parse performance, sharded prediction
 
 ## Context
 
@@ -76,12 +76,14 @@ Two releases.
   `ParseAppend`, benchmarks.
 - J. Builder keeps homonymous lemmas of different POS apart.
 - K. Builder/ImportTSV fall back to a 2-byte alphabet.
+- L. Ending-based prediction for sharded dictionaries: OpenCorpora and
+  UniMorph imports, sharded `Merge` results (added 2026-09-27).
 
 **Not doing** (belongs to lexicon, or no consumer): public DAWG / step
 iteration API, phrase dictionaries, synonyms (Stage 20) as a NER dependency,
-dedup in `MultiDictionary`, reference-counted `Close`, prediction for
-OpenCorpora/UniMorph imports, probability building, hyphen/shape heuristics,
-Windows mmap (stays in backlog), MCP (rejected earlier).
+dedup in `MultiDictionary`, reference-counted `Close`, probability building,
+hyphen/shape/by-analogy prediction heuristics, Windows mmap (stays in
+backlog), MCP (rejected earlier).
 
 ## Design
 
@@ -263,6 +265,89 @@ func (x *Dictionary) Inflect(r Reading, want ...string) []Reading
 - `RecompileDense` chooses width 2 when the rune set exceeds 254, reusing the
   logic `Merge` already has; the hard error disappears.
 
+### L. Prediction for sharded dictionaries (1.3.0)
+
+Added 2026-09-27. OpenCorpora and UniMorph imports have no ending-based
+prediction: `Parse` returns `nil` for an unknown word, so `Forms`/`Inflect`
+(H) have nothing to work from. The builder (`internal.BuildPredictionFrom`)
+is source-agnostic; what blocks it is sharding — both imports split into 2
+shards in practice (`FillOnDemand`, 65536 suffix ids per shard), while
+`BuildPrediction` handles one shard only and `predictForPrefix` resolves
+every prediction against shard 0. Scope is exactly pymorphy2's
+KnownSuffixAnalyzer as it already works for pymorphy2 and Builder
+dictionaries, extended to N shards; no new heuristics.
+
+**Format.** A sharded prediction is one DAWG per paradigm prefix id, in a
+new section `prediction-sharded-P`. Key: a word suffix of 1..5 runes.
+Value: `count(BE16) | para(BE16) | form(BE16) | shard(BE16)` — 8 bytes
+instead of today's 6.
+
+- One DAWG for the whole dictionary, not one per shard: the "widen the
+  suffix until ≥2 matches" heuristic and the `seen` dedup keep working
+  across all shards at once, so results do not depend on how lemmas happened
+  to fall into shards.
+- `internal.Dictionary` gains `PredictionSharded bool` — the value width of
+  `Prediction`. Whoever builds prediction sets it; `Open`/`OpenBytes` set it
+  from the section name they found; `SaveTo` picks the section name from it.
+  The shard count does **not** decide the format: `Merge` can carry a base's
+  6-byte prediction into a multi-shard result, where 6-byte values still mean
+  shard 0 and stay correct.
+- A file holds either `prediction-N` or `prediction-sharded-N` sections,
+  never both; both present is an open error. Single-shard dictionaries
+  (pymorphy2, Builder, ImportTSV) keep writing 6-byte `prediction-N`, so
+  their files are byte-identical to today's.
+- gomorphy 1.2.x does not know `prediction-sharded-*` and skips it: a new
+  OpenCorpora/UniMorph file opens there with no prediction, exactly as
+  today, and never yields wrong readings. This is why the section is new
+  rather than 8-byte values under the old name — 1.2.x would read those as
+  shard 0.
+- Only prefix id 0 is built, as for Builder. The `по-` comparative prefix
+  (`stripCmp2Prefix`) covers rare words and is left out on purpose.
+
+**Lookup.** `predictForPrefix` loses its `predictionShard = 0` constant: an
+8-byte value takes its shard from `v[6:8]`, a 6-byte value means shard 0. A
+shard ≥ the dictionary's shard count is skipped, like an invalid `para`
+today. The predicted `Reading` carries that `Shard`, so `Forms`/`Inflect`
+work on it unchanged. L builds on the `predictForPrefix` that I rewrites
+(`LookupEach`) and only changes how a value is decoded.
+
+**Building.** `internal.BuildPrediction` walks the raw (pre-`RecompileDense`)
+`Words[s]` of every shard, collects `(suffix, para, form, shard)` triples
+with counts and emits 6-byte values for one shard, 8-byte values with
+`PredictionSharded = true` for more. `BuildPredictionFrom` takes pairs that
+carry a shard; Builder/ImportTSV output does not change.
+
+- `CompileFromXML*` and `CompileFromUniMorph*` (dense and non-dense) build
+  prediction **by default**, before `RecompileDense` (owner decision
+  2026-09-27, same as Builder/ImportTSV).
+- Opting out: `UniMorphOptions.NoPrediction bool`; for OpenCorpora, which
+  has no options struct, a new
+  `CompileFromXMLWithOptions(r, XMLOptions{Progress, Dense, NoPrediction})`
+  that the four existing `CompileFromXML*` functions wrap. A
+  `DropPrediction()` after the build was rejected: it pays the build time
+  for nothing.
+- CLI: `gomorphy build opencorpora|unimorph --no-prediction`.
+- pymorphy2 is untouched: it reads prediction from its own files.
+
+**Merge.** `RebuildPrediction` no longer needs a single-shard result: it
+goes through the generalized `BuildPrediction` over every output shard.
+`ErrPredictionSharded` is never returned any more; the exported variable
+stays, marked `Deprecated`. Without `RebuildPrediction` the base's
+prediction is carried over with its format — valid because the structural
+merge keeps the base's shard and paradigm ids.
+
+**Tag filter.** `productive()` is not changed. UniMorph `rus` has exactly
+five parts of speech — `N`, `ADJ`, `V`, `V.PTCP`, `V.CVB` (measured on the
+local `.data/unimorph/ru/data`), all open classes — and `productive` splits
+on `,`, so no UniMorph tag is filtered, which is the right outcome. A
+UniMorph-specific list would have nothing to remove (YAGNI); a test pins
+that all five POS reach the prediction.
+
+**Measurements** for the write-up: `opencorpora.dat` and `unimorph.dat`
+size and build time with and without prediction, and `ParsePredicted` on
+both via `GOMORPHY_BENCH_DICT`. If prediction grows a file by more than
+~50%, the default-on decision is revisited before release.
+
 ## Compatibility
 
 - A, B, E, G, H, I (`ParseAppend`) are additive.
@@ -273,7 +358,16 @@ func (x *Dictionary) Inflect(r Reading, want ...string) []Reading
   non-"ru" `Language` and no explicit policy no longer get е→ё.
 - J changes paradigm grouping for built dictionaries with homonymous lemmas —
   new `.dat` files differ; existing files open unchanged.
-- The binary format does not change (no format version bump).
+- L adds `prediction-sharded-N` sections to newly built OpenCorpora/UniMorph
+  files (and to sharded `Merge` results with `RebuildPrediction`). The change
+  is additive: no format version bump, single-shard files stay
+  byte-identical, existing files open unchanged, and 1.2.x opens new files
+  with no prediction instead of failing. `Parse` now returns predicted
+  readings for unknown words in OpenCorpora/UniMorph dictionaries where it
+  returned `nil`; callers wanting the old behaviour check `IsKnown` or
+  build with `NoPrediction`. `MergeOptions.RebuildPrediction` on a sharded
+  result succeeds instead of returning `ErrPredictionSharded`.
+- Apart from L, the binary format does not change.
 
 ## Testing
 
@@ -292,6 +386,18 @@ func (x *Dictionary) Inflect(r Reading, want ...string) []Reading
   one form → different.
 - G–K per section; I via benchmarks and an allocation test
   (`testing.AllocsPerRun` bound).
+- L: `BuildPrediction` on a hand-built 2-shard dictionary → 8-byte values with
+  the right shard, `PredictionSharded`; one shard → 6-byte values as today.
+  An unknown word predicted from a shard-1 paradigm → `Reading.Shard == 1`,
+  correct `Normal`/`Tag`; a value naming a missing shard is skipped.
+  `SaveTo` → `Open`/`OpenBytes` round trip for both formats; both section
+  kinds in one file → open error; existing snapshot tests stay green
+  (single-shard files unchanged). `Merge` with `RebuildPrediction` on a
+  sharded base succeeds; without it a 6-byte base prediction is carried
+  over. `NoPrediction` / `--no-prediction` leave prediction out. UniMorph:
+  all five POS reach the prediction. `Forms` of a shard-1 predicted reading.
+  Real dictionaries (`GOMORPHY_BENCH_DICT`): unknown words such as
+  «кракозябрами», «гуглить» get readings; `ParsePredicted` benchmarked.
 
 ## Documentation
 
@@ -299,7 +405,10 @@ func (x *Dictionary) Inflect(r Reading, want ...string) []Reading
 - `docs/en/todo.md`: mark Forms/Inflect design as done in 1.3.0; add the
   lexicon consumer note to Stage 20 (synonyms not needed by it).
 - `docs/en/comparison.md`: fix the claim that OpenCorpora dictionaries have
-  prediction.
+  prediction; after L, drop the OpenCorpora/UniMorph caveat from the
+  "Prediction for unknown words" row.
+- `docs/en/scenarios.md`: unknown words in OpenCorpora/UniMorph dictionaries
+  get predicted readings (1.3.0); `--no-prediction`.
 - CHANGELOG per release; implementation write-up per project convention.
 
 ## Open questions
@@ -315,3 +424,7 @@ func (x *Dictionary) Inflect(r Reading, want ...string) []Reading
   other languages (section D).
 - G5. RESOLVED 2026-09-24: POS-class homonym grouping (J) is on by default with
   no option to turn it off.
+- G6. RESOLVED 2026-09-27: sharded prediction (L) is one DAWG per prefix with
+  the shard in an 8-byte value, in new `prediction-sharded-N` sections (not
+  one DAWG per shard); built by default for OpenCorpora/UniMorph imports,
+  opt-out via `NoPrediction`/`--no-prediction`.
