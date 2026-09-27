@@ -61,7 +61,7 @@
 - [Stage 18. Finalization: documentation, tests](implementation/stage-18-finalize.md)
 - [Path to version 1.0.0 (release checklist history)](implementation/path-to-1.0.md)
 - [Stage 19. Topical dictionaries: Builder, TSV import, structural merge (1.1.0)](implementation/stage-19-builder-tsv-merge.md)
-- [NER support (1.2.0): known-word flag, OpenBytes, case and е/ё, CharPolicy, ContentHash](implementation/ner-support.md)
+- [NER support (1.2.0–1.3.0): known-word flag, OpenBytes, case and е/ё, CharPolicy, ContentHash; tag helpers, Forms/Inflect, ParseAppend, prediction for OpenCorpora/UniMorph](implementation/ner-support.md)
 - [Stage 20. Synonym database: groups, tags, sidecar file (planned)](todo.md)
 
 ## Review and findings
