@@ -57,6 +57,7 @@ A short status with links to details — the write-ups themselves live in
 | 16. UniMorph import (importer, loader, public API, CLI, dense by default) | DONE 2026-09-19 | [implementation/stage-16-import-unimorph.md](implementation/stage-16-import-unimorph.md) |
 | 19.1. Structural merge (id-preserving `Merge`, replaces the entries-based one) | DONE 2026-09-23 | [implementation/stage-19-builder-tsv-merge.md](implementation/stage-19-builder-tsv-merge.md#structural-merge-2026-09-23) |
 | — NER support for lexicon: 1.2.0 (known-word flag, OpenBytes, case/ё, CharPolicy, ContentHash, go 1.25) | DONE | [implementation/ner-support.md](implementation/ner-support.md) |
+| — NER support for lexicon: 1.3.0 (tag helpers, Forms/Inflect, Parse performance, POS-aware Builder, 2-byte alphabet fallback, sharded prediction) | DONE | [implementation/ner-support.md](implementation/ner-support.md) |
 
 ## Unfinished/future stages
 
@@ -199,44 +200,32 @@ Recommended order if this work is picked up:
    `internal.Dictionary`. If ever needed, specify it as "XML export for
    human/third-party-tool reading," not as a reversible operation.
 
-### Word inflection / form generation (`Forms`, `Inflect`) — PLANNED, backlog after 1.0.0
+### Word inflection / form generation (`Forms`, `Inflect`) — DONE in 1.3.0
 
 Surfaced by [docs/en/comparison.md](comparison.md) (2026-09-19): two of
 three alternative Go implementations (AlexMaxy/gomorphy, SteosMorphy)
 can produce a specific grammatical form of a word or list a lemma's
-full wordform set; gomorphy currently cannot. Design sketch, not yet
-decided or scheduled:
+full wordform set; gomorphy could not. Shipped in 1.3.0, matching the
+shape sketched here except for `want`'s type:
 
-- **The data is already there.** `internal.Paradigm` is a flat
-  `[suffix_i | tag_i | prefix_i]` table — every form of a lemma, always
-  fully expanded at import time (see `pkg/morphology/parse.go`'s
-  `readingForm`, which already reconstructs any one form's stem from
-  any other form via `word - prefix(form) - suffix(form)`, including
-  suppletive lemmas like "человек"/"люди" and prefixed comparatives
-  like "по-" — both already solved for `Parse`/`Lemma`). This is
-  cheaper for gomorphy than it was for AlexMaxy/gomorphy, which had to
-  port pymorphy2's whole heuristic generation engine
-  (`units_by_analogy`/`units_by_hyphen`/`units_by_shape`) — gomorphy
-  needs none of that, since paradigms are never generated on the fly.
-- **Proposed shape**: methods on `*Dictionary` (and mirrored on
-  `MultiDictionary` via `Reading.Dict`, same pattern as `Parse`/`Lemma`
-  today), taking an already-resolved `Reading` rather than a bare word
-  string — this reuses `Parse`'s homonym disambiguation instead of
-  duplicating it:
-  ```go
-  func (x *Dictionary) Forms(r Reading) []Reading   // r's whole paradigm, form order (0 = lemma)
-  func (x *Dictionary) Inflect(r Reading, want []string) []Reading  // Forms filtered by native tag tokens
-  ```
-- **Open questions for whoever picks this up**: (1) `Inflect`'s `want`
-  matches native tag tokens (comma/semicolon/space-split depending on
-  source, same as `Reading.Tag` already is) — a `tagmap`-based
-  universal-query variant is a plausible v2, not required for v1;
-  (2) whether to allow `Forms`/`Inflect` on a `Reading` produced by
-  prediction (an OOV word) — the paradigm is a guess in that case,
-  same caveat prediction already carries for `Parse`, so probably
-  allow it but document the caveat rather than special-case it;
-  (3) no design doc or implementation plan exists yet — this needs its
-  own brainstorming pass before work starts, this is only a sketch.
+```go
+func (x *Dictionary) Forms(r Reading) []Reading               // r's whole paradigm, form order (0 = lemma)
+func (x *Dictionary) Inflect(r Reading, want ...string) []Reading  // Forms filtered by native tag tokens, variadic
+```
+
+Both are also mirrored on `*MultiDictionary`, dispatching by `Reading.Dict`.
+`want` matches native tag tokens (`Grammemes`/`HasGrammeme`, comma/
+semicolon/space-split, same as `Reading.Tag` already is), not the
+`tagmap`-mapped set. `Inflect` ranks matches by fewest grammemes differing
+from `r.Tag` (symmetric difference of the two grammeme sets), ties by
+paradigm order. Forms of a predicted `Reading` are generated from the
+predicted paradigm and keep `Predicted == true` — as much a guess as the
+reading itself, not special-cased. Full write-up:
+[implementation/ner-support.md](implementation/ner-support.md).
+
+Open item kept for a possible v2: a `tagmap`-based universal query across
+dictionary sources (today `want` only matches a single dictionary's own
+native tokens).
 
 ## Path to version 1.0.0
 
@@ -375,9 +364,12 @@ the import report, the batch query modes, the skill, and the CLI
   - [x] **Prediction rebuilt** by the shared build pipeline (`Build`/
     `ImportTSV`/`Merge` all run `BuildPrediction` then `RecompileDense`)
     — for any result that stays single-shard (the typical thematic
-    dictionary); a sharded merge output keeps prediction absent, same as
-    OpenCorpora dictionaries (engine resolves prediction against shard 0
-    only).
+    dictionary); sharded outputs get sharded prediction (1.3.0).
+    **Backlog**: `Builder`/`ImportTSV`/`Merge` always build unpruned
+    prediction (1.3.0's pruning applies only to `CompileFromXML*`/
+    `CompileFromUniMorph*`); a `Merge` with `RebuildPrediction` over an
+    OpenCorpora/UniMorph base therefore rebuilds unpruned (large)
+    prediction.
   - **Probability is NOT rebuildable** from a dictionary's own wordforms+paradigms
     (it is external corpus-frequency data, `p_t_given_w.intdawg`). Built/merged
     dictionaries therefore carry none — exactly like OpenCorpora dictionaries

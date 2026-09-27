@@ -155,6 +155,10 @@ d, err := b.Build()
   который обрезает каждое поле): `" кот "` сохраняется вместе с
   пробелами. Ошибкой считается только пустое или состоящее из одних
   пробелов `word`.
+- С 1.3.0 формы группируются в леммы по лемме **и** части речи (первой
+  граммеме тега, с объединением INFN/VERB/PRTF/PRTS/GRND и ADJF/ADJS/COMP
+  в один класс): «знать» NOUN и «знать» INFN теперь становятся двумя
+  разными парадигмами.
 - `CharPolicy` — `nil` (по умолчанию) выбирает политику по `Language`: е→ё
   для `"ru"` и для пустого `Language` (= «ru»), для остальных языков —
   без замен. `NoCharPolicy()` отключает замены явно независимо от языка, а
@@ -301,6 +305,15 @@ for _, r := range readings {
 
 Сценарий: [scenarios.md](scenarios.md), п. 1.
 
+`ParseAppend(dst, word)` — то же самое, что `Parse`, но с буфером,
+предоставленным вызывающей стороной (для разбора множества слов в цикле
+без аллокации нового среза на каждый вызов):
+
+```go
+var buf []morphology.Reading
+buf = d.ParseAppend(buf[:0], "кота")
+```
+
 Тип `Reading`:
 
 ```go
@@ -358,6 +371,24 @@ d.Parse("бота")[0].Predicted // true
 
 Сценарии: [scenarios.md](scenarios.md), п. 3 и 4.
 
+С 1.3.0 словари OpenCorpora и UniMorph тоже строят предсказание по
+окончанию по умолчанию (усечённое, как у компилятора pymorphy2); отключить
+можно через `XMLOptions.NoPrediction`/`UniMorphOptions.NoPrediction` или
+флагом `gomorphy build opencorpora|unimorph --no-prediction`.
+
+## Теги
+
+С 1.3.0 доступны хелперы для разбора `Reading.Tag`: `Grammemes(tag)
+[]string` разбивает тег на граммемы (разделители `,`, пробел и `;`),
+`HasGrammeme(tag, g) bool` проверяет вхождение граммемы без аллокаций,
+`POS(tag) string` возвращает первую граммему, `Reading.HasGrammeme(g)` —
+то же самое для `r.Tag`:
+
+```go
+morphology.Grammemes("NOUN,anim,masc,sing,nomn") // ["NOUN", "anim", "masc", "sing", "nomn"]
+morphology.POS("N;GEN;SG")                        // "N"
+```
+
 ## Начальные формы (леммы)
 
 `Lemma` возвращает начальную форму (лемму) и её собственный тег для
@@ -385,6 +416,17 @@ type LemmaRef struct {
     // Predicted — true, если все разборы за этой леммой предсказаны.
     Predicted bool
 }
+```
+
+## Формы слова
+
+С 1.3.0 `Forms(r)`/`Inflect(r, want...)` возвращают другие формы лексемы
+разбора `r` (парадигма `r.Para` в `r.Shard`), переиспользуя разрешение
+омонимии из `Parse`:
+
+```go
+readings := d.Parse("кот")
+plural := d.Inflect(readings[0], "plur", "nomn") // plural[0].Word == "коты"
 ```
 
 ## Нечёткий поиск

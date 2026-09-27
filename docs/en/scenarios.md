@@ -55,14 +55,21 @@ for _, r := range d.Parse("стали") {
 In a pymorphy2 dictionary, and in one built with `Builder`/`ImportTSV`
 (or merged onto such a base), an unknown word still gets readings, guessed
 from its ending — see [scenario 3](#3-tell-a-dictionary-word-from-a-guess).
-OpenCorpora and UniMorph imports have no prediction: `Parse` returns `nil`
-for an unknown word.
+Since 1.3.0, OpenCorpora and UniMorph imports predict too, by default
+(pruned like pymorphy2's own dictionary compiler); use `IsKnown` to tell a
+dictionary reading from a guess, or opt out at build time with
+`XMLOptions.NoPrediction`/`UniMorphOptions.NoPrediction` or
+`gomorphy build opencorpora|unimorph --no-prediction`, in which case
+`Parse` still returns `nil` for an unknown word.
 
 **Available since:** 1.0.0.
 
 **History:**
 - 1.2.0 — `Reading.Predicted` marks guessed readings; CLI `lookup` prints
   `(predicted)` next to them.
+- 1.3.0 — OpenCorpora and UniMorph imports build prediction by default too
+  (previously pymorphy2/`Builder`/`ImportTSV` only); `--no-prediction`
+  opts out.
 
 ## 2. Normalize words to lemmas for search and indexing
 
@@ -92,8 +99,9 @@ for _, l := range d.Lemma("кота") {
 **Task.** Know whether a word really is in the dictionary. `Parse`
 guesses readings for unknown words from their endings, and a guessed
 reading looks like any other — for a small dictionary almost every word
-"parses". (This concerns dictionaries with prediction: pymorphy2 and
-`Builder`/`ImportTSV` ones.)
+"parses". (This concerns every dictionary source with prediction:
+pymorphy2, `Builder`/`ImportTSV`/`Merge`, and, since 1.3.0, OpenCorpora
+and UniMorph imports.)
 
 **How.** `Dictionary.IsKnown(word)` — exact lookup only, never predicts
 (lower-cased, `CharPolicy` applied, like `Parse`). Or check

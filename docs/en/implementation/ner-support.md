@@ -1,4 +1,4 @@
-# NER support for lexicon (1.2.0)
+# NER support for lexicon (1.2.0, 1.3.0)
 
 ## Context
 
@@ -13,10 +13,12 @@ were bugs rather than missing features.
 
 Full design and rationale:
 [2026-09-24-ner-support-design.md](../superpowers/specs/2026-09-24-ner-support-design.md).
-That spec splits the work into two releases; this document covers
-**1.2.0** — the small, mostly-fixes release that unblocks lexicon/genodex.
-1.3.0 (tag helpers, lexeme access, `Parse` performance, Builder homonym
-grouping, 2-byte alphabet fallback) is separate, not part of this release.
+That spec splits the work into two releases. **1.2.0** (items A-F, below)
+is the small, mostly-fixes release that unblocked lexicon/genodex.
+**1.3.0** (items G-L, below) adds tag helpers, lexeme access (`Forms`/
+`Inflect`), `Parse` performance work, Builder homonym grouping, the
+2-byte alphabet fallback, and ending-based prediction for sharded
+(OpenCorpora/UniMorph) dictionaries.
 
 ## 1.2.0
 
@@ -101,6 +103,369 @@ than a recoverable panic. Values already returned (`Reading`, `LemmaRef`,
 `FuzzyMatch`, `BuildInfo` and all their strings) are documented as
 independent copies that stay valid after `Close` — verified, not just
 asserted (see "Findings" below and `TestReturnedStringsSurviveClose`).
+
+## 1.3.0
+
+**G. Tag helpers.** `Grammemes(tag string) []string`, `HasGrammeme(tag, g
+string) bool` (allocation-free), `POS(tag string) string` (first
+grammeme) and `Reading.HasGrammeme(g string) bool` split a native tag
+into grammeme tokens on `,`, ` ` (space) and `;` — the separators that
+cover every tag format gomorphy imports: OpenCorpora/pymorphy2's
+`"NOUN,anim,masc,Surn sing,ablt"` and UniMorph's `"N;GEN;SG"`. Tags stay
+native strings: `pkg/morphology/tagmap` is not extended with these
+tokens, since UniMorph Schema has no `Name`/`Surn`/`Patr`/`Geox`
+dimensions to map them onto — `Surn`, `Name`, `Patr`, `Geox` are plain
+grammeme tokens like any other, not `tagmap`-known. This gives lexicon
+(and any other caller) a name-entity-adjacent grammeme check
+(`HasGrammeme(r.Tag, "Surn")`) without hand-rolling a splitter over every
+tag format gomorphy supports.
+
+**H. Lexeme access.** `Dictionary.Forms(r Reading) []Reading` returns
+every form of `r`'s lexeme — the paradigm `r.Para` in `r.Shard`, stem
+derived from `r.Word` and `r.Form` — in paradigm order (form 0 is the
+lemma); `Dictionary.Inflect(r Reading, want ...string) []Reading` returns
+the subset of `Forms(r)` whose tags contain every grammeme in `want`,
+best match first (fewest grammemes differing from `r.Tag`, the symmetric
+difference of the two grammeme sets, ties by paradigm order). Both are
+mirrored on `*MultiDictionary`, dispatching by `r.Dict`. This implements
+the `Forms`/`Inflect` sketch that `docs/en/todo.md` carried since
+1.1.0-era planning; the spec's `want []string` became `want ...string`
+(variadic) to match the design doc, not the older sketch — see D-14.
+Both take an already-resolved `Reading` rather than a bare word string,
+reusing `Parse`'s own homonym disambiguation instead of duplicating it.
+Forms of a predicted reading are generated from the predicted paradigm
+and keep `Predicted == true` on every result — as much a guess as the
+source reading, not special-cased. `Prob` is always 0 on generated forms
+(probabilities describe the parsed word, not a generated one).
+
+**I. Parse performance.** `Parse`/`ParseAppend` were rewritten end to end
+(`pkg/morphology/parse.go`): single-shard dictionaries (pymorphy2,
+Builder, ImportTSV, and now most OpenCorpora/UniMorph imports) are
+searched inline, with no goroutine/`WaitGroup`/channel; multi-shard
+dictionaries keep one goroutine per shard, each appending into its own
+slice as before. Runes are encoded into a small stack buffer via a new
+concrete `(*DenseAlphabet).EncodeRune(r) ([2]byte, int, bool)` instead of
+`Encode(string(r))` (an interface method would have made the buffer
+escape — see D-15). Payload values decode into a fixed array instead of
+through a base64 string allocation. Probability lookup builds its key in
+a byte buffer instead of `key+":"+tag` string concatenation. The new
+`func (x *Dictionary) ParseAppend(dst []Reading, word string) []Reading`
+lets a caller reuse one result slice across many `Parse` calls instead of
+letting each call allocate its own; `Parse` is now `x.ParseAppend(nil,
+word)`. New benchmarks (`BenchmarkParseKnown`, `BenchmarkParsePredicted`,
+`BenchmarkLemma`, `BenchmarkIsKnown`, `BenchmarkFuzzyTop`,
+`BenchmarkParseAppend`) run against both the fixture dictionary and a
+real `.dat` selected via `GOMORPHY_BENCH_DICT`. Numbers: see
+"Performance" below. `Parse` results are unchanged in content and order
+for every existing dictionary file — every snapshot test
+(`readingsSnapshot`, `semanticSnapshot`, `TestMergeRealDictionary`) stays
+green, and `LookupEach`'s walk order matches `SimilarItems`'s (straight
+path before substitution branches, at the cost of walking the straight
+path twice — see D-16).
+
+**J. Builder homonyms.** `Builder.AddForm`/`AddLemma` (and `ImportTSV`,
+which builds on `Builder`) now group entries into lexemes by lemma
+**and** part-of-speech class, not lemma text alone: «знать» tagged NOUN
+and «знать» tagged INFN now become two separate paradigms instead of one
+lexeme mixing a noun and a verb's forms. The class table folds
+INFN/VERB/PRTF/PRTS/GRND into one "verb" class, ADJF/ADJS/COMP into one
+"adjective" class (OpenCorpora-style tags), and V/V.PTCP/V.CVB/V.MSDR
+into one class for UniMorph-style bundles with the POS token first
+(`internal.POSClass`) — not the raw first grammeme, which would have
+split every OpenCorpora verb/adjective into several paradigms (see
+D-13). An entry with an empty or POS-less tag joins the lemma's first
+lexeme, unchanged from before. This is always on, no `BuilderOptions`
+field (owner decision 2026-09-24, Q1) — dictionaries rebuilt from
+homonymous input differ from 1.2.x output; already-built `.dat` files are
+unaffected, since the DAWG bytes on disk don't change by themselves.
+
+**K. Builder 2-byte alphabet fallback.** `RecompileDense` (shared by
+`Builder`, `ImportTSV`, `Merge`, and every `…Dense` importer —
+`CompileFromXMLDense`, `CompileFromUniMorphDense`, `OpenPyMorphyDense`,
+see D-18) now chooses a 2-byte alphabet width when the dictionary's
+distinct-rune count exceeds width 1's 254-rune capacity, reusing the
+fallback logic `Merge` already had, instead of returning a hard error.
+`TestRecompileDenseAlphabetOverflowReturnsError`, which asserted the old
+error, is rewritten to assert the new 2-byte dictionary works correctly
+instead.
+
+**L. Prediction for sharded dictionaries.** Before 1.3.0, `CompileFromXML*`
+and `CompileFromUniMorph*` built dictionaries with no ending-based
+prediction: an out-of-dictionary word made `Parse` return `nil`, so H's
+`Forms`/`Inflect` had nothing to work from for OpenCorpora/UniMorph
+imports. The blocker was sharding, not the source: both imports split
+into 2 shards in practice (`FillOnDemand`, 65536 suffix ids per shard),
+while `internal.BuildPrediction` handled one shard only and
+`predictForPrefix` resolved every prediction against shard 0.
+
+*Format.* A sharded prediction is one DAWG per paradigm prefix id, in a
+new section named `pred-sharded-P` — not `prediction-sharded-P`, because
+GMOR catalog entries hold section names in a fixed 16-byte field and the
+longer name doesn't fit (found during implementation, not anticipated by
+the spec text — see D-23). Its key is a word suffix of 1-5 runes; its
+value is `count(BE16) | para(BE16) | form(BE16) | shard(BE16)` — 8 bytes
+instead of the 6-byte `prediction-N` value single-shard dictionaries
+still use. `internal.Dictionary` gained a `PredictionSharded bool` field
+that tracks which value width is in play; `Open`/`OpenBytes` set it from
+the section name found, `SaveTo` picks the section name from it. A file
+holds either `prediction-N` or `pred-sharded-N`, never both. Single-shard
+dictionaries (pymorphy2, Builder, ImportTSV) keep writing 6-byte
+`prediction-N`, so their files stay byte-identical to 1.2.x. The section
+is genuinely new, not an 8-byte reinterpretation of the old name, because
+gomorphy 1.2.x must keep opening a new OpenCorpora/UniMorph `.dat`
+without prediction rather than misreading 8-byte values as if they were
+6-byte shard-0 ones — an unknown section name is the only way to make
+that safe.
+
+*Building and lookup.* `internal.BuildPrediction`/`BuildPredictionFrom`
+were generalized to accept dense dictionaries too (keys decoded through
+the alphabet), since `shardPairs` needed to feed pairs that carry a
+shard; the "must still be raw (pre-`RecompileDense`)" precondition this
+removed is recorded as D-20. `predictForPrefix` lost its
+`predictionShard = 0` constant: an 8-byte value takes its shard from
+`v[6:8]`, a 6-byte value still means shard 0, and a shard at or past the
+dictionary's shard count is skipped like an invalid `para` already is.
+The predicted `Reading` carries that `Shard`, so H's `Forms`/`Inflect`
+work on a predicted reading from any shard unchanged. `CompileFromXML*`
+and `CompileFromUniMorph*` now build prediction by default, before
+`RecompileDense`, through the shared `finishCompiled` helper (D-19: the
+importers themselves can't build prediction — `productive()` lives in
+`pkg/morphology`, which imports the importer packages, so the
+`morphology.CompileFrom*` wrappers do it instead). Opt-out:
+`XMLOptions.NoPrediction` via the new `CompileFromXMLWithOptions(r,
+XMLOptions{Progress, Dense, NoPrediction})` that the four
+`CompileFromXML*` functions wrap, `UniMorphOptions.NoPrediction`, or CLI
+`gomorphy build opencorpora|unimorph --no-prediction`; `pymorphy2` has no
+such flag and rejects `--no-prediction` with an error, since its
+prediction comes from its own source files, not from a `BuildPrediction`
+call (D-21). `MergeWithOptions`'s `RebuildPrediction` no longer needs a
+single-shard result: it now goes through the generalized
+`BuildPrediction` over every output shard, so `ErrPredictionSharded` is
+never returned any more (kept exported, marked `Deprecated`).
+
+*Pruning.* The first real-dictionary measurement (Task 12 Step 5)
+tripped the spec's 50%-growth gate: unpruned prediction grew
+`opencorpora.dat` from 10,669,636 to 24,112,684 bytes (+126.0%) and
+`unimorph.dat` from 11,085,089 to 18,556,233 bytes (+67.4%), and an
+unknown UniMorph word (`бутявкающий`) took up to ~340 µs to predict
+(853 KB allocated per call) — short endings collect thousands of
+`(paradigm, form)` candidates without a cap. Per an owner decision made
+2026-09-27, mid-implementation (D-24), `CompileFromXML*`/
+`CompileFromUniMorph*` now prune prediction the way pymorphy2's own
+dictionary compiler does, via `internal.ImportPredictionPruning`
+(`MinParadigmPopularity: 3`, `MinEndingFreq: 2`, `MaxFormsPerClass: 1`):
+readings of a paradigm used by fewer than 3 lemmas don't feed prediction,
+a suffix key attested by fewer than 2 readings is dropped, and per suffix
+and part-of-speech (the tag's first grammeme) only the single most
+attested `(paradigm, form, shard)` survives. `Builder`, `ImportTSV` and
+`Merge` keep unpruned prediction (`internal.BuildPrediction`'s zero-value
+`PredictionPruning` keeps everything, proven byte-identical to the
+pre-pruning behavior by `TestBuildPredictionPrunedZeroIsUnpruned`):
+pruning by lemma-paradigm popularity would erase all prediction from the
+small, thematic dictionaries those two are typically used for. The
+thresholds are internal constants, not a public option (YAGNI) —
+a `Merge` with `RebuildPrediction` over an OpenCorpora/UniMorph base
+therefore still rebuilds unpruned, large prediction; noted as backlog in
+`docs/en/todo.md`.
+
+After pruning, both real-dictionary measurements moved well inside the
+gates: `opencorpora.dat` 10,669,636 → 14,895,196 bytes (+39.6%, was
++126.0%), `unimorph.dat` 11,085,089 → 12,579,657 bytes (+13.5%, was
++67.4%); build time with pruned prediction was ≈119 s for OpenCorpora and
+≈51 s for UniMorph (Apple M4 Pro); parsing an unknown word with pruned
+prediction took ≈1.0-1.1 µs for OpenCorpora («бутявкающий»,
+«шмуклерами») and ≈1.3-1.5 µs for UniMorph («бутявкающий», «глокая») —
+down from UniMorph's unpruned ≈340 µs/853 KB per call, and comfortably
+under the spec's 50 µs prediction target. `productive()` itself is
+unchanged: UniMorph `rus` has exactly five parts of speech (`N`, `ADJ`,
+`V`, `V.PTCP`, `V.CVB`), all open classes, so nothing gets filtered —
+a UniMorph-specific nonproductive list would have nothing to remove.
+
+**Performance.** `go test ./pkg/morphology/ -bench . -benchmem -count=5`
+(Go 1.25, arm64, Apple M4 Pro); "before" is the pre-Task-9 branch state,
+"after" is post-1.3.0. Medians of 5 reruns.
+
+Fixture dictionary (`benchDict`):
+
+| Benchmark | ns/op before → after | B/op before → after | allocs/op before → after |
+|---|---:|---:|---:|
+| ParseAppend (new) | — | — | 175 → **0** |
+| ParseKnown | 1121 → **201** | 592 → **96** | 24 → **1** |
+| ParseKnownYo | 1238 → **249** | 664 → **112** | 30 → **3** |
+| ParsePredicted | 1714 → **345** | 904 → **104** | 32 → **2** |
+| Lemma | 1253 → **240** | 688 → **192** | 26 → **3** |
+| IsKnown | 283 → **221** | 256 → **224** | 18 → **10** |
+| FuzzyTop | 14085 → **14000** | 5912 → **5912** | 151 → **151** (unaffected — doesn't call `Parse`) |
+
+Real pymorphy dictionary (`.data/pymorphy/pymorphy.dat`):
+
+| Benchmark | ns/op before → after | B/op before → after | allocs/op before → after |
+|---|---:|---:|---:|
+| ParseKnown/кота | 1330 → **437** | 880 → **272** | 26 → **2** |
+| ParseKnown/стали | 2215 → **1300** | 2816 → **1489** | 42 → **10** |
+| ParseKnown/ежик | 1359 → **275** | 672 → **112** | 34 → **3** |
+| Lemma | 2609 → **1600** | 3472 → **2145** | 49 → **17** |
+| FuzzyTop | ~52ms → **~51ms** | 37858671 → **37858700** | 7743 → **7743** (unaffected) |
+
+`ns/op` and `allocs/op` improved everywhere `Parse` is involved;
+`FuzzyTop`, which never calls `Parse`, is unchanged — confirming no
+regression outside the touched code paths. `FuzzyTop` on the real
+pymorphy dictionary (~51-52 ms/op, ~37.9 MB/op) is a known, pre-existing
+cost — a full Levenshtein-DFA walk over the whole DAWG — left unchanged
+by this release and worth keeping in mind alongside the sub-microsecond
+`Parse`/`Lemma` numbers above.
+
+Real OpenCorpora and UniMorph dictionaries, built **with pruned
+prediction** (`ParseKnown` unaffected by pruning; `ParsePredicted` is the
+number pruning targeted):
+
+| dictionary | ParseKnown/кота | ParseKnown/стали | ParseKnown/ежик | ParsePredicted/бутявкающий | ParsePredicted/глокая |
+|---|---:|---:|---:|---:|---:|
+| opencorpora | ~295 ns | ~754 ns | ~265 ns | ~1028 ns (**~1.0 µs**) | ~1082 ns (**~1.1 µs**) |
+| unimorph | ~1819 ns | ~2624 ns | ~1844 ns | ~1471 ns (**~1.3-1.5 µs**) | ~1344 ns (**~1.3 µs**) |
+
+`TestParseAllocs` (`pkg/morphology/parse_alloc_test.go`, fixture
+dictionary, no `-race`):
+
+| word | `ParseAppend` allocs | `Parse` allocs | bound (`ParseAppend`) | bound (`Parse`) | 1.1.0 baseline (`Parse`) |
+|---|---:|---:|---:|---:|---:|
+| кот | 0 | 1 | 1 | 2 | 22 |
+| кота | 0 | 1 | 1 | 2 | 24 |
+| бота (predicted) | 2 | 3 | 3 | 4 | 44 |
+
+**Spec targets.** `docs/en/implementation.md`'s Metrics table targets
+"Parse (exact) < 10 µs" and "Parse (prediction) < 50 µs" both hold,
+comfortably: every measured `Parse`/`ParseKnown` number above, across the
+fixture and all three real dictionaries (pymorphy, OpenCorpora, UniMorph)
+is under 1.3 µs; every measured `ParsePredicted` number is under 1.5 µs
+after pruning. Pruning (above) was exactly what kept UniMorph prediction
+inside the 50 µs target — the pre-pruning measurement (~340 µs) would
+have missed it by nearly 7x.
+
+### Discrepancies with the spec (found while planning)
+
+- **D-12 (J).** The spec's test case «стекло» (NOUN) / «стекло» (VERB,
+  past neut of «стечь») does not exercise the change: the verb form's
+  lemma is «стечь», not «стекло», so the Builder already puts it into a
+  different paradigm. The plan tests «знать» (NOUN «знать» vs INFN
+  «знать»), which really shares the lemma text.
+- **D-13 (J).** "Group by `(lemma, POS(tag of the lemma form))`": an
+  entry carries only its own tag, and grouping by the raw first grammeme
+  would split every OpenCorpora verb into INFN/VERB/PRTF/PRTS/GRND
+  paradigms and adjectives into ADJF/ADJS/COMP. The plan groups by a
+  **POS class** (`internal.POSClass`, with a fold table for OpenCorpora
+  and UniMorph) and defines what POS-less entries do.
+- **D-14 (H).** `docs/en/todo.md` sketched `Inflect(r Reading, want
+  []string)`; the spec says `want ...string`. The plan follows the spec.
+- **D-15 (I).** "`EncodeRune` API on the alphabet": adding an interface
+  method that writes into a caller buffer would make the buffer escape
+  (dynamic call); the plan adds a concrete
+  `(*DenseAlphabet).EncodeRune(r) ([2]byte, int, bool)` and a type switch
+  in `followRuneVia`.
+- **D-16 (I).** A naive callback version of `SimilarItems` changes result
+  order (substitution branches before the straight match). `Parse`
+  results must not change, so `LookupEach` walks the straight path
+  first, then the branches — at the cost of following the straight path
+  twice.
+- **D-17 (I).** Benchmarks use `b.Loop()` (Go 1.24; allowed by the `go
+  1.25.0` directive from 1.2.0, owner decision 2026-09-24, answer 15 —
+  the earlier 1.22 plan forbade it). `AllocsPerRun` bounds are still
+  skipped under `-race` (the race detector changes allocation counts);
+  `b.Loop` does not change that.
+- **D-18 (K).** `RecompileDense` is shared with `CompileFromXMLDense`,
+  `CompileFromUniMorphDense` and `OpenPyMorphyDense`; the fallback
+  therefore also changes them (from an error to a working 2-byte
+  dictionary). The spec only mentions Builder/ImportTSV. The existing
+  test `TestRecompileDenseAlphabetOverflowReturnsError` asserts the old
+  error and is rewritten.
+- **D-19 (L).** The spec says the importers build prediction. They
+  cannot: `productive` lives in `pkg/morphology`, which imports the
+  importer packages. Prediction is built by the `morphology.CompileFrom*`
+  wrappers (`finishCompiled`); `unimorph.Options.NoPrediction` is a field
+  of the importer's options that only those wrappers honour, and is
+  documented as such.
+- **D-20 (L).** Generalizing `BuildPrediction` through `shardPairs` makes
+  it accept dense dictionaries too (keys are decoded through the
+  alphabet); the "must still be raw" precondition goes away. `Merge`'s
+  rebuild re-reads all output shards instead of special-casing a reused
+  shard 0.
+- **D-21 (L).** `pymorphy` has no `--no-prediction`: its prediction comes
+  from the source files. The CLI rejects the flag for `pymorphy` with an
+  error rather than silently ignoring it.
+- **D-22 (L).** Examples and CLI tests built on OpenCorpora XML fixtures
+  via `CompileFromXML` now get prediction; `MultiDictionary` examples may
+  print extra predicted readings. Task 12 updates their outputs instead
+  of opting out.
+- **D-23 (L).** The spec's own format sketch named the new section
+  `prediction-sharded-P`; GMOR catalog entries hold section names in a
+  fixed 16-byte field, which the longer name overflows, so it was
+  renamed to `pred-sharded-P` during implementation. `global-constraints.md`
+  and the design spec were both updated to the short name.
+- **D-24 (L).** The spec's own "Measurements" note said the default-on
+  decision would be revisited if a real dictionary grew by more than
+  ~50%; Task 12 Step 5 tripped that gate (OpenCorpora +126.0%, UniMorph
+  +67.4%). Rather than flip prediction to opt-in, the owner decided
+  (2026-09-27) to prune it like pymorphy2's own compiler and keep
+  default-on if the pruned numbers came in under the gate — they did
+  (+39.6% / +13.5%), so default-on shipped as originally planned, just
+  pruned.
+- **D-25 (I).** `internal.DAWG.LookupEach`'s decode buffer is a
+  `sync.Pool`-backed fixed array rather than a stack array: a slice
+  handed to an opaque `func([]byte, ...)` callback always escapes to the
+  heap (the compiler can't prove the callback doesn't retain it), so a
+  stack buffer would allocate on every call anyway; pooling keeps the
+  common case at 0 allocations instead.
+- **D-26 (I).** The completer's DAWG-walk step (used by fuzzy completion)
+  and `LookupEach`'s straight-path walk were unified into one shared
+  `internal.DAWG.nextTerminal` helper instead of keeping two independent
+  walk implementations, once it became clear both needed the same
+  "advance one unit, report if it's a terminal" logic.
+- **D-27 (J).** Two internal merge tests used placeholder tags `"N"`/`"G"`
+  for their entries; once Builder started grouping by POS class (J) those
+  placeholders no longer round-tripped through a real POS-class lookup
+  correctly, so they were switched to real-looking tags `"N,nomn"`/
+  `"N,gent"` that carry an actual class.
+
+### Testing (1.3.0)
+
+Per the spec's Testing section for items G-L:
+
+- **G** — `pkg/morphology/tag_test.go`, `pkg/morphology/internal/tag_test.go`:
+  `Grammemes`/`HasGrammeme`/`POS` against OpenCorpora- and
+  UniMorph-shaped tags, including the `"Surn sing"` space-separated case;
+  `Reading.HasGrammeme` delegates correctly; empty-tag edge cases.
+- **H** — `pkg/morphology/lexeme_test.go` plus doc examples: `Forms`
+  returns the whole paradigm in form order with form 0 as the lemma;
+  `Inflect` ranks by symmetric grammeme difference with paradigm-order
+  tie-break; a mismatched `Reading` yields `nil`; a predicted `Reading`'s
+  forms stay `Predicted == true`; `MultiDictionary` dispatch by
+  `r.Dict`, including an out-of-range index.
+- **I** — `pkg/morphology/bench_test.go`, `pkg/morphology/parse_alloc_test.go`,
+  `pkg/morphology/internal/lookup_each_test.go`: `TestParseAppendMatchesParse`
+  (equivalence across single- and multi-shard dictionaries),
+  `TestParseAllocs` (allocation bounds, see the table above),
+  `LookupEach` walk order equivalence to `SimilarItems`.
+- **J** — `pkg/morphology/builder_test.go`, `pkg/morphology/internal/build_test.go`:
+  «знать» NOUN/INFN yields two paradigms; a POS-less entry joins the
+  lemma's existing lexeme; the OpenCorpora/UniMorph POS-class fold table.
+- **K** — `pkg/morphology/internal/dense_recompile_test.go`,
+  `pkg/morphology/builder_internal_test.go`: a >254-rune alphabet
+  recompiles successfully at width 2 for `Builder`/`ImportTSV`/`Merge`
+  and every `…Dense` importer; the old overflow-error test is replaced.
+- **L** — `pkg/morphology/internal/prediction_test.go`,
+  `pkg/morphology/internal/merge_test.go`,
+  `pkg/morphology/prediction_sharded_test.go`,
+  `pkg/morphology/compile_prediction_test.go`,
+  `cmd/gomorphy/build_test.go`: sharded prediction round-trips through
+  `SaveTo`/`Open`; a 1.2.x-shaped reader skips an unknown
+  `pred-sharded-P` section without error; `CompileFromXML*`/
+  `CompileFromUniMorph*` predict by default and honor `NoPrediction`;
+  `--no-prediction` CLI flag, including its rejection for `pymorphy`;
+  `MergeWithOptions{RebuildPrediction: true}` on a multi-shard result;
+  all four pruning rules (`TestBuildPredictionPrunedParadigmPopularity`,
+  `...EndingFreq`, `...MaxFormsPerClass`, and
+  `TestBuildPredictionPrunedZeroIsUnpruned` proving `Builder`/`ImportTSV`/
+  `Merge` stay byte-identical).
 
 ## Findings
 
