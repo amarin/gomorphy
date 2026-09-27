@@ -90,3 +90,37 @@ func TestBuildCommand_UniMorph_UnsupportedLanguage(t *testing.T) {
 	root.SetArgs([]string{"build", "unimorph", "-i", tsvPath, "-o", filepath.Join(t.TempDir(), "out.dat"), "--lang", "en"})
 	assert.Error(t, root.Execute())
 }
+
+func TestBuildCommand_NoPrediction(t *testing.T) {
+	xmlPath := filepath.Join(t.TempDir(), "dict.xml")
+	require.NoError(t, os.WriteFile(xmlPath, []byte(fixtureXML("кот")), 0o644))
+
+	for _, noPrediction := range []bool{false, true} {
+		outPath := filepath.Join(t.TempDir(), "out.dat")
+		args := []string{"build", "opencorpora", "-i", xmlPath, "-o", outPath}
+		if noPrediction {
+			args = append(args, "--no-prediction")
+		}
+		root := newTestRootCmd(newBuildCommand())
+		root.SetOut(&bytes.Buffer{})
+		root.SetArgs(args)
+		require.NoError(t, root.Execute())
+
+		d, err := morphology.Open(outPath)
+		require.NoError(t, err)
+		if noPrediction {
+			assert.Nil(t, d.Parse("бот"), "--no-prediction")
+		} else {
+			assert.NotEmpty(t, d.Parse("бот"), "prediction by default (like кот)")
+		}
+		require.NoError(t, d.Close())
+	}
+}
+
+func TestBuildCommand_NoPredictionRejectedForPymorphy(t *testing.T) {
+	root := newTestRootCmd(newBuildCommand())
+	root.SetArgs([]string{"build", "pymorphy", "--no-prediction", "-i", t.TempDir(), "-o", filepath.Join(t.TempDir(), "x.dat")})
+	err := root.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--no-prediction")
+}

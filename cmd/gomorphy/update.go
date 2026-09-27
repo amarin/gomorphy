@@ -25,7 +25,7 @@ func newUpdateCommand() *cobra.Command {
 			return err
 		}
 		output, _ := cmd.Flags().GetString("output")
-		return runBuild(cmd, typ, "", output, lang)
+		return runBuild(cmd, typ, "", output, lang, false)
 	}
 	return cmd
 }

@@ -52,6 +52,12 @@ type Options struct {
 	// version metadata of its own — this always comes from the caller
 	// (e.g. pkg/unimorph.Loader recording a download date/URL).
 	SourceVersion string
+
+	// NoPrediction skips the ending-based prediction for
+	// out-of-dictionary words that morphology.CompileFromUniMorph and
+	// its variants build by default. ImportFromTSV and CompileFromTSV in
+	// this package never build prediction and ignore it.
+	NoPrediction bool
 }
 
 // formBundle is a single row's wordform (lower-cased on read, see

@@ -201,5 +201,5 @@ func TestResolveDictionaries_FlagTakesPriorityOverEnv(t *testing.T) {
 
 	assert.Equal(t, 1, got.Len())
 	assert.NotEmpty(t, got.Parse("кот"))
-	assert.Empty(t, got.Parse("груша"), "env path must not be used when -d was given")
+	assert.False(t, got.IsKnown("груша"), "env path must not be used when -d was given")
 }
