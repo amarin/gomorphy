@@ -178,3 +178,29 @@ func TestInflectForeignReading(t *testing.T) {
 	d := koshkaDict(t)
 	assert.Nil(t, d.Inflect(morphology.Reading{}, "gent"))
 }
+
+// Dict 0 (кот/мышь) only predicts «кошки»; Dict 1 knows it (two readings:
+// sing,gent and plur,nomn).
+func TestMultiDictionaryFormsDispatchByDict(t *testing.T) {
+	m := morphology.NewMultiDictionary(buildSmallDict(t), koshkaDict(t))
+	var known []morphology.Reading
+	for _, r := range m.Parse("кошки") {
+		if r.Dict == 1 {
+			known = append(known, r)
+		}
+	}
+	require.Len(t, known, 2)
+	for _, r := range known {
+		forms := m.Forms(r)
+		require.Len(t, forms, 5)
+		for _, f := range forms {
+			assert.Equal(t, 1, f.Dict)
+		}
+	}
+	got := m.Inflect(known[0], "plur", "gent")
+	require.Len(t, got, 1)
+	assert.Equal(t, "кошек", got[0].Word)
+
+	assert.Nil(t, m.Forms(morphology.Reading{Word: "кот", Dict: 7}), "unknown Dict")
+	assert.Nil(t, m.Inflect(morphology.Reading{Word: "кот", Dict: -1}))
+}

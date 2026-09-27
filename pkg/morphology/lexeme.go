@@ -106,3 +106,21 @@ func grammemeDiff(a, b []string) int {
 	}
 	return n
 }
+
+// Forms returns every form of r's lexeme from the dictionary r came from
+// (r.Dict); nil if r.Dict is out of range. See Dictionary.Forms.
+func (m *MultiDictionary) Forms(r Reading) []Reading {
+	if r.Dict < 0 || r.Dict >= len(m.dicts) {
+		return nil
+	}
+	return m.dicts[r.Dict].Forms(r)
+}
+
+// Inflect is Dictionary.Inflect on the dictionary r came from (r.Dict);
+// nil if r.Dict is out of range.
+func (m *MultiDictionary) Inflect(r Reading, want ...string) []Reading {
+	if r.Dict < 0 || r.Dict >= len(m.dicts) {
+		return nil
+	}
+	return m.dicts[r.Dict].Inflect(r, want...)
+}

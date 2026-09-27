@@ -621,6 +621,31 @@ func ExampleDictionary_ContentHash() {
 	// 32 true
 }
 
+// ExampleDictionary_Forms lists every form of a word's lexeme.
+func ExampleDictionary_Forms() {
+	d := mustCompileExampleDict()
+
+	r := d.Parse("кота")[0]
+	for _, f := range d.Forms(r) {
+		fmt.Println(f.Word, f.Tag)
+	}
+	// Output:
+	// кот NOUN,anim,masc,sing,nomn
+	// кота NOUN,anim,masc,sing,gent
+}
+
+// ExampleDictionary_Inflect puts a word into another grammatical form.
+func ExampleDictionary_Inflect() {
+	d := mustCompileExampleDict()
+
+	r := d.Parse("кот")[0]
+	for _, f := range d.Inflect(r, "gent") {
+		fmt.Println(f.Word)
+	}
+	// Output:
+	// кота
+}
+
 // ExampleMultiDictionary_IsKnown shows membership across a set: a word is
 // known if any member dictionary has it.
 func ExampleMultiDictionary_IsKnown() {
