@@ -23,7 +23,7 @@ type Dictionary struct {
 	Prediction []*DAWG
 	// PredictionSharded is the value format of Prediction: true for 8-byte
 	// count|para|form|shard values (dictionaries with more than one shard,
-	// saved as prediction-sharded-N), false for 6-byte count|para|form
+	// saved as pred-sharded-N), false for 6-byte count|para|form
 	// values resolved against shard 0 (saved as prediction-N).
 	PredictionSharded bool
 	Probability       *DAWG
