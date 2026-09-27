@@ -48,6 +48,15 @@ func benchParse(b *testing.B, d *morphology.Dictionary, word string) {
 	}
 }
 
+func BenchmarkParseAppend(b *testing.B) {
+	d := benchDict(b)
+	buf := make([]morphology.Reading, 0, 16)
+	b.ReportAllocs()
+	for b.Loop() {
+		buf = d.ParseAppend(buf[:0], "кота")
+	}
+}
+
 func BenchmarkParseKnown(b *testing.B)     { benchParse(b, benchDict(b), "кота") }
 func BenchmarkParseKnownYo(b *testing.B)   { benchParse(b, benchDict(b), "леда") } // е→ё: «лёда»
 func BenchmarkParsePredicted(b *testing.B) { benchParse(b, benchDict(b), "бота") }

@@ -212,7 +212,7 @@ func openBytes(data []byte) (*internal.Dictionary, error) {
 //
 // Close must not be called while other goroutines may still call methods
 // on the Dictionary (directly or through a MultiDictionary): in-flight
-// Parse/Lemma/IsKnown/Fuzzy/FuzzyTop/ContentHash calls read the
+// Parse/ParseAppend/Lemma/IsKnown/Fuzzy/FuzzyTop/ContentHash calls read the
 // mapping, and unmapping it under them crashes the process with SIGSEGV or
 // SIGBUS — not a recoverable panic. Values already returned (Reading,
 // LemmaRef, FuzzyMatch, BuildInfo and all their strings) are independent
