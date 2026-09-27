@@ -13,6 +13,7 @@ usage scenarios in [docs/en/scenarios.md](../docs/en/scenarios.md)
 | [builder](builder/main.go) | `NewBuilder` | no — wordforms registered in code |
 | [importtsv](importtsv/main.go) | `ImportTSV` | no — a tiny TSV stream is inlined |
 | [merge](merge/main.go) | `Merge` | no — two tiny dictionaries are built in code |
+| [inflect](inflect/main.go) | `Forms`, `Inflect`, `Grammemes`/`HasGrammeme`/`POS` | no — a dictionary is built in code |
 | [ner](ner/main.go) | `IsKnown`, `Reading.Predicted` — dictionary-based NER | no — a names dictionary is built in code |
 | [typos](typos/main.go) | `Fuzzy`, `FuzzyTop` — typos, е/ё | no — words registered in code |
 | [embed](embed/main.go) | `OpenBytes` + `//go:embed` | no — the tiny `names.dat` is committed (regenerate: `go run ./examples/embed/gen`) |
@@ -30,6 +31,7 @@ go run ./examples/multidict
 go run ./examples/builder
 go run ./examples/importtsv
 go run ./examples/merge
+go run ./examples/inflect
 go run ./examples/ner
 go run ./examples/typos
 go run ./examples/embed

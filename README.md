@@ -16,13 +16,15 @@ embedded with `//go:embed`; native Windows mmap is tracked in
 - **Exact lookup** — all grammatical readings of a wordform (POS, case, number, ...)
 - **Lemma resolution** — initial form + base tags for any wordform
 - **Known word vs. guess** — `IsKnown` and `Reading.Predicted` separate dictionary words from ending-based predictions (dictionary-based NER)
+- **Word forms and inflection** — `Dictionary.Forms`/`Inflect` (and the `MultiDictionary` equivalents) list a lexeme's wordforms and pick the ones matching requested grammemes, for dictionary and predicted readings alike
+- **Grammemes without string parsing** — `Grammemes`, `HasGrammeme`, `POS` read a native tag's grammemes across OpenCorpora/pymorphy2 and UniMorph notations
 - **Fuzzy search** — Levenshtein automaton over a paradigm/DAWG trie, rune-level metrics; е in a query matches ё
 - **Nearest-N** — iterative distance widening to find the true N closest words
 - **Your own dictionaries** — `Builder`/`ImportTSV` (or `gomorphy import tsv`) build a dictionary from your wordforms; `Merge` adds them into a base dictionary
 - **Multiple dictionaries at once** — `MultiDictionary` aggregates Parse/Lemma/Fuzzy/IsKnown across several open dictionaries
-- **Multiple sources** — pymorphy2, OpenCorpora `dict.xml`, and UniMorph TSV (all dense-1-byte-alphabet by default)
+- **Multiple sources** — pymorphy2, OpenCorpora `dict.xml`, and UniMorph TSV (all dense-1-byte-alphabet by default), all three with ending-based prediction for out-of-dictionary words
 - **Embeddable** — `OpenBytes` opens a dictionary from memory (`//go:embed`), no data file at run time
-- **Compact binary format** — sectioned, mmap-backed: ~10 MB for the full OpenCorpora dictionary (source `dict.xml` is ~400 MB)
+- **Compact binary format** — sectioned, mmap-backed: ~14.9 MB for the full OpenCorpora dictionary incl. default prediction (source `dict.xml` is ~400 MB)
 
 What each of these is for, with runnable examples: [docs/en/scenarios.md](docs/en/scenarios.md).
 

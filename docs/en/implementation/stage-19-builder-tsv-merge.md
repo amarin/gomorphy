@@ -67,6 +67,12 @@ callback because it lives in the engine package (`parse.go`), which
 `internal/` must not import; building a dictionary from entries should
 not drag morphological parsing logic in.
 
+> Since 1.3.0, keys start at the form's own suffix length rather than
+> always at 1 rune — a fix for prediction lemmas built from a suffix the
+> word does not have (pymorphy2's rule); see
+> [ner-support.md](ner-support.md) (ruling R14). The 1..5-rune
+> description above is what shipped in 1.1.0/Stage 19.
+
 ## What the caller decides
 
 `BuilderOptions.Language` (default `"ru"`) and `Source` (default
