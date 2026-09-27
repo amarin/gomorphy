@@ -374,6 +374,7 @@ func TestMergeDictionariesPrediction(t *testing.T) {
 	out, err := MergeDictionaries(base, []*Dictionary{over}, MergeOptions{Mode: MergeAdd})
 	require.NoError(t, err)
 	require.Len(t, out.Prediction, 1)
+	assert.False(t, out.PredictionSharded)
 	assert.Equal(t, base.Prediction[0].Bytes(), out.Prediction[0].Bytes(), "prediction carried verbatim by default")
 	assert.Empty(t, out.Prediction[0].SimilarItems("ок", nil, nil), "overlay words don't feed carried prediction")
 
@@ -381,8 +382,23 @@ func TestMergeDictionariesPrediction(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, out.Prediction[0].SimilarItems("ок", nil, nil), "rebuilt prediction covers overlay words")
 
-	_, err = MergeDictionaries(twoShardBase(t), []*Dictionary{over}, MergeOptions{Mode: MergeAdd, RebuildPrediction: true, Productive: allProductive})
-	assert.ErrorIs(t, err, ErrPredictionSharded)
+	out, err = MergeDictionaries(twoShardBase(t), []*Dictionary{over}, MergeOptions{Mode: MergeAdd, RebuildPrediction: true, Productive: allProductive})
+	require.NoError(t, err, "a sharded result rebuilds prediction too")
+	require.Len(t, out.Prediction, 1)
+	assert.True(t, out.PredictionSharded)
+	assert.NotEmpty(t, out.Prediction[0].SimilarItems("ок", nil, nil), "rebuilt sharded prediction covers overlay words")
+}
+
+func TestMergeDictionariesCarriesShardedPrediction(t *testing.T) {
+	base := twoShardBase(t)
+	require.NoError(t, BuildPrediction(base, allProductive))
+	require.True(t, base.PredictionSharded)
+
+	out, err := MergeDictionaries(base, []*Dictionary{engineDict(t, e("шок", "шок", "N"))}, MergeOptions{Mode: MergeAdd})
+	require.NoError(t, err)
+	assert.True(t, out.PredictionSharded, "the carried prediction keeps its value format")
+	require.Len(t, out.Prediction, 1)
+	assert.Equal(t, base.Prediction[0].Bytes(), out.Prediction[0].Bytes())
 }
 
 // engineDictRaw is engineDict without the dense recompile.

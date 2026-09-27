@@ -15,7 +15,7 @@ import (
 // is taken only if the base and earlier overlays lack it. In "replace" mode,
 // the last overlay's reading wins. The base's prediction, probabilities, and tag set
 // are kept (unless rebuildPrediction is true, which rebuilds prediction from all merged
-// words; single-shard output only). output is required (merge must never silently
+// words). output is required (merge must never silently
 // overwrite an input — the abs-ified output path is rejected when it equals any
 // input path), and the mode is validated case-insensitively.
 func runMerge(cmd *cobra.Command, args []string, output, mergeMode string, rebuildPrediction bool) error {
@@ -89,13 +89,13 @@ func newMergeCommand() *cobra.Command {
 		Short: "merge several dictionaries into one .dat (add or replace)",
 		Long: `In "add" mode, an overlay word is taken only if the base and earlier overlays lack it.
 In "replace" mode, the last overlay's reading wins. The base's prediction, probabilities,
-and tag set are kept (unless --rebuild-prediction is set; single-shard output only).`,
+and tag set are kept (unless --rebuild-prediction is set).`,
 		Args: cobra.MinimumNArgs(2),
 	}
 	cmd.Flags().StringP("output", "o", "", "output .dat path (required)")
 	cmd.Flags().String("mode", "", "merge mode: add or replace (required)")
 	cmd.Flags().Bool("rebuild-prediction", false,
-		"rebuild out-of-dictionary prediction from all merged words (default: keep the base's; single-shard output only)")
+		"rebuild out-of-dictionary prediction from all merged words (default: keep the base's)")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if err := configureLogging(cmd); err != nil {
 			return err

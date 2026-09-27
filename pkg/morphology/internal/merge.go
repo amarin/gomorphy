@@ -376,18 +376,12 @@ func stringAt(ar []string, i uint16) string {
 // MergeOptions configures MergeDictionaries.
 type MergeOptions struct {
 	Mode MergeMode
-	// RebuildPrediction replaces the base's prediction DAWGs with a single
-	// prefix-0 DAWG rebuilt from the merged shard 0. Requires a
-	// single-shard output (ErrPredictionSharded otherwise) and Productive.
+	// RebuildPrediction replaces the base's prediction with one prefix-0
+	// DAWG rebuilt (BuildPredictionFrom) from every shard of the merged words. Requires Productive.
 	RebuildPrediction bool
 	// Productive filters prediction tags (the engine's productive()).
 	Productive func(tag string) bool
 }
-
-// ErrPredictionSharded is returned when RebuildPrediction is requested
-// but the merged dictionary has more than one shard: the engine resolves
-// prediction against shard 0 only.
-var ErrPredictionSharded = errors.New("morphology: prediction rebuild needs a single-shard output")
 
 // MergeDictionaries merges overlays into base structurally: base ids
 // (tags, prefixes, per-shard suffixes and paradigms) are kept verbatim
@@ -424,9 +418,6 @@ func MergeDictionaries(base *Dictionary, overlays []*Dictionary, opts MergeOptio
 		}
 	}
 	if opts.RebuildPrediction {
-		if len(m.shards) != 1 {
-			return nil, ErrPredictionSharded
-		}
 		if opts.Productive == nil {
 			return nil, errors.New("merge: Productive is required to rebuild prediction")
 		}
@@ -456,8 +447,6 @@ func MergeDictionaries(base *Dictionary, overlays []*Dictionary, opts MergeOptio
 		CharPolicy: base.CharPolicy,
 		Alphabet:   alphabet,
 	}
-	var shard0 []WordValue
-	shard0Collected := false // whether shard0 was actually populated below (vs. shard 0 reused verbatim)
 	for i, s := range m.shards {
 		out.Suffixes = append(out.Suffixes, s.suffixes)
 		out.Paradigms = append(out.Paradigms, s.paradigms)
@@ -470,10 +459,6 @@ func MergeDictionaries(base *Dictionary, overlays []*Dictionary, opts MergeOptio
 			return nil, err
 		}
 		pairs = append(pairs, s.placed...)
-		if i == 0 {
-			shard0 = pairs
-			shard0Collected = true
-		}
 		w, err := buildWordsDAWG(pairs, alphabet)
 		if err != nil {
 			return nil, fmt.Errorf("merge: shard %d: %w", i, err)
@@ -482,24 +467,23 @@ func MergeDictionaries(base *Dictionary, overlays []*Dictionary, opts MergeOptio
 	}
 
 	if opts.RebuildPrediction {
-		if !shard0Collected { // shard 0 was reused verbatim
-			if len(base.Words) > 0 {
-				if shard0, err = shardPairs(base.Words[0], base.Alphabet, nil); err != nil {
-					return nil, err
-				}
-			} else {
-				shard0 = nil
+		pairs := make([][]WordValue, len(out.Words))
+		for i, w := range out.Words {
+			if pairs[i], err = shardPairs(w, out.Alphabet, nil); err != nil {
+				return nil, fmt.Errorf("merge: prediction: shard %d: %w", i, err)
 			}
 		}
-		pred, err := BuildPredictionFrom(shard0, out.Paradigms[0], out.TagSet, opts.Productive)
+		pred, sharded, err := BuildPredictionFrom(pairs, out.Paradigms, out.TagSet, opts.Productive)
 		if err != nil {
 			return nil, fmt.Errorf("merge: prediction: %w", err)
 		}
 		out.Prediction = []*DAWG{pred}
+		out.PredictionSharded = sharded
 	} else {
 		for _, p := range base.Prediction {
 			out.Prediction = append(out.Prediction, p.Clone())
 		}
+		out.PredictionSharded = base.PredictionSharded
 	}
 
 	if out.Probability, err = mergeProbability(base, overlays, winners, removed); err != nil {

@@ -14,17 +14,22 @@ package internal
 // (see docs/en/superpowers/specs/2026-09-14-suffix-sharding-design.md).
 // TagSet and Prefixes stay shared across all shards.
 type Dictionary struct {
-	Language    string
-	TagSet      *TagSet
-	Suffixes    [][]string
-	Prefixes    []string
-	Paradigms   [][]Paradigm
-	Words       []*DAWG
-	Prediction  []*DAWG
-	Probability *DAWG
-	CharPolicy  *CharPolicy
-	Alphabet    Alphabet // nil = raw UTF-8 keys (today's behavior, unchanged)
-	Info        *BuildInfo
+	Language   string
+	TagSet     *TagSet
+	Suffixes   [][]string
+	Prefixes   []string
+	Paradigms  [][]Paradigm
+	Words      []*DAWG
+	Prediction []*DAWG
+	// PredictionSharded is the value format of Prediction: true for 8-byte
+	// count|para|form|shard values (dictionaries with more than one shard,
+	// saved as prediction-sharded-N), false for 6-byte count|para|form
+	// values resolved against shard 0 (saved as prediction-N).
+	PredictionSharded bool
+	Probability       *DAWG
+	CharPolicy        *CharPolicy
+	Alphabet          Alphabet // nil = raw UTF-8 keys (today's behavior, unchanged)
+	Info              *BuildInfo
 }
 
 // NewDictionary assembles a Dictionary from its components. suffixes,

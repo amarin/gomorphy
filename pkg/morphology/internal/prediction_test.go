@@ -139,27 +139,6 @@ func TestBuildPrediction(t *testing.T) {
 	assert.Empty(t, predValues(t, pred, "кошкой"), "6-rune word text must not appear as a suffix key")
 }
 
-func TestBuildPredictionNoOpWhenSharded(t *testing.T) {
-	emptyDAWG := func() *DAWG {
-		d, err := BuildDAWG(nil)
-		require.NoError(t, err)
-		return d
-	}
-	dict := NewDictionary(
-		"ru",
-		NewTagSet("test"),
-		[][]string{{}, {}},
-		[]string{""},
-		[][]Paradigm{{}, {}},
-		[]*DAWG{emptyDAWG(), emptyDAWG()},
-		nil,
-	)
-	require.Len(t, dict.Words, 2)
-
-	require.NoError(t, BuildPrediction(dict, predProductive))
-	assert.Nil(t, dict.Prediction, "prediction is built only for unsharded dictionaries")
-}
-
 func TestBuildPredictionFromMatchesBuildPrediction(t *testing.T) {
 	all := func(string) bool { return true }
 	d, err := BuildDictionaryFromEntries(BuildOptions{}, []BuildEntry{
@@ -176,9 +155,90 @@ func TestBuildPredictionFromMatchesBuildPrediction(t *testing.T) {
 			pairs = append(pairs, WordValue{Word: w, Value: binary.BigEndian.Uint32(v[:4])})
 		}
 	})
-	pred, err := BuildPredictionFrom(pairs, d.Paradigms[0], d.TagSet, all)
+	pred, sharded, err := BuildPredictionFrom([][]WordValue{pairs}, d.Paradigms, d.TagSet, all)
 	require.NoError(t, err)
+	assert.False(t, sharded, "one shard keeps 6-byte values")
 
 	require.NoError(t, BuildPrediction(d, all))
+	assert.False(t, d.PredictionSharded)
 	assert.Equal(t, d.Prediction[0].Bytes(), pred.Bytes())
+}
+
+// twoShardCorpus is a raw two-shard dictionary sharing one TagSet: shard 0
+// holds кошка/кошки, shard 1 окно/окна. Each shard's only lemma is its
+// paradigm 0, so only the shard number tells their predictions apart.
+func twoShardCorpus(t *testing.T) *Dictionary {
+	t.Helper()
+	a, err := BuildDictionaryFromEntries(BuildOptions{}, []BuildEntry{
+		{Word: "кошка", Lemma: "кошка", Tag: "NOUN,sing,nomn"},
+		{Word: "кошки", Lemma: "кошка", Tag: "NOUN,sing,gent"},
+	})
+	require.NoError(t, err)
+	b, err := BuildDictionaryFromEntries(BuildOptions{}, []BuildEntry{
+		{Word: "окно", Lemma: "окно", Tag: "NOUN,sing,nomn"},
+		{Word: "окна", Lemma: "окно", Tag: "NOUN,sing,gent"},
+	})
+	require.NoError(t, err)
+	// b's tag ids must mean the same tags in a's TagSet (same insertion order).
+	for f := 0; f < 2; f++ {
+		require.Equal(t, b.TagSet.TagName(b.Paradigms[0][0].Tag(f)), a.TagSet.TagName(b.Paradigms[0][0].Tag(f)))
+	}
+	return NewDictionary("ru", a.TagSet,
+		[][]string{a.Suffixes[0], b.Suffixes[0]}, a.Prefixes,
+		[][]Paradigm{a.Paradigms[0], b.Paradigms[0]},
+		[]*DAWG{a.Words[0], b.Words[0]}, RussianCharPolicy())
+}
+
+type shardedPredValue struct{ Count, Para, Form, Shard uint16 }
+
+// shardedPredValues returns the decoded 8-byte payloads for an exact
+// prediction suffix key (empty when the key is absent).
+func shardedPredValues(t *testing.T, pred *DAWG, key string) []shardedPredValue {
+	t.Helper()
+	var out []shardedPredValue
+	for _, it := range pred.SimilarItems(key, nil, nil) {
+		if it.Key != key {
+			continue
+		}
+		for _, v := range it.Values {
+			require.Len(t, v, 8)
+			out = append(out, shardedPredValue{
+				Count: binary.BigEndian.Uint16(v[0:2]),
+				Para:  binary.BigEndian.Uint16(v[2:4]),
+				Form:  binary.BigEndian.Uint16(v[4:6]),
+				Shard: binary.BigEndian.Uint16(v[6:8]),
+			})
+		}
+	}
+	return out
+}
+
+func TestBuildPredictionSharded(t *testing.T) {
+	d := twoShardCorpus(t)
+	require.NoError(t, BuildPrediction(d, predProductive))
+
+	require.Len(t, d.Prediction, 1, "one DAWG for prefix 0, shared by all shards")
+	assert.True(t, d.PredictionSharded)
+	assert.Equal(t, []shardedPredValue{{Count: 1, Para: 0, Form: 1, Shard: 1}},
+		shardedPredValues(t, d.Prediction[0], "на"), "«на» comes only from окна (shard 1)")
+	assert.Equal(t, []shardedPredValue{{Count: 1, Para: 0, Form: 1, Shard: 0}},
+		shardedPredValues(t, d.Prediction[0], "ки"), "«ки» comes only from кошки (shard 0)")
+	assert.ElementsMatch(t, []shardedPredValue{
+		{Count: 1, Para: 0, Form: 0, Shard: 0}, // кошка
+		{Count: 1, Para: 0, Form: 1, Shard: 1}, // окна
+	}, shardedPredValues(t, d.Prediction[0], "а"))
+}
+
+func TestBuildPredictionShardedDenseMatchesRaw(t *testing.T) {
+	raw := twoShardCorpus(t)
+	require.NoError(t, BuildPrediction(raw, predProductive))
+
+	dense := twoShardCorpus(t)
+	require.NoError(t, RecompileDense(dense))
+	require.NotNil(t, dense.Alphabet)
+	require.NoError(t, BuildPrediction(dense, predProductive))
+
+	assert.True(t, dense.PredictionSharded)
+	assert.Equal(t, raw.Prediction[0].Bytes(), dense.Prediction[0].Bytes(),
+		"keys are decoded through the alphabet, so a dense dictionary predicts the same")
 }
