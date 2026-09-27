@@ -9,7 +9,8 @@ import (
 
 // SaveTo writes the dictionary to a GMOR file — the single on-disk format.
 // Sections: meta, info, tagset, prefixes, suffixes-N, paradigms-N,
-// words.dawg-N (one set per shard, N starting at 0), prediction-N,
+// words.dawg-N (one set per shard, N starting at 0), prediction-N (or
+// pred-sharded-N, 8-byte values with a shard, for sharded prediction),
 // probability, alphabet (all three if present).
 func (x *Dictionary) SaveTo(path string) error {
 	if x == nil || x.d == nil {
@@ -69,12 +70,16 @@ func (x *Dictionary) sections(info *internal.BuildInfo) ([]internal.Section, err
 			Name: fmt.Sprintf("words.dawg-%d", i), Data: words.Bytes(), Flags: internal.CompressionNone,
 		})
 	}
+	predName := "prediction-%d"
+	if x.d.PredictionSharded {
+		predName = "pred-sharded-%d"
+	}
 	for i, pred := range x.d.Prediction {
 		if pred == nil {
 			continue
 		}
 		sections = append(sections, internal.Section{
-			Name: fmt.Sprintf("prediction-%d", i), Data: pred.Bytes(), Flags: noCompression,
+			Name: fmt.Sprintf(predName, i), Data: pred.Bytes(), Flags: noCompression,
 		})
 	}
 	if x.d.Probability != nil {

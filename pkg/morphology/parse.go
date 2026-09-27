@@ -156,10 +156,10 @@ func (x *Dictionary) predictAppend(dst []Reading, word string) []Reading {
 // word (see suffixSplits). seen dedups (word, lemma, tag) across all
 // prefixes tried by the caller and is mutated in place.
 //
-// Predictions always resolve against shard 0: prediction DAWGs are only
-// built for unsharded dictionaries (pymorphy2 imports, Builder/ImportTSV).
+// A 6-byte value (count|para|form) resolves against shard 0; an 8-byte
+// value (count|para|form|shard, sharded dictionaries) carries its shard.
+// Values naming a missing shard or paradigm are skipped.
 func (x *Dictionary) predictForPrefix(dst []Reading, id int, word string, splits []int, seen map[readingKey]bool) []Reading {
-	const predictionShard = 0
 	totalCount := 0
 
 	for i := len(splits) - 1; i >= 0; i-- {
@@ -174,8 +174,12 @@ func (x *Dictionary) predictForPrefix(dst []Reading, id int, word string, splits
 			count := int(binary.BigEndian.Uint16(v[:2]))
 			paraNum := binary.BigEndian.Uint16(v[2:4])
 			form := binary.BigEndian.Uint16(v[4:6])
+			shard := 0 // 6-byte values (prediction-N) always mean shard 0
+			if len(v) >= 8 {
+				shard = int(binary.BigEndian.Uint16(v[6:8]))
+			}
 
-			para, ok := x.paradigm(predictionShard, paraNum)
+			para, ok := x.paradigm(shard, paraNum) // false for a missing shard
 			if !ok || form >= uint16(para.Len()) {
 				return
 			}
@@ -184,7 +188,7 @@ func (x *Dictionary) predictForPrefix(dst []Reading, id int, word string, splits
 			}
 			totalCount += count
 
-			r := x.readingForm(predictionShard, wordStart+found, paraNum, form)
+			r := x.readingForm(shard, wordStart+found, paraNum, form)
 			r.Predicted = true
 			k := readingKey{r.Word, r.Normal, r.Tag}
 			if seen[k] {

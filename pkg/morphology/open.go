@@ -310,16 +310,21 @@ func parseContainer(cont *internal.Container) (*internal.Dictionary, error) {
 
 	d := internal.NewDictionary(language, tagSet, suffixes, prefixes, paradigms, words, policy)
 
-	for i := 0; ; i++ {
-		predData, _, err := cont.Section(fmt.Sprintf("prediction-%d", i))
-		if err != nil {
-			break
-		}
-		pred, err := internal.ParseDAWG(predData)
-		if err != nil {
-			return nil, err
-		}
-		d.Prediction = append(d.Prediction, pred)
+	plain, err := predictionSections(cont, "prediction-%d")
+	if err != nil {
+		return nil, err
+	}
+	sharded, err := predictionSections(cont, "pred-sharded-%d")
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case len(plain) > 0 && len(sharded) > 0:
+		return nil, fmt.Errorf("morphology: both prediction-N and pred-sharded-N sections present")
+	case len(sharded) > 0:
+		d.Prediction, d.PredictionSharded = sharded, true
+	default:
+		d.Prediction = plain
 	}
 
 	if probData, _, err := cont.Section("probability"); err == nil {
@@ -347,4 +352,21 @@ func parseContainer(cont *internal.Container) (*internal.Dictionary, error) {
 	}
 
 	return d, nil
+}
+
+// predictionSections parses the consecutive sections named by format
+// (N = 0, 1, …) up to the first missing one.
+func predictionSections(cont *internal.Container, format string) ([]*internal.DAWG, error) {
+	var out []*internal.DAWG
+	for i := 0; ; i++ {
+		data, _, err := cont.Section(fmt.Sprintf(format, i))
+		if err != nil {
+			return out, nil
+		}
+		pred, err := internal.ParseDAWG(data)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, pred)
+	}
 }
