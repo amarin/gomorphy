@@ -343,6 +343,71 @@ func guideSibling(g []byte, n uint32) byte {
 	return g[n*2+1]
 }
 
+// nextTerminal advances a guide-walk (key, stack, last) to the next
+// terminal (a node with HasValue true) reachable from stack's bottom
+// element — one step of completer's traversal, factored out to a free
+// function so both completer.next (below) and forEachValue
+// (lookup_each.go) share exactly one implementation instead of two copies
+// that could silently diverge.
+//
+// last is the previously found terminal (0 before the first call: no
+// backtrack, just find the first terminal under stack's current top).
+// Returns the updated key/stack, the new terminal index, and ok — false
+// once the walk is exhausted (stack empties out) or a followed edge turns
+// out not to exist (guide/dict mismatch).
+//
+// key and stack are taken and returned by value (slice headers only) so a
+// caller passing stack-array-backed slices (forEachValue's keyBuf/
+// stackBuf) keeps them off the heap: a slice that is only returned "leaks
+// to result", not to the heap, unlike a slice stored into a struct field
+// through a pointer-receiver method (completer's previous shape, which
+// forced the receiver — and its key/indexStack fields — to escape,
+// because completer.next/follow/findTerminal were too large to inline at
+// any of their call sites; see lookup_each.go's forEachValue doc comment
+// for the escape-analysis detail).
+func (d *DAWG) nextTerminal(key []byte, stack []uint32, last uint32) ([]byte, []uint32, uint32, bool) {
+	if len(stack) == 0 {
+		return key, stack, 0, false
+	}
+
+	index := stack[len(stack)-1]
+
+	if last != 0 {
+		for {
+			siblingLabel := guideSibling(d.guide, index)
+			if len(key) > 0 {
+				key = key[:len(key)-1]
+			}
+
+			stack = stack[:len(stack)-1]
+			if len(stack) == 0 {
+				return key, stack, 0, false
+			}
+
+			index = stack[len(stack)-1]
+			if siblingLabel != 0 {
+				if index = d.FollowByte(siblingLabel, index); index == 0 {
+					return key, stack, 0, false
+				}
+				key = append(key, siblingLabel)
+				stack = append(stack, index)
+				break
+			}
+		}
+	}
+
+	for !d.HasValue(index) {
+		label := guideChild(d.guide, index)
+		if index = d.FollowByte(label, index); index == 0 {
+			return key, stack, 0, false
+		}
+		key = append(key, label)
+		stack = append(stack, index)
+	}
+
+	return key, stack, index, true
+}
+
 // completer — traversal of a DAWG sub-automaton's values using guide.
 type completer struct {
 	dawg       *DAWG
@@ -359,56 +424,7 @@ func (c *completer) start(index uint32, prefix string) {
 }
 
 func (c *completer) next() bool {
-	if len(c.indexStack) == 0 {
-		return false
-	}
-
-	index := c.indexStack[len(c.indexStack)-1]
-
-	if c.lastIndex != 0 {
-		for {
-			siblingLabel := guideSibling(c.dawg.guide, index)
-			if len(c.key) > 0 {
-				c.key = c.key[:len(c.key)-1]
-			}
-
-			c.indexStack = c.indexStack[:len(c.indexStack)-1]
-			if len(c.indexStack) == 0 {
-				return false
-			}
-
-			index = c.indexStack[len(c.indexStack)-1]
-			if siblingLabel != 0 {
-				if index = c.follow(siblingLabel, index); index == 0 {
-					return false
-				}
-				break
-			}
-		}
-	}
-
-	return c.findTerminal(index)
-}
-
-func (c *completer) follow(label byte, index uint32) uint32 {
-	index = c.dawg.FollowByte(label, index)
-	if index == 0 {
-		return 0
-	}
-	c.key = append(c.key, label)
-	c.indexStack = append(c.indexStack, index)
-	return index
-}
-
-func (c *completer) findTerminal(index uint32) bool {
-	for !c.dawg.HasValue(index) {
-		label := guideChild(c.dawg.guide, index)
-		if index = c.dawg.FollowByte(label, index); index == 0 {
-			return false
-		}
-		c.key = append(c.key, label)
-		c.indexStack = append(c.indexStack, index)
-	}
-	c.lastIndex = index
-	return true
+	var ok bool
+	c.key, c.indexStack, c.lastIndex, ok = c.dawg.nextTerminal(c.key, c.indexStack, c.lastIndex)
+	return ok
 }
