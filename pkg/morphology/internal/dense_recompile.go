@@ -5,9 +5,11 @@ import (
 	"fmt"
 )
 
-// RecompileDense rebuilds every shard of d.Words under one dense 1-byte
-// alphabet shared across the whole dictionary — not a separate alphabet
-// per shard, see docs/en/implementation/pymorphy2-dense-alphabet.md's
+// RecompileDense rebuilds every shard of d.Words under one dense alphabet
+// shared across the whole dictionary — 1 byte per rune, or 2 bytes when
+// the dictionary has more than 254 distinct runes (NewDenseAlphabetFor) —
+// not a separate alphabet per shard, see
+// docs/en/implementation/pymorphy2-dense-alphabet.md's
 // "Agreed design decisions", item 1 — built from the union of every
 // shard's wordforms. Paradigms/Suffixes/Prefixes/Prediction/Probability
 // are left untouched: none of them depend on words.dawg's key encoding
@@ -40,7 +42,7 @@ func RecompileDense(d *Dictionary) error {
 		shards[i] = sd
 	}
 
-	alphabet, err := NewDenseAlphabet(1, allWords)
+	alphabet, err := NewDenseAlphabetFor(allWords)
 	if err != nil {
 		return fmt.Errorf("internal: recompile dense: build alphabet: %w", err)
 	}

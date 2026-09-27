@@ -524,7 +524,7 @@ func mergeAlphabet(base *Dictionary, newWords []string) (Alphabet, bool, error) 
 		if fits {
 			return da, false, nil
 		}
-		a, err := denseAlphabetFor(append([]string{string(da.Runes())}, newWords...))
+		a, err := NewDenseAlphabetFor(append([]string{string(da.Runes())}, newWords...))
 		return a, true, err
 	}
 	corpus := slices.Clone(newWords)
@@ -544,15 +544,8 @@ func mergeAlphabet(base *Dictionary, newWords []string) (Alphabet, bool, error) 
 			return nil, false, walkErr
 		}
 	}
-	a, err := denseAlphabetFor(corpus)
+	a, err := NewDenseAlphabetFor(corpus)
 	return a, true, err
-}
-
-func denseAlphabetFor(corpus []string) (*DenseAlphabet, error) {
-	if a, err := NewDenseAlphabet(1, corpus); err == nil {
-		return a, nil
-	}
-	return NewDenseAlphabet(2, corpus)
 }
 
 // shardPairs returns a base shard's readings as plain-text pairs,
