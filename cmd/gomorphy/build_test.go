@@ -91,9 +91,37 @@ func TestBuildCommand_UniMorph_UnsupportedLanguage(t *testing.T) {
 	assert.Error(t, root.Execute())
 }
 
+// threeCatsXML is a minimal OpenCorpora dict.xml with three lemmas sharing
+// one paradigm (like fixtureXML's, nomn form only) — pymorphy2-style
+// pruning (≥3 lemmas per paradigm) needs that to predict an unknown word.
+const threeCatsXML = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary corpus="opencorpora" russian="yes">
+ <grammemes>
+  <grammeme id="NOUN">сущ</grammeme>
+  <grammeme id="nomn">им.</grammeme>
+  <grammeme id="anim">од.</grammeme>
+  <grammeme id="masc">м.</grammeme>
+  <grammeme id="sing">ед.</grammeme>
+ </grammemes>
+ <lemmata>
+  <lemma id="1" text="кот">
+   <l t="кот"><g v="NOUN"/><g v="anim"/><g v="masc"/><g v="sing"/></l>
+   <f t="кот"><g v="nomn"/></f>
+  </lemma>
+  <lemma id="2" text="лот">
+   <l t="лот"><g v="NOUN"/><g v="anim"/><g v="masc"/><g v="sing"/></l>
+   <f t="лот"><g v="nomn"/></f>
+  </lemma>
+  <lemma id="3" text="скот">
+   <l t="скот"><g v="NOUN"/><g v="anim"/><g v="masc"/><g v="sing"/></l>
+   <f t="скот"><g v="nomn"/></f>
+  </lemma>
+ </lemmata>
+</dictionary>`
+
 func TestBuildCommand_NoPrediction(t *testing.T) {
 	xmlPath := filepath.Join(t.TempDir(), "dict.xml")
-	require.NoError(t, os.WriteFile(xmlPath, []byte(fixtureXML("кот")), 0o644))
+	require.NoError(t, os.WriteFile(xmlPath, []byte(threeCatsXML), 0o644))
 
 	for _, noPrediction := range []bool{false, true} {
 		outPath := filepath.Join(t.TempDir(), "out.dat")

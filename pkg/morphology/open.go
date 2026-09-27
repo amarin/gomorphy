@@ -49,13 +49,19 @@ type XMLOptions struct {
 	Dense bool
 	// NoPrediction skips the ending-based prediction for
 	// out-of-dictionary words, built by default: Parse then returns nil
-	// for a word the dictionary does not contain.
+	// for a word the dictionary does not contain. Prediction is pruned
+	// like pymorphy2's (paradigms of at least 3 lemmas, endings attested
+	// at least twice, the most attested form per ending and part of
+	// speech).
 	NoPrediction bool
 }
 
 // CompileFromXMLWithOptions compiles an OpenCorpora dictionary from
 // dict.xml. Unless opts.NoPrediction is set it builds ending-based
 // prediction, so Parse returns Predicted readings for unknown words.
+// Prediction is pruned like pymorphy2's (paradigms of at least 3 lemmas,
+// endings attested at least twice, the most attested form per ending and
+// part of speech).
 func CompileFromXMLWithOptions(r interface{ Read([]byte) (int, error) }, opts XMLOptions) (*Dictionary, error) {
 	d, err := opencorpora.CompileFromXML(r, opts.Progress)
 	if err != nil {
@@ -157,7 +163,7 @@ func CompileFromUniMorphFileDense(path string, opts UniMorphOptions) (*Dictionar
 // same order Builder uses.
 func finishCompiled(d *internal.Dictionary, dense, prediction bool) (*Dictionary, error) {
 	if prediction {
-		if err := internal.BuildPrediction(d, productive); err != nil {
+		if err := internal.BuildPredictionPruned(d, productive, internal.ImportPredictionPruning); err != nil {
 			return nil, fmt.Errorf("morphology: build prediction: %w", err)
 		}
 	}

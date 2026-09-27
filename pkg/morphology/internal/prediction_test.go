@@ -229,6 +229,80 @@ func TestBuildPredictionSharded(t *testing.T) {
 	}, shardedPredValues(t, d.Prediction[0], "а"))
 }
 
+// pruningCorpus: paradigm A (кошка/кошки, мышка/мышки, пешка/пешки — 3
+// lemmas), paradigm B (окно/окна — 1 lemma), paradigm C (ток/токи, сок/соки,
+// бок/боки, рок/роки — 4 lemmas) and paradigm D (single-form ADJS легки,
+// мягки, жарки — 3 lemmas). All tags productive.
+func pruningCorpus(t *testing.T) *Dictionary {
+	t.Helper()
+	var entries []BuildEntry
+	for _, s := range []string{"кошк", "мышк", "пешк"} {
+		entries = append(entries,
+			BuildEntry{Word: s + "а", Lemma: s + "а", Tag: "NOUN,femn,sing,nomn"},
+			BuildEntry{Word: s + "и", Lemma: s + "а", Tag: "NOUN,femn,sing,gent"})
+	}
+	entries = append(entries,
+		BuildEntry{Word: "окно", Lemma: "окно", Tag: "NOUN,neut,sing,nomn"},
+		BuildEntry{Word: "окна", Lemma: "окно", Tag: "NOUN,neut,sing,gent"})
+	for _, s := range []string{"ток", "сок", "бок", "рок"} {
+		entries = append(entries,
+			BuildEntry{Word: s, Lemma: s, Tag: "NOUN,masc,sing,nomn"},
+			BuildEntry{Word: s + "и", Lemma: s, Tag: "NOUN,masc,plur,nomn"})
+	}
+	for _, w := range []string{"легки", "мягки", "жарки"} {
+		entries = append(entries, BuildEntry{Word: w, Lemma: w, Tag: "ADJS,plur"})
+	}
+	d, err := BuildDictionaryFromEntries(BuildOptions{}, entries)
+	require.NoError(t, err)
+	require.Len(t, d.Words, 1)
+	return d
+}
+
+func TestBuildPredictionPrunedZeroIsUnpruned(t *testing.T) {
+	a, b := pruningCorpus(t), pruningCorpus(t)
+	require.NoError(t, BuildPrediction(a, predProductive))
+	require.NoError(t, BuildPredictionPruned(b, predProductive, PredictionPruning{}))
+	assert.Equal(t, a.Prediction[0].Bytes(), b.Prediction[0].Bytes())
+	assert.Equal(t, a.PredictionSharded, b.PredictionSharded)
+}
+
+func TestBuildPredictionPrunedParadigmPopularity(t *testing.T) {
+	d := pruningCorpus(t)
+	require.NoError(t, BuildPredictionPruned(d, predProductive, PredictionPruning{MinParadigmPopularity: 3}))
+	assert.Empty(t, predValues(t, d.Prediction[0], "на"), "окно's paradigm has 1 lemma")
+	assert.Empty(t, predValues(t, d.Prediction[0], "кно"))
+	pA, _ := buildLookup(t, d, "кошка")
+	assert.Equal(t, []struct{ Count, Para, Form uint16 }{{3, pA, 0}}, predValues(t, d.Prediction[0], "шка"))
+}
+
+func TestBuildPredictionPrunedEndingFreq(t *testing.T) {
+	d := pruningCorpus(t)
+	require.NoError(t, BuildPredictionPruned(d, predProductive, PredictionPruning{MinEndingFreq: 2}))
+	assert.Empty(t, predValues(t, d.Prediction[0], "ошка"), "only кошка ends in «ошка»")
+	assert.Empty(t, predValues(t, d.Prediction[0], "кошка"))
+	assert.NotEmpty(t, predValues(t, d.Prediction[0], "шка"), "кошка, мышка, пешка")
+	assert.Empty(t, predValues(t, d.Prediction[0], "на"), "only окна ends in «на»")
+	assert.Empty(t, predValues(t, d.Prediction[0], "кна"))
+	assert.NotEmpty(t, predValues(t, d.Prediction[0], "а"), "кошка, мышка, пешка, окна")
+}
+
+func TestBuildPredictionPrunedMaxFormsPerClass(t *testing.T) {
+	d := pruningCorpus(t)
+	require.NoError(t, BuildPredictionPruned(d, predProductive, PredictionPruning{MaxFormsPerClass: 1}))
+	pC, fC := buildLookup(t, d, "токи")
+	pD, fD := buildLookup(t, d, "легки")
+	// «ки»: NOUN A/1 (кошки…, 3), NOUN C/1 (токи…, 4), ADJS D/0 (легки…, 3):
+	// one per class — C wins NOUN, D is the only ADJS.
+	assert.ElementsMatch(t, []struct{ Count, Para, Form uint16 }{
+		{4, pC, fC},
+		{3, pD, fD},
+	}, predValues(t, d.Prediction[0], "ки"))
+}
+
+func TestImportPredictionPruningIsPymorphyDefault(t *testing.T) {
+	assert.Equal(t, PredictionPruning{MinEndingFreq: 2, MinParadigmPopularity: 3, MaxFormsPerClass: 1}, ImportPredictionPruning)
+}
+
 func TestBuildPredictionShardedDenseMatchesRaw(t *testing.T) {
 	raw := twoShardCorpus(t)
 	require.NoError(t, BuildPrediction(raw, predProductive))
