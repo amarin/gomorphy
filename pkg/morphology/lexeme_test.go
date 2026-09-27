@@ -124,3 +124,57 @@ func TestFormsRejectsForeignReadings(t *testing.T) {
 	var nilDict *morphology.Dictionary
 	assert.Nil(t, nilDict.Forms(d.Parse("кота")[0]))
 }
+
+func koshkaDict(t *testing.T) *morphology.Dictionary {
+	t.Helper()
+	return buildFromTriples(t,
+		[3]string{"кошка", "кошка", "NOUN,anim,femn,sing,nomn"},
+		[3]string{"кошки", "кошка", "NOUN,anim,femn,sing,gent"},
+		[3]string{"кошке", "кошка", "NOUN,anim,femn,sing,datv"},
+		[3]string{"кошки", "кошка", "NOUN,anim,femn,plur,nomn"},
+		[3]string{"кошек", "кошка", "NOUN,anim,femn,plur,gent"},
+	)
+}
+
+func TestInflect(t *testing.T) {
+	d := koshkaDict(t)
+	rs := d.Parse("кошка")
+	require.Len(t, rs, 1)
+	r := rs[0]
+
+	// sing,nomn → plur: plur,nomn differs in 2 grammemes (sing/plur),
+	// plur,gent in 4.
+	assert.Equal(t, []wordTag{
+		{"кошки", "NOUN,anim,femn,plur,nomn"},
+		{"кошек", "NOUN,anim,femn,plur,gent"},
+	}, wordTags(d.Inflect(r, "plur")))
+
+	assert.Equal(t, []wordTag{
+		{"кошки", "NOUN,anim,femn,sing,gent"},
+		{"кошек", "NOUN,anim,femn,plur,gent"},
+	}, wordTags(d.Inflect(r, "gent")))
+
+	assert.Equal(t, []wordTag{{"кошек", "NOUN,anim,femn,plur,gent"}},
+		wordTags(d.Inflect(r, "plur", "gent")))
+	assert.Equal(t, "кошке", d.Inflect(r, "datv")[0].Word)
+	assert.Nil(t, d.Inflect(r, "ablt"), "no such form")
+
+	all := d.Inflect(r)
+	require.Len(t, all, 5)
+	assert.Equal(t, "кошка", all[0].Word, "r itself ranks first")
+}
+
+func TestInflectFromNonLemmaForm(t *testing.T) {
+	d := koshkaDict(t)
+	rs := d.Parse("кошек")
+	require.Len(t, rs, 1)
+	got := d.Inflect(rs[0], "sing", "nomn")
+	require.Len(t, got, 1)
+	assert.Equal(t, "кошка", got[0].Word)
+	assert.Equal(t, "кошка", got[0].Normal)
+}
+
+func TestInflectForeignReading(t *testing.T) {
+	d := koshkaDict(t)
+	assert.Nil(t, d.Inflect(morphology.Reading{}, "gent"))
+}
