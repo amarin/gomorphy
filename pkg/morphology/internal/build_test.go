@@ -235,3 +235,40 @@ func TestBuildDictionaryFromEntriesProgress(t *testing.T) {
 		assert.LessOrEqual(t, c[0], c[1])
 	}
 }
+
+// «знать» is both a NOUN (nobility) and a verb (to know). The verb's INFN,
+// VERB and PRTF forms are one lexeme (one POS class).
+func TestBuildDictionaryFromEntriesSplitsLemmaByPOSClass(t *testing.T) {
+	entries := []BuildEntry{
+		{Word: "знать", Lemma: "знать", Tag: "NOUN,inan,femn,sing,nomn"},
+		{Word: "знати", Lemma: "знать", Tag: "NOUN,inan,femn,sing,gent"},
+		{Word: "знать", Lemma: "знать", Tag: "INFN,impf,tran"},
+		{Word: "знаю", Lemma: "знать", Tag: "VERB,impf,tran,sing,1per,pres,indc"},
+		{Word: "знающий", Lemma: "знать", Tag: "PRTF,impf,tran,pres,actv,masc,sing,nomn"},
+	}
+	dict, err := BuildDictionaryFromEntries(BuildOptions{}, entries)
+	require.NoError(t, err)
+
+	require.Len(t, dict.Paradigms[0], 2, "one NOUN and one VERB-class paradigm")
+	pNoun, _ := buildLookup(t, dict, "знати")
+	pVerb, fVerb := buildLookup(t, dict, "знаю")
+	pPrtf, _ := buildLookup(t, dict, "знающий")
+	assert.NotEqual(t, pNoun, pVerb)
+	assert.Equal(t, pVerb, pPrtf)
+	assert.Equal(t, uint16(1), fVerb, "form 0 of the verb paradigm is its INFN «знать»")
+	assert.Equal(t, "INFN,impf,tran", dict.TagSet.TagName(dict.Paradigms[0][pVerb].Tag(0)))
+}
+
+// A tag-less entry joins the lemma's first group, and a class-less group
+// is adopted by the first tagged entry: same single paradigm as before.
+func TestBuildDictionaryFromEntriesEmptyTagJoinsLemmaGroup(t *testing.T) {
+	entries := []BuildEntry{
+		{Word: "кот", Lemma: "кот", Tag: ""},
+		{Word: "кота", Lemma: "кот", Tag: "NOUN,anim,masc,sing,gent"},
+		{Word: "коту", Lemma: "кот", Tag: ""},
+	}
+	dict, err := BuildDictionaryFromEntries(BuildOptions{}, entries)
+	require.NoError(t, err)
+	require.Len(t, dict.Paradigms[0], 1)
+	assert.Equal(t, 3, dict.Paradigms[0][0].Len())
+}

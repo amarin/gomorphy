@@ -72,6 +72,12 @@ func NewBuilder(opts BuilderOptions) *Builder {
 // wordform is its own lemma (auto-lemma). word and lemma are lower-cased
 // (strings.ToLower): Parse lower-cases its input, so a mixed-case form
 // would otherwise be unreachable. tag is stored verbatim.
+//
+// Forms are grouped into lexemes (paradigms) by lemma and part-of-speech
+// class — the tag's first grammeme, with INFN/VERB/PRTF/PRTS/GRND,
+// ADJF/ADJS/COMP and V/V.PTCP/V.CVB/V.MSDR each counted as one class — so
+// «знать» NOUN and «знать» INFN become two lemmas. A form with an empty or
+// POS-less tag joins the lemma's first lexeme.
 func (b *Builder) AddForm(word, lemma, tag string) error {
 	if b.closed {
 		return ErrBuilderClosed

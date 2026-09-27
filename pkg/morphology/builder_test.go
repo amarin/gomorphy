@@ -206,3 +206,24 @@ func TestBuilderPrediction(t *testing.T) {
 	assert.Equal(t, "пилот", readings[0].Normal)
 	assert.Equal(t, "NOUN,anim,masc,sing,gent", readings[0].Tag)
 }
+
+func TestBuilderSplitsHomonymousLemmasByPOS(t *testing.T) {
+	d := buildFromTriples(t,
+		[3]string{"знать", "знать", "NOUN,inan,femn,sing,nomn"},
+		[3]string{"знати", "знать", "NOUN,inan,femn,sing,gent"},
+		[3]string{"знать", "знать", "INFN,impf,tran"},
+		[3]string{"знаю", "знать", "VERB,impf,tran,sing,1per,pres,indc"},
+	)
+
+	refs := d.Lemma("знать")
+	require.Len(t, refs, 2, "a NOUN lemma and an INFN lemma")
+	assert.NotEqual(t, refs[0].Para, refs[1].Para)
+
+	verb := d.Lemma("знаю")
+	require.Len(t, verb, 1)
+	assert.Equal(t, "INFN,impf,tran", verb[0].Tag)
+
+	noun := d.Lemma("знати")
+	require.Len(t, noun, 1)
+	assert.Equal(t, "NOUN,inan,femn,sing,nomn", noun[0].Tag)
+}

@@ -50,12 +50,14 @@ type buildForm struct {
 	tag  string
 }
 
-// lemmaGroup accumulates all forms of one lemma. Grouping is by lemma
-// text in insertion order, so the output (shard assignment, paradigm and
-// suffix ids, DAWG contents) is deterministic across runs of the same
+// lemmaGroup accumulates all forms of one lexeme: one lemma text and one
+// part-of-speech class (POSClass; "" until a tagged form arrives). Groups
+// are kept in creation order, so the output (shard assignment, paradigm
+// and suffix ids, DAWG contents) is deterministic across runs of the same
 // input rather than dependent on Go's randomized map iteration order.
 type lemmaGroup struct {
 	text  string
+	pos   string
 	forms []buildForm
 	seen  map[buildFormKey]bool // "text\x00tag" -> already appended
 }
@@ -232,8 +234,9 @@ func lcp(texts []string) string {
 //
 // Pipeline:
 //
-//  1. Entries are grouped by lemma text in insertion order (an empty
-//     lemma falls back to the entry's own word).
+//  1. Entries are grouped by (lemma text, POSClass of the tag) in insertion
+//     order (an empty lemma falls back to the entry's own word; a POS-less
+//     entry joins the lemma's first group).
 //  2. For each lemma, form 0 is fixed as the lemma itself (buildForms),
 //     then the LCP-stem of all its forms (including form 0) is computed.
 //  3. Each form -> (suffix_id, tag_id) goes into the current shard's
@@ -266,23 +269,41 @@ func BuildDictionaryFromEntries(opts BuildOptions, entries []BuildEntry) (*Dicti
 	}
 	tagSet := NewTagSet(tagSetName)
 
-	// Phase 1: group entries by lemma text, preserving first-appearance
-	// order so the resulting .dat is deterministic across runs of the same
-	// input.
-	var order []string
-	byLemma := make(map[string]*lemmaGroup)
+	// Phase 1: group entries by (lemma text, POS class) in first-appearance
+	// order, so homonymous lemmas of different parts of speech («знать»
+	// NOUN / INFN) get separate paradigms while one lexeme's INFN/VERB/PRTF…
+	// forms stay together. A POS-less entry joins the lemma's first group.
+	var order []*lemmaGroup
+	byLemma := make(map[string][]*lemmaGroup)
+	groupFor := func(lemma, pos string) *lemmaGroup {
+		groups := byLemma[lemma]
+		if pos == "" && len(groups) > 0 {
+			return groups[0]
+		}
+		if pos != "" {
+			for _, g := range groups {
+				if g.pos == pos {
+					return g
+				}
+			}
+			for _, g := range groups {
+				if g.pos == "" {
+					g.pos = pos
+					return g
+				}
+			}
+		}
+		g := &lemmaGroup{text: lemma, pos: pos}
+		byLemma[lemma] = append(groups, g)
+		order = append(order, g)
+		return g
+	}
 	for _, e := range entries {
 		lemma := e.Lemma
 		if lemma == "" {
 			lemma = e.Word
 		}
-		g, ok := byLemma[lemma]
-		if !ok {
-			g = &lemmaGroup{text: lemma}
-			byLemma[lemma] = g
-			order = append(order, lemma)
-		}
-		g.add(e.Word, e.Tag)
+		groupFor(lemma, POSClass(e.Tag)).add(e.Word, e.Tag)
 	}
 
 	// Phase 2: build suffix text -> ID map and extract paradigms, one
@@ -296,8 +317,7 @@ func BuildDictionaryFromEntries(opts BuildOptions, entries []BuildEntry) (*Dicti
 	// internal.Dictionary contract other importers use.
 	prefixList := []string{""}
 
-	for _, lemma := range order {
-		g := byLemma[lemma]
+	for _, g := range order {
 		forms := buildForms(g)
 
 		stemInput := make([]string, len(forms))
