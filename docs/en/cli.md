@@ -173,6 +173,12 @@ Embedding a raw (non-dense) dictionary is Go-API-only: call
 `CompileFromXMLFile`, or `morphology.CompileFromUniMorph`/
 `CompileFromUniMorphFile` directly instead of going through the CLI.
 
+Since 1.3.0, `build opencorpora` and `build unimorph` also build
+ending-based prediction by default, so `lookup`/`Parse` return a guessed
+reading for a word missing from the source instead of nothing; use
+`--no-prediction` to keep the old behaviour. `build pymorphy` always had
+prediction (from the pymorphy2 source itself) and rejects the flag.
+
 Flags:
 
 | Flag | Description |
@@ -180,6 +186,7 @@ Flags:
 | `-i, --input <path>` | compile this path directly, bypassing the loader |
 | `-o, --output <path>` | path to the output `.dat` file (default `.data/<type>/<type>.dat`) |
 | `--lang <code>` | `unimorph` only; the language to build (default `ru`, currently the only accepted value) |
+| `--no-prediction` | `opencorpora`/`unimorph` only; skip ending-based prediction for out-of-dictionary words (built by default since 1.3.0, pruned like pymorphy2's own dictionary compiler — paradigms used by at least 3 lemmas, endings attested at least twice, the most attested form per ending and part of speech). Rejected for `build pymorphy`: its prediction comes from the pymorphy2 source files, there's nothing to skip |
 
 ### `update` — download + unpack + build in one command
 

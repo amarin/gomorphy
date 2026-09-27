@@ -35,6 +35,11 @@ full list with links.
   form) per ending and part of speech) — Builder, ImportTSV and `Merge`
   keep unpruned prediction. File growth: OpenCorpora +39.5%
   (10.7 → 14.9 MB), UniMorph +13.3% (11.1 → 12.6 MB).
+- Docs: scenarios 16 ("Word forms: decline or conjugate a word") and 17
+  ("Work with grammemes without parsing tag strings") in
+  [docs/en/scenarios.md](docs/en/scenarios.md) /
+  [docs/ru/scenarios.md](docs/ru/scenarios.md); example
+  [examples/inflect](examples/inflect/main.go).
 
 ### Changed
 - `CompileFromXML*`/`CompileFromUniMorph*` and `gomorphy build|update`

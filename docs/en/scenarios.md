@@ -32,6 +32,8 @@ Examples: `go run ./examples/<name>` from the repository root
 | 13 | [Compare tags across dictionaries](#13-compare-tags-across-dictionaries) | 1.0.0 | [tagmap](../../examples/tagmap/main.go) |
 | 14 | [Inspect a dictionary by hand](#14-inspect-a-dictionary-by-hand) | 1.0.0 | CLI `lookup`, `cli` |
 | 15 | [Download source dictionaries from Go code](#15-download-source-dictionaries-from-go-code) | 1.0.0 | [pymorphy](../../examples/pymorphy/main.go) |
+| 16 | [Word forms: decline or conjugate a word](#16-word-forms-decline-or-conjugate-a-word) | 1.3.0 | [inflect](../../examples/inflect/main.go) |
+| 17 | [Work with grammemes without parsing tag strings](#17-work-with-grammemes-without-parsing-tag-strings) | 1.3.0 | `ExampleHasGrammeme` |
 
 ## 1. Morphological analysis of a word
 
@@ -62,6 +64,18 @@ dictionary reading from a guess, or opt out at build time with
 `gomorphy build opencorpora|unimorph --no-prediction`, in which case
 `Parse` still returns `nil` for an unknown word.
 
+Parsing many words in a loop (e.g. every token of a document)? Reuse a
+result buffer with `Dictionary.ParseAppend(dst, word)` — it appends to
+`dst` instead of allocating a fresh slice per call.
+
+```go
+var buf []morphology.Reading
+for _, word := range tokens {
+    buf = d.ParseAppend(buf[:0], word)
+    // ... use buf ...
+}
+```
+
 **Available since:** 1.0.0.
 
 **History:**
@@ -70,6 +84,7 @@ dictionary reading from a guess, or opt out at build time with
 - 1.3.0 — OpenCorpora and UniMorph imports build prediction by default too
   (previously pymorphy2/`Builder`/`ImportTSV` only); `--no-prediction`
   opts out.
+- 1.3.0 — `Dictionary.ParseAppend` reuses a caller-supplied slice.
 
 ## 2. Normalize words to lemmas for search and indexing
 
@@ -93,6 +108,9 @@ for _, l := range d.Lemma("кота") {
 - 1.2.0 — `LemmaRef.Predicted` is true when every reading behind the lemma
   was guessed; skip such lemmas if the index must hold dictionary words
   only.
+- 1.3.0 — OpenCorpora and UniMorph imports build prediction by default too,
+  so `Lemma` can return a `Predicted` lemma for these sources as well;
+  `--no-prediction` opts out.
 
 ## 3. Tell a dictionary word from a guess
 
@@ -118,6 +136,10 @@ d.Parse("бота")[0].Predicted    // true — a guess
 
 **Available since:** 1.2.0. Before 1.2.0 a guess could not be told from a
 dictionary reading.
+
+**History:**
+- 1.3.0 — matters for OpenCorpora and UniMorph too, since their imports
+  now predict by default (see [scenario 1](#1-morphological-analysis-of-a-word)).
 
 ## 4. Dictionary-based named-entity lookup
 
@@ -187,6 +209,11 @@ prediction is built from your own words. The result round-trips through
   (see [scenario 9](#9-её-and-other-character-substitutions)).
 - 1.2.1 — a stream with no entries is an error (`ErrNoEntries`), as for
   `Builder`; it used to give an empty dictionary.
+- 1.3.0 — entries are grouped into lexemes by lemma **and** part-of-speech
+  class: a homonym like «знать» NOUN (nobility) and «знать» INFN (to know)
+  becomes two lemmas instead of one mixed paradigm. A dictionary rebuilt
+  from homonymous input differs from 1.2.0 output; existing files are
+  unaffected.
 
 ## 6. Extend or override a base dictionary
 
@@ -210,6 +237,9 @@ prediction. For the alternative that keeps files separate, see
 - 1.1.0 — the merge is structural (Stage 19.1): earlier builds of the
   feature rebuilt the output from scratch and lost prediction,
   probabilities and the tag-set name.
+- 1.3.0 — `MergeOptions.RebuildPrediction`/`merge --rebuild-prediction`
+  works for a merged dictionary with any number of shards (was
+  single-shard only).
 
 ## 7. Query several dictionaries at once
 
@@ -229,6 +259,9 @@ registration order; `Reading.Dict` (and `LemmaRef.Dict`,
 
 **History:**
 - 1.2.0 — `MultiDictionary.IsKnown`.
+- 1.3.0 — `MultiDictionary.Forms`/`Inflect`, dispatching to the member
+  dictionary a reading came from (`Reading.Dict`); see
+  [scenario 16](#16-word-forms-decline-or-conjugate-a-word).
 
 ## 8. Typos and suggestions
 
@@ -308,6 +341,10 @@ to have the same language.
 
 **History:**
 - 1.2.0 — non-Russian dictionaries no longer get е→ё by default.
+- 1.3.0 — `Builder`/`ImportTSV` (and the `*Dense` importers) fall back to a
+  2-byte alphabet instead of failing when the wordforms use more than 254
+  distinct characters — languages with large alphabets or mixed scripts
+  are no longer capped at 254.
 
 ## 11. Ship a dictionary inside the binary; Windows
 
@@ -412,3 +449,59 @@ already-downloaded directory).
   used to stay), files go under the given data path (not `./.data`),
   downloads are atomic and check the HTTP status, and `Sync(true)` makes
   no network requests.
+
+## 16. Word forms: decline or conjugate a word
+
+**Task.** Given a word, produce another grammatical form of the same
+lexeme — plural, a different case, a different tense — e.g. to inflect
+«кот» into «котов» (plural genitive) for a sentence template.
+
+**How.** `Dictionary.Parse(word)` a reading, then `Dictionary.Forms(r)`
+for every form of its lexeme (form 0 is the lemma) or
+`Dictionary.Inflect(r, grammemes...)` for the forms that contain every
+grammeme in `grammemes`, best match first (fewest grammemes differing
+from `r`'s own tag). Both work the same on a `Predicted` reading: the
+forms come from the predicted paradigm and are as much a guess as the
+reading itself — check `Reading.Predicted` if that matters. On a
+`MultiDictionary`, use the equivalent methods, which dispatch to the
+member dictionary the reading came from (`Reading.Dict`).
+
+```go
+r := d.Parse("кот")[0]
+for _, f := range d.Inflect(r, "plur", "gent") {
+    fmt.Println(f.Word) // котов
+}
+```
+
+**Example:** [inflect](../../examples/inflect/main.go),
+`ExampleDictionary_Forms`, `ExampleDictionary_Inflect`.
+
+**Available since:** 1.3.0.
+
+## 17. Work with grammemes without parsing tag strings
+
+**Task.** Check a single grammatical feature of a tag — is it genitive?
+plural? what part of speech? — without splitting the native tag string by
+hand and without hard-coding its separators.
+
+**How.** `Grammemes(tag)` splits a native tag into its grammeme tokens;
+separators are `,`, space and `;`, which covers every tag format gomorphy
+imports (OpenCorpora/pymorphy2 `"NOUN,anim,masc,Surn sing,ablt"`, UniMorph
+`"N;GEN;SG"`). `HasGrammeme(tag, g)` checks one grammeme without
+allocating; `Reading.HasGrammeme(g)` is the same check on a reading's own
+tag. `POS(tag)` returns the tag's first grammeme — the part of speech in
+every format gomorphy imports. These read the native tag as-is; to
+compare a grammeme across dictionary sources that use different tag
+vocabularies, normalize with `tagmap` first
+([scenario 13](#13-compare-tags-across-dictionaries)).
+
+```go
+r := d.Parse("кота")[0]
+morphology.Grammemes(r.Tag)     // ["NOUN" "anim" "masc" "sing" "gent"]
+r.HasGrammeme("gent")           // true
+morphology.POS(r.Tag)           // "NOUN"
+```
+
+**Example:** `ExampleHasGrammeme`, [inflect](../../examples/inflect/main.go).
+
+**Available since:** 1.3.0.
