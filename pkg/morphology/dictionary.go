@@ -37,7 +37,27 @@
 // back to ending-based prediction for words the dictionary does not have;
 // such results carry [Reading].Predicted / [LemmaRef].Predicted.
 // [Dictionary.IsKnown] checks membership without predicting — the building
-// block for dictionary-based named-entity lookup.
+// block for dictionary-based named-entity lookup. Since 1.3.0 the
+// OpenCorpora and UniMorph compile helpers ([CompileFromXML],
+// [CompileFromUniMorph], …) also build prediction by default, pruned like
+// pymorphy2's own dictionary compiler; opt out with
+// [XMLOptions].NoPrediction / [UniMorphOptions].NoPrediction (see
+// [CompileFromXMLWithOptions]).
+//
+// # Word forms and tags
+//
+// [Dictionary.Forms] returns every wordform of a reading's lexeme (form 0
+// is the lemma), for a dictionary or a predicted reading alike; see
+// ExampleDictionary_Forms. [Dictionary.Inflect] narrows that to the forms
+// matching a set of grammemes, best match first; see
+// ExampleDictionary_Inflect. [MultiDictionary] has the same two methods,
+// dispatching by [Reading].Dict. [Grammemes], [HasGrammeme] and [POS] read
+// a native tag's grammemes ("NOUN,anim,masc,sing,gent",
+// "N;GEN;SG", …) without splitting the string by hand; [Reading.HasGrammeme]
+// is the same check on a reading's own tag; see ExampleHasGrammeme.
+// [Dictionary.ParseAppend] is [Dictionary.Parse] that appends to a
+// caller-supplied slice instead of allocating one, for parsing many words
+// in a loop with one reused buffer.
 //
 // # Character policy
 //

@@ -659,3 +659,98 @@ func ExampleMultiDictionary_IsKnown() {
 	// Output:
 	// true true false
 }
+
+// ExampleHasGrammeme shows working with a tag's grammemes without parsing
+// the native string yourself: Grammemes splits it into tokens, HasGrammeme
+// checks one, and POS returns the first grammeme (the part of speech in
+// every tag format gomorphy imports).
+func ExampleHasGrammeme() {
+	d := mustCompileExampleDict()
+
+	r := d.Parse("кота")[0]
+	fmt.Println(morphology.Grammemes(r.Tag))
+	fmt.Println(r.HasGrammeme("gent"), r.HasGrammeme("nomn"))
+	fmt.Println(morphology.POS(r.Tag))
+	// Output:
+	// [NOUN anim masc sing gent]
+	// true false
+	// NOUN
+}
+
+// ExampleDictionary_ParseAppend shows reusing a result buffer across words
+// to avoid allocating a new slice per call — useful when parsing many
+// words in a loop (e.g. every token of a document).
+func ExampleDictionary_ParseAppend() {
+	d := mustCompileExampleDict()
+
+	var buf []morphology.Reading
+	for _, word := range []string{"кота", "код"} {
+		buf = buf[:0] // reuse the backing array
+		buf = d.ParseAppend(buf, word)
+		for _, r := range buf {
+			fmt.Println(word, r.Normal, r.Tag)
+		}
+	}
+	// Output:
+	// кота кот NOUN,anim,masc,sing,gent
+	// код код NOUN,inan,masc,sing,nomn
+}
+
+// exampleParadigmXML3 is a minimal OpenCorpora dict.xml fragment with three
+// lemmas ("кот", "лот", "скот") sharing one paradigm (nomn/gent) — the
+// smallest input the 1.3.0 pruning keeps: a paradigm needs at least 3
+// lemmas and an ending at least 2 attestations to be predicted (see
+// docs/en/implementation/ner-support.md).
+const exampleParadigmXML3 = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary corpus="opencorpora" russian="yes">
+ <grammemes>
+  <grammeme id="NOUN">существительное</grammeme>
+  <grammeme id="nomn">им. п.</grammeme>
+  <grammeme id="gent">род. п.</grammeme>
+  <grammeme id="inan">неодуш.</grammeme>
+  <grammeme id="masc">м. р.</grammeme>
+  <grammeme id="sing">ед. ч.</grammeme>
+ </grammemes>
+ <lemmata>
+  <lemma id="1" text="кот">
+   <l t="кот"><g v="NOUN"/><g v="inan"/><g v="masc"/><g v="sing"/></l>
+   <f t="кот"><g v="nomn"/></f>
+   <f t="кота"><g v="gent"/></f>
+  </lemma>
+  <lemma id="2" text="лот">
+   <l t="лот"><g v="NOUN"/><g v="inan"/><g v="masc"/><g v="sing"/></l>
+   <f t="лот"><g v="nomn"/></f>
+   <f t="лота"><g v="gent"/></f>
+  </lemma>
+  <lemma id="3" text="скот">
+   <l t="скот"><g v="NOUN"/><g v="inan"/><g v="masc"/><g v="sing"/></l>
+   <f t="скот"><g v="nomn"/></f>
+   <f t="скота"><g v="gent"/></f>
+  </lemma>
+ </lemmata>
+</dictionary>`
+
+// ExampleCompileFromXMLWithOptions shows opting out of ending-based
+// prediction (built by default since 1.3.0): with NoPrediction, an unknown
+// word ("бота") is not guessed and Parse returns nil, like before 1.3.0.
+// Without it, «бота» is predicted like «кота» — the dictionary's three
+// lemmas share a paradigm, so the pruned prediction still keeps it (see
+// exampleParadigmXML3).
+func ExampleCompileFromXMLWithOptions() {
+	predicting, err := morphology.CompileFromXMLWithOptions(
+		strings.NewReader(exampleParadigmXML3), morphology.XMLOptions{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(len(predicting.Parse("бота")) > 0, predicting.Parse("бота")[0].Predicted)
+
+	noPrediction, err := morphology.CompileFromXMLWithOptions(
+		strings.NewReader(exampleParadigmXML3), morphology.XMLOptions{NoPrediction: true})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(noPrediction.Parse("бота") == nil)
+	// Output:
+	// true true
+	// true
+}
