@@ -5,8 +5,9 @@
 **Goal:** Quality-of-life additions that the NER work in lexicon relies on, all natural extensions
 of the core: tag helpers `Grammemes`/`HasGrammeme`/`POS` (G), lexeme access `Forms`/`Inflect` (H),
 `Parse` performance with `ParseAppend` and benchmarks (I), homonymous Builder lemmas of different
-parts of speech kept apart (J), and a 2-byte alphabet fallback for Builder/ImportTSV (K). Ship as
-1.3.0.
+parts of speech kept apart (J), a 2-byte alphabet fallback for Builder/ImportTSV (K), and
+ending-based prediction for sharded dictionaries — OpenCorpora and UniMorph imports, sharded `Merge`
+results (L, added 2026-09-27). Ship as 1.3.0.
 
 **Architecture:** G adds a zero-allocation grammeme tokenizer in `internal` (so the builder can use
 it too) and thin public wrappers. J changes only phase 1 (grouping) of
@@ -16,7 +17,10 @@ it too) and thin public wrappers. J changes only phase 1 (grouping) of
 width-1-then-2 alphabet choice into `internal/alphabet.go` and uses it in `RecompileDense`. I first
 adds benchmarks and records a baseline, then adds allocation-free lookup primitives in `internal`
 (`DenseAlphabet.EncodeRune`, `DAWG.LookupEach`, `DAWG.FindJoined`) and rebuilds `Parse` on them
-behind a new `ParseAppend`. The binary format does not change.
+behind a new `ParseAppend`. L generalizes `internal.BuildPrediction` to N shards (one prefix-0
+DAWG whose 8-byte values carry the shard), stores it in new `prediction-sharded-N` sections, resolves
+the shard in `predictForPrefix` (on top of I's rewrite) and builds it by default in
+`CompileFromXML*`/`CompileFromUniMorph*`. The binary format changes only additively (L).
 
 **Tech Stack:** Go (`go 1.25.0` directive after 1.2.0 — owner policy "current Go minus two minor
 versions" — toolchain 1.27.1), testify. No new
@@ -32,7 +36,11 @@ directive.
 
 ## Global Constraints
 
-- The GMOR binary format does not change. Existing `.dat` files open and parse unchanged.
+- The GMOR binary format changes only additively (spec L): new `prediction-sharded-N` sections
+  with 8-byte `count|para|form|shard` values for dictionaries with more than one shard. Single-shard
+  files (pymorphy2, Builder, ImportTSV) stay byte-identical; existing `.dat` files open and parse
+  unchanged; gomorphy 1.2.x opens new files without prediction instead of failing. A file never
+  holds both `prediction-N` and `prediction-sharded-N`.
 - **Go 1.25 at most**: `go.mod` says `go 1.25.0` (owner policy "current Go minus two minor
   versions", 1.2.0 Task 10). Everything up to 1.25 is allowed — `strings.SplitSeq`/`FieldsSeq`,
   range-over-func, `iter`, `t.Context()`, `sync.WaitGroup.Go`, and `b.Loop()` (Go 1.24), which
@@ -46,7 +54,8 @@ directive.
 - Tags stay native strings. `tagmap` is **not** extended (spec G: UniMorph Schema has no
   Name/Surn/Patr/Geox dimensions).
 - Grammeme separators are exactly `,`, ` ` (space) and `;`.
-- **`Parse` results must not change** in content or order for any dictionary: every existing test
+- **`Parse` results must not change** in content or order for any existing dictionary file
+  (L adds predicted readings only for newly built OpenCorpora/UniMorph dictionaries): every existing test
   that snapshots `Parse` (`readingsSnapshot`, `semanticSnapshot`, `TestMergeRealDictionary`) must
   stay green, and Task 8 adds an equivalence test of the new lookup against `SimilarItems`.
 - Run after every task: `go build ./... && go vet ./... && go test ./... -race -count=1`, and
@@ -81,6 +90,16 @@ directive.
 | `pkg/morphology/parse.go` | modify | `ParseAppend`, single-shard path, new primitives |
 | `pkg/morphology/parse_alloc_test.go` | create | allocation bounds |
 | `pkg/morphology/race_on_test.go`, `race_off_test.go` (+ same in `internal/`) | create | `raceEnabled` guard for `AllocsPerRun` |
+| `pkg/morphology/internal/dictionary.go` | modify | `PredictionSharded` |
+| `pkg/morphology/internal/prediction.go`, `prediction_test.go` | modify | N-shard `BuildPrediction`/`BuildPredictionFrom` |
+| `pkg/morphology/internal/merge.go`, `merge_test.go`, `pkg/morphology/merge.go`, `cmd/gomorphy/merge.go` | modify | sharded `RebuildPrediction`, `ErrPredictionSharded` deprecated |
+| `pkg/morphology/save.go` | modify | `prediction-sharded-N` sections |
+| `pkg/morphology/prediction_sharded_test.go` | create | sharded lookup, save/open tests |
+| `pkg/morphology/open.go` | modify | `predictionSections`; `XMLOptions`, `CompileFromXMLWithOptions`, `finishCompiled` |
+| `pkg/morphology/importers/unimorph/import.go` | modify | `Options.NoPrediction` |
+| `pkg/morphology/compile_prediction_test.go` | create | import prediction tests, real-dictionary check |
+| `cmd/gomorphy/build.go`, `update.go`, `build_test.go`, `dict_test.go` | modify | `--no-prediction` |
+| `docs/en/scenarios.md`, `docs/en/comparison.md` | modify | docs (L) |
 | `pkg/morphology/version.go`, `CHANGELOG.md`, `docs/en/library.md`, `docs/ru/library.md`, `docs/en/todo.md`, `docs/en/implementation.md`, `docs/en/implementation/ner-support.md` | modify | docs |
 
 ## Planning-time measurements (1.1.0 source, Builder dictionary кот/кота/мышь/мыши)
@@ -603,8 +622,9 @@ Algorithm (paradigm layout `[suffix_i | tag_i | prefix_i]`, ids into `Suffixes[s
    (the same reconstruction as `readingForm`); `Para`, `Shard`, `Dict`, `Predicted` copied from
    `r`; `Prob = 0`.
 
-Predicted readings resolve against shard 0 like `predictForPrefix` does, so they need no special
-case — the predicted paradigm is expanded and `Predicted` stays true.
+Predicted readings carry the shard their paradigm lives in (shard 0 until Task 11, which lets
+sharded prediction set it), so they need no special case — the predicted paradigm of `r.Shard` is
+expanded and `Predicted` stays true.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2162,7 +2182,985 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 10: Documentation, CHANGELOG, version 1.3.0
+### Task 10: Sharded prediction builder and `Merge` (item L, part 1)
+
+**Files:**
+- Modify: `pkg/morphology/internal/dictionary.go` (field `PredictionSharded`)
+- Modify: `pkg/morphology/internal/prediction.go` (`BuildPrediction`, `BuildPredictionFrom`)
+- Modify: `pkg/morphology/internal/prediction_test.go`
+- Modify: `pkg/morphology/internal/merge.go` (`MergeOptions` doc, `ErrPredictionSharded` removed,
+  prediction rebuild over all shards)
+- Modify: `pkg/morphology/internal/merge_test.go`
+- Modify: `pkg/morphology/merge.go` (`ErrPredictionSharded` defined here, deprecated; docs)
+- Modify: `cmd/gomorphy/merge.go:92,98` (help text)
+
+**Interfaces:**
+- Consumes: `shardPairs(w *DAWG, a Alphabet, removed map[string]bool) ([]WordValue, error)`
+  (`internal/merge.go`), `BuildDAWGWithValuesBytes`.
+- Produces:
+  - `internal.Dictionary.PredictionSharded bool` — `true` when every `Prediction` value is 8 bytes
+    `count|para|form|shard`, `false` for 6-byte `count|para|form` (shard 0).
+  - `func BuildPrediction(d *Dictionary, productive func(tag string) bool) error` — now for any
+    shard count, raw or dense.
+  - `func BuildPredictionFrom(pairs [][]WordValue, paradigms [][]Paradigm, tagSet *TagSet, productive func(tag string) bool) (pred *DAWG, sharded bool, err error)`
+    — `pairs[s]` are shard `s`'s readings; `sharded == len(pairs) > 1`.
+  - `morphology.ErrPredictionSharded` — kept, never returned.
+
+Value layout (spec L): key = the last 1..5 runes of a wordform; value = `count(BE16) | para(BE16) |
+form(BE16)` for one shard, `count(BE16) | para(BE16) | form(BE16) | shard(BE16)` for more. The
+format follows `PredictionSharded`, never the shard count alone: `Merge` can carry a 6-byte
+prediction into a multi-shard result, where it still means shard 0.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `pkg/morphology/internal/prediction_test.go`, delete `TestBuildPredictionNoOpWhenSharded`,
+replace `TestBuildPredictionFromMatchesBuildPrediction` and append the rest:
+
+```go
+func TestBuildPredictionFromMatchesBuildPrediction(t *testing.T) {
+	all := func(string) bool { return true }
+	d, err := BuildDictionaryFromEntries(BuildOptions{}, []BuildEntry{
+		{Word: "кот", Lemma: "кот", Tag: "NOUN,nomn"},
+		{Word: "кота", Lemma: "кот", Tag: "NOUN,gent"},
+		{Word: "мышь", Lemma: "мышь", Tag: "NOUN,nomn"},
+		{Word: "мыши", Lemma: "мышь", Tag: "NOUN,gent"},
+	})
+	require.NoError(t, err)
+
+	var pairs []WordValue
+	d.Words[0].Walk(func(w string, vals [][]byte) {
+		for _, v := range vals {
+			pairs = append(pairs, WordValue{Word: w, Value: binary.BigEndian.Uint32(v[:4])})
+		}
+	})
+	pred, sharded, err := BuildPredictionFrom([][]WordValue{pairs}, d.Paradigms, d.TagSet, all)
+	require.NoError(t, err)
+	assert.False(t, sharded, "one shard keeps 6-byte values")
+
+	require.NoError(t, BuildPrediction(d, all))
+	assert.False(t, d.PredictionSharded)
+	assert.Equal(t, d.Prediction[0].Bytes(), pred.Bytes())
+}
+
+// twoShardCorpus is a raw two-shard dictionary sharing one TagSet: shard 0
+// holds кошка/кошки, shard 1 окно/окна. Each shard's only lemma is its
+// paradigm 0, so only the shard number tells their predictions apart.
+func twoShardCorpus(t *testing.T) *Dictionary {
+	t.Helper()
+	a, err := BuildDictionaryFromEntries(BuildOptions{}, []BuildEntry{
+		{Word: "кошка", Lemma: "кошка", Tag: "NOUN,sing,nomn"},
+		{Word: "кошки", Lemma: "кошка", Tag: "NOUN,sing,gent"},
+	})
+	require.NoError(t, err)
+	b, err := BuildDictionaryFromEntries(BuildOptions{}, []BuildEntry{
+		{Word: "окно", Lemma: "окно", Tag: "NOUN,sing,nomn"},
+		{Word: "окна", Lemma: "окно", Tag: "NOUN,sing,gent"},
+	})
+	require.NoError(t, err)
+	// b's tag ids must mean the same tags in a's TagSet (same insertion order).
+	for f := 0; f < 2; f++ {
+		require.Equal(t, b.TagSet.TagName(b.Paradigms[0][0].Tag(f)), a.TagSet.TagName(b.Paradigms[0][0].Tag(f)))
+	}
+	return NewDictionary("ru", a.TagSet,
+		[][]string{a.Suffixes[0], b.Suffixes[0]}, a.Prefixes,
+		[][]Paradigm{a.Paradigms[0], b.Paradigms[0]},
+		[]*DAWG{a.Words[0], b.Words[0]}, RussianCharPolicy())
+}
+
+type shardedPredValue struct{ Count, Para, Form, Shard uint16 }
+
+// shardedPredValues returns the decoded 8-byte payloads for an exact
+// prediction suffix key (empty when the key is absent).
+func shardedPredValues(t *testing.T, pred *DAWG, key string) []shardedPredValue {
+	t.Helper()
+	var out []shardedPredValue
+	for _, it := range pred.SimilarItems(key, nil, nil) {
+		if it.Key != key {
+			continue
+		}
+		for _, v := range it.Values {
+			require.Len(t, v, 8)
+			out = append(out, shardedPredValue{
+				Count: binary.BigEndian.Uint16(v[0:2]),
+				Para:  binary.BigEndian.Uint16(v[2:4]),
+				Form:  binary.BigEndian.Uint16(v[4:6]),
+				Shard: binary.BigEndian.Uint16(v[6:8]),
+			})
+		}
+	}
+	return out
+}
+
+func TestBuildPredictionSharded(t *testing.T) {
+	d := twoShardCorpus(t)
+	require.NoError(t, BuildPrediction(d, predProductive))
+
+	require.Len(t, d.Prediction, 1, "one DAWG for prefix 0, shared by all shards")
+	assert.True(t, d.PredictionSharded)
+	assert.Equal(t, []shardedPredValue{{Count: 1, Para: 0, Form: 1, Shard: 1}},
+		shardedPredValues(t, d.Prediction[0], "на"), "«на» comes only from окна (shard 1)")
+	assert.Equal(t, []shardedPredValue{{Count: 1, Para: 0, Form: 1, Shard: 0}},
+		shardedPredValues(t, d.Prediction[0], "ки"), "«ки» comes only from кошки (shard 0)")
+	assert.ElementsMatch(t, []shardedPredValue{
+		{Count: 1, Para: 0, Form: 0, Shard: 0}, // кошка
+		{Count: 1, Para: 0, Form: 1, Shard: 1}, // окна
+	}, shardedPredValues(t, d.Prediction[0], "а"))
+}
+
+func TestBuildPredictionShardedDenseMatchesRaw(t *testing.T) {
+	raw := twoShardCorpus(t)
+	require.NoError(t, BuildPrediction(raw, predProductive))
+
+	dense := twoShardCorpus(t)
+	require.NoError(t, RecompileDense(dense))
+	require.NotNil(t, dense.Alphabet)
+	require.NoError(t, BuildPrediction(dense, predProductive))
+
+	assert.True(t, dense.PredictionSharded)
+	assert.Equal(t, raw.Prediction[0].Bytes(), dense.Prediction[0].Bytes(),
+		"keys are decoded through the alphabet, so a dense dictionary predicts the same")
+}
+```
+
+In `pkg/morphology/internal/merge_test.go`, in `TestMergeDictionariesPrediction` add
+`assert.False(t, out.PredictionSharded)` after the first `require.Len(t, out.Prediction, 1)`, and
+replace its last two lines (the `ErrPredictionSharded` case) with:
+
+```go
+	out, err = MergeDictionaries(twoShardBase(t), []*Dictionary{over}, MergeOptions{Mode: MergeAdd, RebuildPrediction: true, Productive: allProductive})
+	require.NoError(t, err, "a sharded result rebuilds prediction too")
+	require.Len(t, out.Prediction, 1)
+	assert.True(t, out.PredictionSharded)
+	assert.NotEmpty(t, out.Prediction[0].SimilarItems("ок", nil, nil), "rebuilt sharded prediction covers overlay words")
+```
+
+and append:
+
+```go
+func TestMergeDictionariesCarriesShardedPrediction(t *testing.T) {
+	base := twoShardBase(t)
+	require.NoError(t, BuildPrediction(base, allProductive))
+	require.True(t, base.PredictionSharded)
+
+	out, err := MergeDictionaries(base, []*Dictionary{engineDict(t, e("шок", "шок", "N"))}, MergeOptions{Mode: MergeAdd})
+	require.NoError(t, err)
+	assert.True(t, out.PredictionSharded, "the carried prediction keeps its value format")
+	require.Len(t, out.Prediction, 1)
+	assert.Equal(t, base.Prediction[0].Bytes(), out.Prediction[0].Bytes())
+}
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `go test ./pkg/morphology/internal/ -run 'Prediction' -count=1`
+Expected: FAIL to compile — `BuildPredictionFrom` returns 2 values, `PredictionSharded` undefined.
+
+- [ ] **Step 3: Implement**
+
+`pkg/morphology/internal/dictionary.go` — add after `Prediction`:
+
+```go
+	Prediction  []*DAWG
+	// PredictionSharded is the value format of Prediction: true for 8-byte
+	// count|para|form|shard values (dictionaries with more than one shard,
+	// saved as prediction-sharded-N), false for 6-byte count|para|form
+	// values resolved against shard 0 (saved as prediction-N).
+	PredictionSharded bool
+```
+
+`pkg/morphology/internal/prediction.go` — replace `BuildPrediction` and `BuildPredictionFrom`:
+
+```go
+// BuildPrediction rebuilds d.Prediction (one DAWG, prefix id 0) from the
+// words of every shard of d and sets d.PredictionSharded. Keys are decoded
+// through d.Alphabet, so d may be raw or dense. A dictionary with no shards
+// is left untouched.
+func BuildPrediction(d *Dictionary, productive func(tag string) bool) error {
+	if d == nil || len(d.Words) == 0 {
+		return nil
+	}
+	pairs := make([][]WordValue, len(d.Words))
+	for s, w := range d.Words {
+		p, err := shardPairs(w, d.Alphabet, nil)
+		if err != nil {
+			return fmt.Errorf("prediction: shard %d: %w", s, err)
+		}
+		pairs[s] = p
+	}
+	pred, sharded, err := BuildPredictionFrom(pairs, d.Paradigms, d.TagSet, productive)
+	if err != nil {
+		return err
+	}
+	d.Prediction = []*DAWG{pred}
+	d.PredictionSharded = sharded
+	return nil
+}
+
+// BuildPredictionFrom builds the pymorphy2 KnownSuffixAnalyzer prediction
+// DAWG for prefix id 0. pairs[s] are shard s's raw (word, value) readings,
+// resolved against paradigms[s] and tagSet. For every reading whose tag is
+// productive, the word's last 1..5 runes become suffix keys; readings
+// sharing a (suffix, paradigm, form, shard) key accumulate a count. With
+// one shard each key becomes count(BE16) + para(BE16) + form(BE16); with
+// more, shard(BE16) is appended and sharded is true.
+func BuildPredictionFrom(pairs [][]WordValue, paradigms [][]Paradigm, tagSet *TagSet, productive func(tag string) bool) (*DAWG, bool, error) {
+	type predKey struct {
+		suffix            string
+		para, form, shard uint16
+	}
+	sharded := len(pairs) > 1
+	counts := make(map[predKey]int)
+	for s, shard := range pairs {
+		if s >= len(paradigms) {
+			break
+		}
+		ps := paradigms[s]
+		for _, p := range shard {
+			para, form := uint16(p.Value>>16), uint16(p.Value)
+			if int(para) >= len(ps) || int(form) >= ps[para].Len() {
+				continue
+			}
+			tag := ""
+			if tagSet != nil {
+				tag = tagSet.TagName(ps[para].Tag(int(form)))
+			}
+			if !productive(tag) {
+				continue
+			}
+			rr := []rune(p.Word)
+			max := min(predictionMaxSuffix, len(rr))
+			for l := 1; l <= max; l++ {
+				counts[predKey{suffix: string(rr[len(rr)-l:]), para: para, form: form, shard: uint16(s)}]++
+			}
+		}
+	}
+
+	width := 6
+	if sharded {
+		width = 8
+	}
+	keys := make([]string, 0, len(counts))
+	values := make([][]byte, 0, len(counts))
+	for k, count := range counts {
+		count = min(count, predictionMaxCount)
+		buf := make([]byte, width)
+		binary.BigEndian.PutUint16(buf[0:2], uint16(count))
+		binary.BigEndian.PutUint16(buf[2:4], k.para)
+		binary.BigEndian.PutUint16(buf[4:6], k.form)
+		if sharded {
+			binary.BigEndian.PutUint16(buf[6:8], k.shard)
+		}
+		keys = append(keys, k.suffix)
+		values = append(values, buf)
+	}
+	pred, err := BuildDAWGWithValuesBytes(keys, values)
+	return pred, sharded, err
+}
+```
+
+Add `"fmt"` to the file's imports.
+
+`pkg/morphology/internal/merge.go`:
+- `MergeOptions.RebuildPrediction` doc: `// RebuildPrediction replaces the base's prediction with one prefix-0
+  DAWG rebuilt (BuildPredictionFrom) from every shard of the merged words. Requires Productive.`
+- Delete `ErrPredictionSharded` and the `len(m.shards) != 1` check (keep the `Productive == nil`
+  check).
+- Delete `shard0` and `shard0Collected` and the `if i == 0 { … }` block in the shard loop.
+- Replace the whole `if opts.RebuildPrediction { … } else { … }` block after the loop with:
+
+```go
+	if opts.RebuildPrediction {
+		pairs := make([][]WordValue, len(out.Words))
+		for i, w := range out.Words {
+			if pairs[i], err = shardPairs(w, out.Alphabet, nil); err != nil {
+				return nil, fmt.Errorf("merge: prediction: shard %d: %w", i, err)
+			}
+		}
+		pred, sharded, err := BuildPredictionFrom(pairs, out.Paradigms, out.TagSet, opts.Productive)
+		if err != nil {
+			return nil, fmt.Errorf("merge: prediction: %w", err)
+		}
+		out.Prediction = []*DAWG{pred}
+		out.PredictionSharded = sharded
+	} else {
+		for _, p := range base.Prediction {
+			out.Prediction = append(out.Prediction, p.Clone())
+		}
+		out.PredictionSharded = base.PredictionSharded
+	}
+```
+
+Re-reading the merged words through `shardPairs` walks unchanged shards once more; it only runs
+with `RebuildPrediction` and removes the "shard 0 reused verbatim" special case.
+
+`pkg/morphology/merge.go`:
+
+```go
+// ErrPredictionSharded was returned by MergeWithOptions when
+// RebuildPrediction met a result with more than one shard.
+//
+// Deprecated: since 1.3.0 prediction is rebuilt for any shard count and
+// this error is never returned.
+var ErrPredictionSharded = errors.New("morphology: prediction rebuild needs a single-shard output")
+```
+
+In `MergeOptions.RebuildPrediction` replace `Requires a single-shard result (ErrPredictionSharded).`
+with `Works for any number of shards.`; in the `MergeWithOptions` doc remove
+`ErrPredictionSharded, ` from the "Errors:" list.
+
+`cmd/gomorphy/merge.go`: in `Long` replace `(unless --rebuild-prediction is set; single-shard output
+only).` with `(unless --rebuild-prediction is set).`; in the flag help replace
+`(default: keep the base's; single-shard output only)` with `(default: keep the base's)`.
+
+- [ ] **Step 4: Run the tests**
+
+Run: `go test ./pkg/morphology/... ./cmd/... -count=1`
+Expected: PASS. `TestMergeDictionariesZeroShardBaseRebuildPrediction` must stay green (zero
+shards → an empty prediction DAWG, `sharded == false`). Builder/ImportTSV snapshot tests stay
+green: one shard produces byte-identical 6-byte values.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add pkg/morphology/internal/dictionary.go pkg/morphology/internal/prediction.go pkg/morphology/internal/prediction_test.go pkg/morphology/internal/merge.go pkg/morphology/internal/merge_test.go pkg/morphology/merge.go cmd/gomorphy/merge.go
+git commit -m "feat(morphology): build ending-based prediction for sharded dictionaries
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 11: Sharded prediction in lookup, `SaveTo` and `Open` (item L, part 2)
+
+**Files:**
+- Modify: `pkg/morphology/parse.go` (`predictForPrefix` as rewritten by Task 9)
+- Modify: `pkg/morphology/open.go` (`parseContainer`, new `predictionSections`)
+- Modify: `pkg/morphology/save.go` (`sections`, `SaveTo` doc)
+- Create: `pkg/morphology/prediction_sharded_test.go`
+
+**Interfaces:**
+- Consumes: `internal.Dictionary.PredictionSharded`, `internal.BuildPrediction` (Task 10);
+  `Dictionary.Forms` (Task 3); `predictForPrefix(dst []Reading, id int, word string, splits []int, seen map[readingKey]bool) []Reading` (Task 9).
+- Produces: section name `prediction-sharded-N` (N = prefix id); `Reading.Shard` of predicted
+  readings taken from the value.
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `pkg/morphology/prediction_sharded_test.go`:
+
+```go
+package morphology
+
+import (
+	"encoding/binary"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/amarin/gomorphy/pkg/morphology/internal"
+)
+
+// shardedPredictionDict is a dense two-shard dictionary with sharded
+// prediction: shard 0 holds кошка/кошки, shard 1 окно/окна, each as its
+// shard's paradigm 0 with the same tags.
+func shardedPredictionDict(t *testing.T) *Dictionary {
+	t.Helper()
+	build := func(entries ...internal.BuildEntry) *internal.Dictionary {
+		d, err := internal.BuildDictionaryFromEntries(internal.BuildOptions{
+			Language: "ru", CharPolicy: internal.RussianCharPolicy(), TagSetName: "tsv",
+		}, entries)
+		require.NoError(t, err)
+		return d
+	}
+	a := build(
+		internal.BuildEntry{Word: "кошка", Lemma: "кошка", Tag: "NOUN,anim,femn,sing,nomn"},
+		internal.BuildEntry{Word: "кошки", Lemma: "кошка", Tag: "NOUN,anim,femn,sing,gent"},
+	)
+	b := build(
+		internal.BuildEntry{Word: "окно", Lemma: "окно", Tag: "NOUN,anim,femn,sing,nomn"},
+		internal.BuildEntry{Word: "окна", Lemma: "окно", Tag: "NOUN,anim,femn,sing,gent"},
+	)
+	d := internal.NewDictionary("ru", a.TagSet,
+		[][]string{a.Suffixes[0], b.Suffixes[0]}, a.Prefixes,
+		[][]internal.Paradigm{a.Paradigms[0], b.Paradigms[0]},
+		[]*internal.DAWG{a.Words[0], b.Words[0]}, internal.RussianCharPolicy())
+	require.NoError(t, internal.BuildPrediction(d, productive))
+	require.True(t, d.PredictionSharded)
+	require.NoError(t, internal.RecompileDense(d))
+	return &Dictionary{d: d}
+}
+
+// predictedFrom reports whether Parse(word) has a predicted reading with
+// this shard and lemma, returning it.
+func predictedFrom(d *Dictionary, word string, shard int, normal string) (Reading, bool) {
+	for _, r := range d.Parse(word) {
+		if r.Predicted && r.Shard == shard && r.Normal == normal {
+			return r, true
+		}
+	}
+	return Reading{}, false
+}
+
+func TestParsePredictsAcrossShards(t *testing.T) {
+	d := shardedPredictionDict(t)
+
+	r, ok := predictedFrom(d, "бревна", 1, "бревно")
+	require.True(t, ok, "бревна is predicted from окна (shard 1): %+v", d.Parse("бревна"))
+	assert.Equal(t, "NOUN,anim,femn,sing,gent", r.Tag)
+
+	_, ok = predictedFrom(d, "мошки", 0, "мошка")
+	assert.True(t, ok, "мошки is predicted from кошки (shard 0): %+v", d.Parse("мошки"))
+
+	var words []string
+	for _, f := range d.Forms(r) {
+		words = append(words, f.Word)
+		assert.True(t, f.Predicted)
+		assert.Equal(t, 1, f.Shard)
+	}
+	assert.Equal(t, []string{"бревно", "бревна"}, words, "Forms of a shard-1 predicted reading")
+}
+
+func TestParseSkipsPredictionForMissingShard(t *testing.T) {
+	d := shardedPredictionDict(t)
+	v := make([]byte, 8)
+	binary.BigEndian.PutUint16(v[0:2], 1) // count
+	binary.BigEndian.PutUint16(v[2:4], 0) // para
+	binary.BigEndian.PutUint16(v[4:6], 1) // form
+	binary.BigEndian.PutUint16(v[6:8], 5) // shard 5 does not exist
+	pred, err := internal.BuildDAWGWithValuesBytes([]string{"на"}, [][]byte{v})
+	require.NoError(t, err)
+	d.d.Prediction = []*internal.DAWG{pred}
+
+	assert.Empty(t, d.Parse("бревна"))
+}
+
+func TestShardedPredictionSaveOpen(t *testing.T) {
+	d := shardedPredictionDict(t)
+	path := filepath.Join(t.TempDir(), "sharded.dat")
+	require.NoError(t, d.SaveTo(path))
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	cont, err := internal.OpenContainer(data)
+	require.NoError(t, err)
+	_, _, err = cont.Section("prediction-sharded-0")
+	require.NoError(t, err)
+	_, _, err = cont.Section("prediction-0")
+	require.Error(t, err, "gomorphy 1.2.x reads only prediction-N and must find none")
+
+	fromFile, err := Open(path)
+	require.NoError(t, err)
+	defer func() { _ = fromFile.Close() }()
+	fromBytes, err := OpenBytes(data)
+	require.NoError(t, err)
+	for name, o := range map[string]*Dictionary{"Open": fromFile, "OpenBytes": fromBytes} {
+		assert.True(t, o.d.PredictionSharded, name)
+		assert.Equal(t, d.Parse("бревна"), o.Parse("бревна"), name)
+		assert.Equal(t, d.Parse("мошки"), o.Parse("мошки"), name)
+	}
+}
+
+func TestSingleShardPredictionKeepsOldSection(t *testing.T) {
+	b := NewBuilder(BuilderOptions{})
+	require.NoError(t, b.AddForm("кот", "кот", "NOUN,anim,masc,sing,nomn"))
+	require.NoError(t, b.AddForm("кота", "кот", "NOUN,anim,masc,sing,gent"))
+	d, err := b.Build()
+	require.NoError(t, err)
+	require.False(t, d.d.PredictionSharded)
+
+	path := filepath.Join(t.TempDir(), "single.dat")
+	require.NoError(t, d.SaveTo(path))
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	cont, err := internal.OpenContainer(data)
+	require.NoError(t, err)
+	_, _, err = cont.Section("prediction-0")
+	require.NoError(t, err)
+	_, _, err = cont.Section("prediction-sharded-0")
+	require.Error(t, err)
+
+	o, err := OpenBytes(data)
+	require.NoError(t, err)
+	assert.False(t, o.d.PredictionSharded)
+	assert.Equal(t, d.Parse("бота"), o.Parse("бота"))
+}
+
+func TestOpenRejectsBothPredictionKinds(t *testing.T) {
+	d := shardedPredictionDict(t)
+	sections, err := d.sections(nil)
+	require.NoError(t, err)
+	var sharded internal.Section
+	for _, s := range sections {
+		if s.Name == "prediction-sharded-0" {
+			sharded = s
+		}
+	}
+	require.NotEmpty(t, sharded.Name)
+	sections = append(sections, internal.Section{Name: "prediction-0", Data: sharded.Data, Flags: sharded.Flags})
+	path := filepath.Join(t.TempDir(), "both.dat")
+	require.NoError(t, internal.SaveContainer(path, sections))
+
+	_, err = Open(path)
+	assert.ErrorContains(t, err, "prediction")
+}
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `go test ./pkg/morphology/ -run 'Shard|BothPrediction|SingleShardPrediction' -count=1`
+Expected: FAIL — `бревна` gets no shard-1 reading (prediction resolves against shard 0), the file
+has `prediction-0` instead of `prediction-sharded-0`, and the "both" file opens.
+
+- [ ] **Step 3: Implement**
+
+`pkg/morphology/parse.go`, in `predictForPrefix` (the Task 9 version): delete
+`const predictionShard = 0`, and in the `LookupEach` callback replace the lines from
+`if len(v) < 6 {` down to `r := x.readingForm(predictionShard, wordStart+found, paraNum, form)` with:
+
+```go
+			if len(v) < 6 {
+				return
+			}
+			count := int(binary.BigEndian.Uint16(v[:2]))
+			paraNum := binary.BigEndian.Uint16(v[2:4])
+			form := binary.BigEndian.Uint16(v[4:6])
+			shard := 0 // 6-byte values (prediction-N) always mean shard 0
+			if len(v) >= 8 {
+				shard = int(binary.BigEndian.Uint16(v[6:8]))
+			}
+
+			para, ok := x.paradigm(shard, paraNum) // false for a missing shard
+			if !ok || form >= uint16(para.Len()) {
+				return
+			}
+			if !productive(x.paradigmTag(para, int(form))) {
+				return
+			}
+			totalCount += count
+
+			r := x.readingForm(shard, wordStart+found, paraNum, form)
+```
+
+and replace the doc paragraph `// Predictions always resolve against shard 0: …` with:
+
+```go
+// A 6-byte value (count|para|form) resolves against shard 0; an 8-byte
+// value (count|para|form|shard, sharded dictionaries) carries its shard.
+// Values naming a missing shard or paradigm are skipped.
+```
+
+`pkg/morphology/open.go`, in `parseContainer` replace the `prediction-%d` loop with:
+
+```go
+	plain, err := predictionSections(cont, "prediction-%d")
+	if err != nil {
+		return nil, err
+	}
+	sharded, err := predictionSections(cont, "prediction-sharded-%d")
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case len(plain) > 0 && len(sharded) > 0:
+		return nil, fmt.Errorf("morphology: both prediction-N and prediction-sharded-N sections present")
+	case len(sharded) > 0:
+		d.Prediction, d.PredictionSharded = sharded, true
+	default:
+		d.Prediction = plain
+	}
+```
+
+and add below `parseContainer`:
+
+```go
+// predictionSections parses the consecutive sections named by format
+// (N = 0, 1, …) up to the first missing one.
+func predictionSections(cont *internal.Container, format string) ([]*internal.DAWG, error) {
+	var out []*internal.DAWG
+	for i := 0; ; i++ {
+		data, _, err := cont.Section(fmt.Sprintf(format, i))
+		if err != nil {
+			return out, nil
+		}
+		pred, err := internal.ParseDAWG(data)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, pred)
+	}
+}
+```
+
+`pkg/morphology/save.go`: in `sections` replace the prediction loop with:
+
+```go
+	predName := "prediction-%d"
+	if x.d.PredictionSharded {
+		predName = "prediction-sharded-%d"
+	}
+	for i, pred := range x.d.Prediction {
+		if pred == nil {
+			continue
+		}
+		sections = append(sections, internal.Section{
+			Name: fmt.Sprintf(predName, i), Data: pred.Bytes(), Flags: noCompression,
+		})
+	}
+```
+
+and in the `SaveTo` doc replace `prediction-N,` with
+`prediction-N (or prediction-sharded-N, 8-byte values with a shard, for sharded prediction),`.
+
+- [ ] **Step 4: Run the tests**
+
+Run: `go test ./pkg/morphology/... -race -count=1`
+Expected: PASS, including every existing snapshot test (`readingsSnapshot`, `semanticSnapshot`,
+`TestMergeRealDictionary`, content-hash tests): single-shard files are unchanged.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add pkg/morphology/parse.go pkg/morphology/open.go pkg/morphology/save.go pkg/morphology/prediction_sharded_test.go
+git commit -m "feat(morphology): read, save and resolve sharded prediction
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 12: Prediction for OpenCorpora/UniMorph imports, CLI, measurements (item L, part 3)
+
+**Files:**
+- Modify: `pkg/morphology/open.go` (`XMLOptions`, `CompileFromXMLWithOptions`, `finishCompiled`;
+  `CompileFromXML`, `CompileFromXMLDense`, `CompileFromUniMorph`, `CompileFromUniMorphDense` go
+  through `finishCompiled`)
+- Modify: `pkg/morphology/importers/unimorph/import.go` (`Options.NoPrediction`)
+- Modify: `cmd/gomorphy/build.go`, `cmd/gomorphy/update.go:28`, `cmd/gomorphy/build_test.go`,
+  `cmd/gomorphy/dict_test.go:204`
+- Create: `pkg/morphology/compile_prediction_test.go`
+- Modify: `pkg/morphology/example_test.go` (outputs that now include predicted readings)
+
+**Interfaces:**
+- Consumes: `internal.BuildPrediction` (Task 10), `productive` (`parse.go`).
+- Produces:
+  - `type XMLOptions struct { Progress opencorpora.Progress; Dense bool; NoPrediction bool }`
+  - `func CompileFromXMLWithOptions(r interface{ Read([]byte) (int, error) }, opts XMLOptions) (*Dictionary, error)`
+  - `UniMorphOptions.NoPrediction bool` (field of `unimorph.Options`)
+  - CLI `gomorphy build opencorpora|unimorph --no-prediction`
+
+Prediction is built in `pkg/morphology`, not in the importers: `productive` lives there and the
+importer packages cannot import `pkg/morphology` (cycle). `unimorph.CompileFromTSV` itself keeps
+building no prediction; `NoPrediction` is honoured by `morphology.CompileFromUniMorph*`.
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `pkg/morphology/compile_prediction_test.go`:
+
+```go
+package morphology_test
+
+import (
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/amarin/gomorphy/pkg/morphology"
+)
+
+func assertAllPredicted(t *testing.T, d *morphology.Dictionary, word string) {
+	t.Helper()
+	readings := d.Parse(word)
+	require.NotEmpty(t, readings, "%s must be predicted", word)
+	for _, r := range readings {
+		assert.True(t, r.Predicted, "%s: %+v", word, r)
+	}
+}
+
+func TestCompileFromXMLPredictsByDefault(t *testing.T) {
+	for name, compile := range map[string]func() (*morphology.Dictionary, error){
+		"CompileFromXML": func() (*morphology.Dictionary, error) {
+			return morphology.CompileFromXML(strings.NewReader(exampleDictXML), nil)
+		},
+		"CompileFromXMLDense": func() (*morphology.Dictionary, error) {
+			return morphology.CompileFromXMLDense(strings.NewReader(exampleDictXML), nil)
+		},
+	} {
+		d, err := compile()
+		require.NoError(t, err, name)
+		assertAllPredicted(t, d, "бота") // like кота
+	}
+
+	d, err := morphology.CompileFromXMLWithOptions(strings.NewReader(exampleDictXML),
+		morphology.XMLOptions{Dense: true, NoPrediction: true})
+	require.NoError(t, err)
+	assert.Nil(t, d.Parse("бота"), "NoPrediction keeps the 1.2 behaviour")
+	assert.NotEmpty(t, d.Parse("кота"))
+}
+
+func TestCompileFromUniMorphPredictsByDefault(t *testing.T) {
+	opts := morphology.UniMorphOptions{Language: "ru"}
+	d, err := morphology.CompileFromUniMorphDense(strings.NewReader(uniMorphTSV), opts)
+	require.NoError(t, err)
+	assertAllPredicted(t, d, "бота")
+
+	opts.NoPrediction = true
+	d, err = morphology.CompileFromUniMorphDense(strings.NewReader(uniMorphTSV), opts)
+	require.NoError(t, err)
+	assert.Nil(t, d.Parse("бота"))
+}
+
+// UniMorph rus has five parts of speech, all open classes; productive()
+// splits on "," and must filter none of them (spec L, "Tag filter").
+func TestCompileFromUniMorphPredictsAllPOS(t *testing.T) {
+	tsv := "стол\tстолами\tN;INS;PL\n" +
+		"синий\tсиними\tADJ;INS;PL\n" +
+		"читать\tчитали\tV;PST;PL\n" +
+		"читать\tчитавшими\tV.PTCP;ACT;PST;INS;PL\n" +
+		"читать\tчитая\tV.CVB;PRS\n"
+	d, err := morphology.CompileFromUniMorph(strings.NewReader(tsv), morphology.UniMorphOptions{Language: "ru"})
+	require.NoError(t, err)
+
+	pos := map[string]bool{}
+	for _, w := range []string{"стульями", "красными", "писали", "писавшими", "пиная"} {
+		assertAllPredicted(t, d, w)
+		for _, r := range d.Parse(w) {
+			p, _, _ := strings.Cut(r.Tag, ";")
+			pos[p] = true
+		}
+	}
+	assert.Equal(t, map[string]bool{"N": true, "ADJ": true, "V": true, "V.PTCP": true, "V.CVB": true}, pos)
+}
+
+// TestRealDictionaryPredictsUnknownWords runs against a real .dat built by
+// this version (GOMORPHY_BENCH_DICT, as for BenchmarkRealDict).
+func TestRealDictionaryPredictsUnknownWords(t *testing.T) {
+	path := os.Getenv("GOMORPHY_BENCH_DICT")
+	if path == "" {
+		t.Skip("GOMORPHY_BENCH_DICT not set")
+	}
+	d, err := morphology.Open(path)
+	require.NoError(t, err)
+	defer func() { _ = d.Close() }()
+	for _, w := range []string{"кракозябрами", "шмурдяковый", "перепрокрустить"} {
+		assertAllPredicted(t, d, w)
+	}
+}
+```
+
+In `cmd/gomorphy/build_test.go` append (`fixtureXML` is in `dict_test.go`, `newTestRootCmd` is the
+file's existing root-command helper):
+
+```go
+func TestBuildCommand_NoPrediction(t *testing.T) {
+	xmlPath := filepath.Join(t.TempDir(), "dict.xml")
+	require.NoError(t, os.WriteFile(xmlPath, []byte(fixtureXML("кот")), 0o644))
+
+	for _, noPrediction := range []bool{false, true} {
+		outPath := filepath.Join(t.TempDir(), "out.dat")
+		args := []string{"build", "opencorpora", "-i", xmlPath, "-o", outPath}
+		if noPrediction {
+			args = append(args, "--no-prediction")
+		}
+		root := newTestRootCmd(newBuildCommand())
+		root.SetOut(&bytes.Buffer{})
+		root.SetArgs(args)
+		require.NoError(t, root.Execute())
+
+		d, err := morphology.Open(outPath)
+		require.NoError(t, err)
+		if noPrediction {
+			assert.Nil(t, d.Parse("бот"), "--no-prediction")
+		} else {
+			assert.NotEmpty(t, d.Parse("бот"), "prediction by default (like кот)")
+		}
+		require.NoError(t, d.Close())
+	}
+}
+
+func TestBuildCommand_NoPredictionRejectedForPymorphy(t *testing.T) {
+	root := newTestRootCmd(newBuildCommand())
+	root.SetArgs([]string{"build", "pymorphy", "--no-prediction", "-i", t.TempDir(), "-o", filepath.Join(t.TempDir(), "x.dat")})
+	err := root.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--no-prediction")
+}
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `go test ./pkg/morphology/ ./cmd/gomorphy/ -run 'Predict|NoPrediction' -count=1`
+Expected: FAIL to compile — `XMLOptions`, `CompileFromXMLWithOptions`,
+`UniMorphOptions.NoPrediction` undefined.
+
+- [ ] **Step 3: Implement**
+
+`pkg/morphology/importers/unimorph/import.go`, append to `Options`:
+
+```go
+	// NoPrediction skips the ending-based prediction for
+	// out-of-dictionary words that morphology.CompileFromUniMorph and
+	// its variants build by default. ImportFromTSV and CompileFromTSV in
+	// this package never build prediction and ignore it.
+	NoPrediction bool
+```
+
+`pkg/morphology/open.go` — replace the bodies of `CompileFromXML` and `CompileFromXMLDense`, add
+the new API next to them:
+
+```go
+// XMLOptions configures CompileFromXMLWithOptions.
+type XMLOptions struct {
+	// Progress reports import progress; nil means no reporting.
+	Progress opencorpora.Progress
+	// Dense recompiles every shard's words DAWG to one dense 1-byte
+	// alphabet (see CompileFromXMLDense).
+	Dense bool
+	// NoPrediction skips the ending-based prediction for
+	// out-of-dictionary words, built by default: Parse then returns nil
+	// for a word the dictionary does not contain.
+	NoPrediction bool
+}
+
+// CompileFromXMLWithOptions compiles an OpenCorpora dictionary from
+// dict.xml. Unless opts.NoPrediction is set it builds ending-based
+// prediction, so Parse returns Predicted readings for unknown words.
+func CompileFromXMLWithOptions(r interface{ Read([]byte) (int, error) }, opts XMLOptions) (*Dictionary, error) {
+	d, err := opencorpora.CompileFromXML(r, opts.Progress)
+	if err != nil {
+		return nil, err
+	}
+	return finishCompiled(d, opts.Dense, !opts.NoPrediction)
+}
+
+// CompileFromXML compiles an OpenCorpora dictionary from dict.xml, with
+// prediction; progress is an optional callback for reporting progress.
+// See CompileFromXMLWithOptions.
+func CompileFromXML(r interface{ Read([]byte) (int, error) }, progress opencorpora.Progress) (*Dictionary, error) {
+	return CompileFromXMLWithOptions(r, XMLOptions{Progress: progress})
+}
+
+// CompileFromXMLDense is CompileFromXMLWithOptions with Dense set.
+func CompileFromXMLDense(r interface{ Read([]byte) (int, error) }, progress opencorpora.Progress) (*Dictionary, error) {
+	return CompileFromXMLWithOptions(r, XMLOptions{Progress: progress, Dense: true})
+}
+
+// finishCompiled builds prediction (unless prediction is false) and then,
+// if dense is set, recompiles the words DAWGs to a dense alphabet — the
+// same order Builder uses.
+func finishCompiled(d *internal.Dictionary, dense, prediction bool) (*Dictionary, error) {
+	if prediction {
+		if err := internal.BuildPrediction(d, productive); err != nil {
+			return nil, fmt.Errorf("morphology: build prediction: %w", err)
+		}
+	}
+	if dense {
+		if err := internal.RecompileDense(d); err != nil {
+			return nil, fmt.Errorf("morphology: compile dense: %w", err)
+		}
+	}
+	return &Dictionary{d: d}, nil
+}
+```
+
+Keep the existing doc comments of `CompileFromXMLDense` (dense-alphabet references) and add the
+sentence "Builds prediction unless told otherwise, see CompileFromXMLWithOptions." to it and to
+`CompileFromUniMorph`/`CompileFromUniMorphDense`. Their bodies become:
+
+```go
+// CompileFromUniMorph
+	d, err := unimorph.CompileFromTSV(r, opts)
+	if err != nil {
+		return nil, err
+	}
+	return finishCompiled(d, false, !opts.NoPrediction)
+
+// CompileFromUniMorphDense
+	d, err := unimorph.CompileFromTSV(r, opts)
+	if err != nil {
+		return nil, err
+	}
+	return finishCompiled(d, true, !opts.NoPrediction)
+```
+
+The `*File` variants are unchanged: they call these.
+
+`cmd/gomorphy/build.go`:
+- `runBuild(cmd *cobra.Command, typ, input, output, lang string, noPrediction bool) error`.
+- `case "opencorpora":` —
+  `d, err = morphology.CompileFromXMLWithOptions(f, morphology.XMLOptions{Progress: progress, Dense: true, NoPrediction: noPrediction})`
+  (keep the dense-by-default comment).
+- `case "pymorphy":` — first line:
+  ```go
+  if noPrediction {
+  	return fmt.Errorf("build pymorphy: --no-prediction is not supported: pymorphy2 prediction comes from the source files")
+  }
+  ```
+- `case "unimorph":` — `morphology.UniMorphOptions{Language: lang, NoPrediction: noPrediction}`.
+- In `newBuildCommand`:
+  ```go
+  cmd.Flags().Bool("no-prediction", false,
+  	"skip ending-based prediction for out-of-dictionary words (opencorpora, unimorph)")
+  ```
+  read it with `noPrediction, _ := cmd.Flags().GetBool("no-prediction")` and pass it on.
+
+`cmd/gomorphy/update.go:28`: `return runBuild(cmd, typ, "", output, lang, false)`.
+
+- [ ] **Step 4: Run the whole suite and fix example outputs**
+
+Run: `go test ./... -race -count=1`
+Expected: the new tests PASS. `cmd/gomorphy/dict_test.go`
+`TestResolveDictionaries_FlagTakesPriorityOverEnv` asserts `assert.Empty(t, got.Parse("груша"), …)`
+on a `CompileFromXML` fixture; it still passes (no suffix of «груша» occurs in «кот»), but it now
+tests prediction by accident — replace it with `assert.False(t, got.IsKnown("груша"), …)` keeping
+the message. `Example*` functions built on `exampleDictXML`/`exampleDictXML2`
+through `CompileFromXML` (e.g. `ExampleNewMultiDictionary`) may now print extra readings: a word
+known to one dictionary is predicted by the other. For each failing example, check that every new
+output line is a `Predicted` reading from the dictionary that lacks the word, then update its
+`// Output:` block to the new output. Do not pass `NoPrediction` just to keep an old output; if
+the example's prose says an unknown word yields nothing, correct the prose. Re-run until green.
+
+- [ ] **Step 5: Measure on real dictionaries**
+
+```bash
+cd /Users/asmarin/dev/mine/gomorphy
+for t in opencorpora unimorph; do
+  /usr/bin/time -p go run ./cmd/gomorphy build $t -o /tmp/gomorphy-$t-pred.dat
+  /usr/bin/time -p go run ./cmd/gomorphy build $t --no-prediction -o /tmp/gomorphy-$t-nopred.dat
+done
+ls -l /tmp/gomorphy-*-pred.dat /tmp/gomorphy-*-nopred.dat
+for t in opencorpora unimorph; do
+  GOMORPHY_BENCH_DICT=/tmp/gomorphy-$t-pred.dat go test ./pkg/morphology/ \
+    -run TestRealDictionaryPredictsUnknownWords -bench BenchmarkRealDict -benchmem -count=5 \
+    | tee /tmp/gomorphy-bench-$t-pred.txt
+done
+```
+
+Expected: `TestRealDictionaryPredictsUnknownWords` PASS for both; `BenchmarkRealDict`'s
+`ParsePredicted` sub-benchmark now reports real work for OpenCorpora (it returned nil before).
+Record sizes, build times and `ParsePredicted` numbers for the Task 13 write-up. **Gate:** if
+prediction grows either file by more than 50%, stop and report to the owner before Task 13 —
+the default-on decision (spec L, G6) is to be revisited.
+
+- [ ] **Step 6: Lint and commit**
+
+Run: `gofmt -l . && go vet ./... && golangci-lint run ./...` — clean.
+
+```bash
+git add pkg/morphology/open.go pkg/morphology/importers/unimorph/import.go pkg/morphology/compile_prediction_test.go pkg/morphology/example_test.go cmd/gomorphy/build.go cmd/gomorphy/update.go cmd/gomorphy/build_test.go cmd/gomorphy/dict_test.go
+git commit -m "feat(morphology): predict unknown words in OpenCorpora and UniMorph dictionaries
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 13: Documentation, CHANGELOG, version 1.3.0
 
 **Files:**
 - Modify: `pkg/morphology/version.go:7`, `CHANGELOG.md`
@@ -2170,6 +3168,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Modify: `docs/en/todo.md` (Forms/Inflect section; Completed stages row)
 - Modify: `docs/en/implementation.md:190-201` (Metrics table)
 - Modify: `docs/en/implementation/ner-support.md` (append the 1.3.0 part)
+- Modify: `docs/en/scenarios.md` (scenario 2 note, scenario 3), `docs/en/comparison.md`
+  (prediction row, summary)
 
 - [ ] **Step 1: Version** — `const Version = "1.3.0"`.
 
@@ -2187,6 +3187,12 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - `Dictionary.ParseAppend(dst, word)`.
 - Benchmarks for Parse/Lemma/IsKnown/FuzzyTop (fixture and a real `.dat` via
   `GOMORPHY_BENCH_DICT`).
+- Ending-based prediction for OpenCorpora and UniMorph dictionaries: `Parse`
+  returns `Predicted` readings for unknown words instead of nil. Built by
+  default; opt out with `XMLOptions.NoPrediction` (new
+  `CompileFromXMLWithOptions`), `UniMorphOptions.NoPrediction` or
+  `gomorphy build --no-prediction`. Stored in new `prediction-sharded-N`
+  sections; gomorphy 1.2.x opens such files without prediction.
 
 ### Changed
 - `Parse`: no goroutine for single-shard dictionaries, no per-rune/per-value
@@ -2195,6 +3201,12 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Builder/ImportTSV group forms into lexemes by lemma **and** part-of-speech
   class: «знать» NOUN and «знать» INFN become two lemmas. Dictionaries rebuilt
   from homonymous input differ from 1.2.0 output; existing files are unaffected.
+
+- `MergeOptions.RebuildPrediction` (CLI `merge --rebuild-prediction`) works
+  for merged dictionaries with more than one shard.
+
+### Deprecated
+- `ErrPredictionSharded` — never returned any more.
 
 ### Fixed
 - Builder/ImportTSV (and the `*Dense` importers) fall back to a 2-byte alphabet
@@ -2208,10 +3220,15 @@ Replace `<N>`/`<M>` with the measured `TestParseAllocs` values from Task 9 Step 
   and not mapped by `tagmap`); "Word forms" (`Forms`, `Inflect`, the ranking rule, predicted
   readings); in "Exact wordform lookup" add `ParseAppend`; in "Building a dictionary from scratch"
   add the POS-class grouping rule and the 2-byte fallback; in "Multiple dictionaries" add
-  `Forms`/`Inflect`.
+  `Forms`/`Inflect`. Prediction (L): wherever the page says OpenCorpora/UniMorph dictionaries have
+  no prediction, say they have it by default since 1.3.0; document `XMLOptions`,
+  `CompileFromXMLWithOptions`, `UniMorphOptions.NoPrediction`, `build --no-prediction`, and that
+  `RebuildPrediction` works for any shard count; mention `IsKnown` as the way to tell a guess from
+  a dictionary word.
 
 - [ ] **Step 4: `docs/ru/library.md`** — minimal Russian subset: `Grammemes`/`HasGrammeme`/`POS`,
-  `Forms`/`Inflect` (one example each), `ParseAppend`, one sentence on the POS-class grouping.
+  `Forms`/`Inflect` (one example each), `ParseAppend`, one sentence on the POS-class grouping,
+  one sentence on prediction for OpenCorpora/UniMorph and `--no-prediction`.
 
 - [ ] **Step 5: `docs/en/todo.md`** — replace the body of "Word inflection / form generation
   (`Forms`, `Inflect`) — PLANNED" with a short "DONE in 1.3.0" note: the shape shipped
@@ -2220,8 +3237,23 @@ Replace `<N>`/`<M>` with the measured `TestParseAllocs` values from Task 9 Step 
   tagmap-based universal query as a v2 idea. Add a Completed-stages row:
 
 ```markdown
-| — NER support for lexicon: 1.3.0 (tag helpers, Forms/Inflect, Parse performance, POS-aware Builder, 2-byte alphabet fallback) | DONE | [implementation/ner-support.md](implementation/ner-support.md) |
+| — NER support for lexicon: 1.3.0 (tag helpers, Forms/Inflect, Parse performance, POS-aware Builder, 2-byte alphabet fallback, sharded prediction) | DONE | [implementation/ner-support.md](implementation/ner-support.md) |
 ```
+
+  In the Builder/merge section (around "a sharded merge output keeps prediction absent, same as
+  OpenCorpora dictionaries"), replace that clause with "sharded outputs get sharded prediction
+  (1.3.0)".
+
+- [ ] **Step 5a: `docs/en/scenarios.md` and `docs/en/comparison.md`** — scenarios: replace
+  "OpenCorpora and UniMorph imports have no prediction: `Parse` returns `nil` for an unknown word."
+  with the 1.3.0 behaviour (predicted by default, `IsKnown` to check, `--no-prediction` /
+  `NoPrediction` to turn it off) and add a `1.3.0` line to that scenario's **History**. comparison:
+  in the "Prediction for unknown words" row replace "for pymorphy2 dictionaries and for dictionaries
+  built with Builder/ImportTSV (not for OpenCorpora or UniMorph imports)" with "for every
+  dictionary source (pymorphy2's own, built for OpenCorpora/UniMorph imports and Builder/ImportTSV;
+  opt-out)". In "All wordforms of a lemma" and "Inflection / form generation" rows replace
+  "not a dedicated API" / "not implemented" with `Forms` / `Inflect` (H), and update the Summary
+  paragraph that says the alternatives are closer fits for inflection.
 
 - [ ] **Step 6: `docs/en/implementation.md` Metrics table** — replace the `Parse (exact)`,
   `Parse (prediction)`, `Lemmas` rows' values with the measured medians from
@@ -2229,9 +3261,11 @@ Replace `<N>`/`<M>` with the measured `TestParseAllocs` values from Task 9 Step 
   with "(measured 1.3.0, <CPU>)", and link the write-up.
 
 - [ ] **Step 7: Write-up** — append to `docs/en/implementation/ner-support.md` a "1.3.0" part: one
-  paragraph per item G–K; a "Performance" table (benchmark, before, after: ns/op, B/op, allocs/op,
+  paragraph per item G–L (L: the format decision and why the section is new, the measured file
+  sizes and build times with and without prediction and `ParsePredicted` on OpenCorpora/UniMorph
+  from Task 12 Step 5); a "Performance" table (benchmark, before, after: ns/op, B/op, allocs/op,
   fixture and real dictionary, CPU from `go test` output header); the `TestParseAllocs` numbers;
-  whether the spec targets (Parse < 10 µs, prediction < 50 µs) hold; the Discrepancies D-12…D-18
+  whether the spec targets (Parse < 10 µs, prediction < 50 µs) hold; the Discrepancies D-12…D-22
   below.
 
 - [ ] **Step 8: Full verification**
@@ -2245,12 +3279,14 @@ Expected: no output from `gofmt -l`; everything else PASS / clean.
 Self-review against the spec's Testing section: G → `tag_test.go`, `internal/tag_test.go`;
 H → `lexeme_test.go` + examples; I → `bench_test.go`, `parse_alloc_test.go`,
 `internal/lookup_each_test.go`; J → `builder_test.go`, `internal/build_test.go`;
-K → `dense_recompile_test.go`, `builder_internal_test.go`.
+K → `dense_recompile_test.go`, `builder_internal_test.go`; L → `internal/prediction_test.go`,
+`internal/merge_test.go`, `prediction_sharded_test.go`, `compile_prediction_test.go`,
+`cmd/gomorphy/build_test.go`.
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add pkg/morphology/version.go CHANGELOG.md docs/en/library.md docs/ru/library.md docs/en/todo.md docs/en/implementation.md docs/en/implementation/ner-support.md
+git add pkg/morphology/version.go CHANGELOG.md docs/en/library.md docs/ru/library.md docs/en/todo.md docs/en/implementation.md docs/en/implementation/ner-support.md docs/en/scenarios.md docs/en/comparison.md
 git commit -m "release: 1.3.0
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -2286,6 +3322,20 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   2-byte dictionary). The spec only mentions Builder/ImportTSV. The existing test
   `TestRecompileDenseAlphabetOverflowReturnsError` asserts the old error and is rewritten.
 
+- **D-19 (L).** The spec says the importers build prediction. They cannot: `productive` lives in
+  `pkg/morphology`, which imports the importer packages. Prediction is built by the
+  `morphology.CompileFrom*` wrappers (`finishCompiled`); `unimorph.Options.NoPrediction` is a field
+  of the importer's options that only those wrappers honour, and is documented as such.
+- **D-20 (L).** Generalizing `BuildPrediction` through `shardPairs` makes it accept dense
+  dictionaries too (keys are decoded through the alphabet); the "must still be raw" precondition
+  goes away. `Merge`'s rebuild re-reads all output shards instead of special-casing a reused
+  shard 0.
+- **D-21 (L).** `pymorphy` has no `--no-prediction`: its prediction comes from the source files.
+  The CLI rejects the flag for `pymorphy` with an error rather than silently ignoring it.
+- **D-22 (L).** Examples and CLI tests built on OpenCorpora XML fixtures via `CompileFromXML` now
+  get prediction; `MultiDictionary` examples may print extra predicted readings. Task 12 updates
+  their outputs instead of opting out.
+
 ## Open questions
 
 - **Q1 (J).** RESOLVED 2026-09-24 (owner, answer 17): POS-class grouping is **on by default with
@@ -2314,3 +3364,11 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - **Q8 (spec G1–G3).** RESOLVED 2026-09-24 (owner, answer 15): G1 — single module, `cmd/gomorphy`
   stays; G3 — `go 1.25.0` + `toolchain go1.27.1` by the policy "current Go minus two minor
   versions" (this plan relies on it for `b.Loop`). G2 stays as in the 1.2.0 plan (moot, D-9).
+- **Q9 (L).** RESOLVED 2026-09-27 (owner): prediction for sharded dictionaries is in 1.3.0 as item
+  L — one prefix-0 DAWG with the shard in an 8-byte value, new `prediction-sharded-N` sections,
+  built by default with an opt-out. Revisit the default if Task 12 Step 5 measures more than 50%
+  file growth.
+- **Q10 (L, G).** If Q7 is taken (`productive` switches to `internal.NextGrammeme`, splitting on
+  `;` too), UniMorph tags get split into tokens for the first time. UniMorph `rus` has no
+  nonproductive POS today (only `N`, `ADJ`, `V`, `V.PTCP`, `V.CVB`), and `CONJ`/`INTJ` would be
+  filtered correctly anyway; `TestCompileFromUniMorphPredictsAllPOS` guards the outcome either way.
