@@ -111,7 +111,8 @@ func CompileFromXMLFileDense(path string, progress opencorpora.Progress) (*Dicti
 // CompileFromUniMorph compiles a UniMorph dictionary from a TSV stream
 // (lemma<TAB>wordform<TAB>bundle), with prediction. See unimorph.Options
 // and docs/en/implementation/stage-16-import-unimorph.md. Builds
-// prediction unless told otherwise, see CompileFromXMLWithOptions.
+// prediction unless opts.NoPrediction is set (see
+// UniMorphOptions.NoPrediction).
 func CompileFromUniMorph(r interface{ Read([]byte) (int, error) }, opts UniMorphOptions) (*Dictionary, error) {
 	d, err := unimorph.CompileFromTSV(r, opts)
 	if err != nil {
@@ -137,8 +138,8 @@ func CompileFromUniMorphFile(path string, opts UniMorphOptions) (*Dictionary, er
 // internal.RecompileDense and
 // docs/en/implementation/pymorphy2-dense-alphabet.md — the same
 // source-agnostic mechanism CompileFromXMLDense and OpenPyMorphyDense
-// use). Builds prediction unless told otherwise, see
-// CompileFromXMLWithOptions.
+// use). Builds prediction unless opts.NoPrediction is set (see
+// UniMorphOptions.NoPrediction).
 func CompileFromUniMorphDense(r interface{ Read([]byte) (int, error) }, opts UniMorphOptions) (*Dictionary, error) {
 	d, err := unimorph.CompileFromTSV(r, opts)
 	if err != nil {

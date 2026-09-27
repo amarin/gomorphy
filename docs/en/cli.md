@@ -277,7 +277,7 @@ Flags:
 |------|----------|
 | `-o, --output <path>` | path to the output `.dat` file (required) |
 | `--mode <add\|replace>` | merge conflict policy (required, case-insensitive) |
-| `--rebuild-prediction` | rebuild prediction from all merged words (single-shard output only) |
+| `--rebuild-prediction` | rebuild prediction from all merged words (unpruned; any shard count since 1.3.0) |
 
 ### `split` — not yet implemented
 

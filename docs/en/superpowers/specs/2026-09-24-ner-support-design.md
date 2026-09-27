@@ -270,15 +270,24 @@ func (x *Dictionary) Inflect(r Reading, want ...string) []Reading
 Added 2026-09-27. OpenCorpora and UniMorph imports have no ending-based
 prediction: `Parse` returns `nil` for an unknown word, so `Forms`/`Inflect`
 (H) have nothing to work from. The builder (`internal.BuildPredictionFrom`)
-is source-agnostic; what blocks it is sharding — both imports split into 2
-shards in practice (`FillOnDemand`, 65536 suffix ids per shard), while
-`BuildPrediction` handles one shard only and `predictForPrefix` resolves
-every prediction against shard 0. Scope is exactly pymorphy2's
+is source-agnostic; what blocks it is sharding — a dictionary with more
+than 65536 suffixes splits into shards (`FillOnDemand`, 65536 suffix ids
+per shard), while `BuildPrediction` handles one shard only and
+`predictForPrefix` resolves every prediction against shard 0. Measured
+(ruling R15): the OpenCorpora import is single-shard today (only
+`words.dawg-0`), the UniMorph import has 2 shards. Scope is exactly pymorphy2's
 KnownSuffixAnalyzer as it already works for pymorphy2 and Builder
 dictionaries, extended to N shards; no new heuristics.
 
 **Format.** A sharded prediction is one DAWG per paradigm prefix id, in a
-new section `pred-sharded-P`. Key: a word suffix of 1..5 runes.
+new section `pred-sharded-P`. Key: a word suffix of
+max(rune length of the form's suffix, 1)..5 runes; a reading whose form
+suffix is longer than 5 runes, or whose form has a non-empty paradigm
+prefix, is not indexed (ruling R14, as pymorphy2's compiler; applies to
+every prediction build, pruned or not, and to single-shard `prediction-P`
+too). `predictForPrefix` also skips a value whose form prefix/suffix the
+candidate word does not start/end with, which cleans Builder/merged files
+built before R14 without a format change.
 Value: `count(BE16) | para(BE16) | form(BE16) | shard(BE16)` — 8 bytes
 instead of today's 6. The name is short because GMOR catalog entries hold
 section names in a fixed 16-byte field.
@@ -295,15 +304,20 @@ section names in a fixed 16-byte field.
   shard 0 and stay correct.
 - A file holds either `prediction-N` or `pred-sharded-N` sections,
   never both; both present is an open error. Single-shard dictionaries
-  (pymorphy2, Builder, ImportTSV) keep writing 6-byte `prediction-N`, so
-  their files are byte-identical to today's.
+  (pymorphy2, Builder, ImportTSV, and the OpenCorpora import) write 6-byte
+  `prediction-N`; pymorphy2 files are byte-identical to today's, Builder/
+  ImportTSV prediction content differs only by the R14 key rule.
 - gomorphy 1.2.x does not know `pred-sharded-*` and skips it: a new
-  OpenCorpora/UniMorph file opens there with no prediction, exactly as
-  today, and never yields wrong readings. This is why the section is new
+  multi-shard file (UniMorph) opens there with no prediction, exactly as
+  today, and never yields wrong readings. A single-shard import
+  (OpenCorpora) stores its prediction as 6-byte `prediction-0`, which 1.2.x
+  reads and uses. This is why the section is new
   rather than 8-byte values under the old name — 1.2.x would read those as
   shard 0.
 - Only prefix id 0 is built, as for Builder. The `по-` comparative prefix
-  (`stripCmp2Prefix`) covers rare words and is left out on purpose.
+  (`stripCmp2Prefix`) covers rare words and is left out on purpose; since
+  R14 readings whose form carries such a prefix no longer feed the prefix-0
+  DAWG either (a word predicted through prefix id 0 must not need one).
 
 **Lookup.** `predictForPrefix` loses its `predictionShard = 0` constant: an
 8-byte value takes its shard from `v[6:8]`, a 6-byte value means shard 0. A
@@ -368,7 +382,7 @@ build with pymorphy2's compile defaults:
 
 Builder, ImportTSV and `Merge` keep unpruned prediction: small thematic
 dictionaries would lose all prediction under `min_paradigm_popularity = 3`,
-and their files stay byte-identical. The thresholds are internal constants,
+and their files keep the same format. The thresholds are internal constants,
 not a public option (YAGNI). A `Merge` with `RebuildPrediction` over an
 OpenCorpora base therefore gets an unpruned, large prediction; this goes to
 the backlog. After pruning the measurements are repeated. If either file
@@ -385,11 +399,14 @@ more than 50 µs (median), the owner decides again before release.
   non-"ru" `Language` and no explicit policy no longer get е→ё.
 - J changes paradigm grouping for built dictionaries with homonymous lemmas —
   new `.dat` files differ; existing files open unchanged.
-- L adds `pred-sharded-N` sections to newly built OpenCorpora/UniMorph
-  files (and to sharded `Merge` results with `RebuildPrediction`). The change
-  is additive: no format version bump, single-shard files stay
-  byte-identical, existing files open unchanged, and 1.2.x opens new files
-  with no prediction instead of failing. `Parse` now returns predicted
+- L adds prediction to newly built OpenCorpora/UniMorph files:
+  single-shard dictionaries (OpenCorpora) store it as `prediction-N`,
+  readable by 1.2.x; multi-shard ones (UniMorph, and sharded `Merge` results
+  with `RebuildPrediction`) as `pred-sharded-N`, which 1.2.x skips. The
+  change is additive: no format version bump, existing files open
+  unchanged, and 1.2.x opens new files instead of failing. Builder/ImportTSV
+  prediction keys follow R14, so their prediction bytes differ from 1.2.x
+  output (the format does not). `Parse` now returns predicted
   readings for unknown words in OpenCorpora/UniMorph dictionaries where it
   returned `nil`; callers wanting the old behaviour check `IsKnown` or
   build with `NoPrediction`. `MergeOptions.RebuildPrediction` on a sharded

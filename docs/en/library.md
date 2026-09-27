@@ -234,7 +234,9 @@ are added into that structure.
 - `MergeOptions.RebuildPrediction` — rebuild prediction from all merged
   words (useful when merging thematic dictionaries with each other); by
   default the base's prediction is kept, and overlay words don't feed it.
-  Since 1.3.0 this works for a merged result with any number of shards
+  The rebuilt prediction is unpruned and covers all merged words, so over
+  a large base (pymorphy2, OpenCorpora) the result can be much larger
+  than the base. Since 1.3.0 this works for a merged result with any number of shards
   (`ErrPredictionSharded` is never returned any more; the sentinel stays
   exported, marked `Deprecated`, for source compatibility).
 - Inputs must share a language exactly (a dictionary with an empty
@@ -406,7 +408,10 @@ by at least 3 lemmas, endings attested at least twice, the most attested
 (via `CompileFromXMLWithOptions`), `UniMorphOptions.NoPrediction`, or
 `gomorphy build opencorpora|unimorph --no-prediction` from the CLI (not
 accepted for `gomorphy build pymorphy`, whose prediction comes from its
-source files). `MergeOptions.RebuildPrediction` works for a merged result
+source files). Single-shard dictionaries (OpenCorpora) store it as
+`prediction-N`, readable by 1.2.x; multi-shard ones (UniMorph) as
+`pred-sharded-N`, which 1.2.x skips (such a file opens there without
+prediction). `MergeOptions.RebuildPrediction` works for a merged result
 with any shard count (see "`Merge`" above). Use `IsKnown` to tell a
 dictionary reading from a prediction — see "Dictionary words vs.
 predictions" above.

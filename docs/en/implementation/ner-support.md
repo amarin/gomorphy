@@ -193,29 +193,34 @@ instead.
 and `CompileFromUniMorph*` built dictionaries with no ending-based
 prediction: an out-of-dictionary word made `Parse` return `nil`, so H's
 `Forms`/`Inflect` had nothing to work from for OpenCorpora/UniMorph
-imports. The blocker was sharding, not the source: both imports split
-into 2 shards in practice (`FillOnDemand`, 65536 suffix ids per shard),
-while `internal.BuildPrediction` handled one shard only and
-`predictForPrefix` resolved every prediction against shard 0.
+imports. The blocker was sharding, not the source: a dictionary with more
+than 65536 suffixes splits into shards (`FillOnDemand`, 65536 suffix ids
+per shard) — today the UniMorph import has 2 shards, the OpenCorpora
+import only one (`words.dawg-0`) — while `internal.BuildPrediction`
+handled one shard only and `predictForPrefix` resolved every prediction
+against shard 0.
 
 *Format.* A sharded prediction is one DAWG per paradigm prefix id, in a
 new section named `pred-sharded-P` — not `prediction-sharded-P`, because
 GMOR catalog entries hold section names in a fixed 16-byte field and the
 longer name doesn't fit (found during implementation, not anticipated by
-the spec text — see D-23). Its key is a word suffix of 1-5 runes; its
-value is `count(BE16) | para(BE16) | form(BE16) | shard(BE16)` — 8 bytes
+the spec text — see D-23). Its key is a word suffix of
+max(rune length of the form's suffix, 1)..5 runes (see *Key lengths*
+below); its value is `count(BE16) | para(BE16) | form(BE16) | shard(BE16)` — 8 bytes
 instead of the 6-byte `prediction-N` value single-shard dictionaries
 still use. `internal.Dictionary` gained a `PredictionSharded bool` field
 that tracks which value width is in play; `Open`/`OpenBytes` set it from
 the section name found, `SaveTo` picks the section name from it. A file
-holds either `prediction-N` or `pred-sharded-N`, never both. Single-shard
-dictionaries (pymorphy2, Builder, ImportTSV) keep writing 6-byte
-`prediction-N`, so their files stay byte-identical to 1.2.x. The section
-is genuinely new, not an 8-byte reinterpretation of the old name, because
-gomorphy 1.2.x must keep opening a new OpenCorpora/UniMorph `.dat`
-without prediction rather than misreading 8-byte values as if they were
-6-byte shard-0 ones — an unknown section name is the only way to make
-that safe.
+holds either `prediction-N` or `pred-sharded-N`, never both.
+Single-shard dictionaries (pymorphy2, Builder, ImportTSV, and the
+OpenCorpora import) store prediction as 6-byte `prediction-N`, readable by
+1.2.x — so a 1.3.0 OpenCorpora `.dat` predicts under 1.2.x too;
+multi-shard ones (UniMorph) as `pred-sharded-N`, which 1.2.x skips. The
+section is genuinely new, not an 8-byte reinterpretation of the old name,
+because gomorphy 1.2.x must keep opening a new multi-shard `.dat` without
+prediction rather than misreading 8-byte values as if they were 6-byte
+shard-0 ones — an unknown section name is the only way to make that
+safe.
 
 *Building and lookup.* `internal.BuildPrediction`/`BuildPredictionFrom`
 were generalized to accept dense dictionaries too (keys decoded through
@@ -243,6 +248,26 @@ single-shard result: it now goes through the generalized
 `BuildPrediction` over every output shard, so `ErrPredictionSharded` is
 never returned any more (kept exported, marked `Deprecated`).
 
+*Key lengths (ruling R14, found by the final review).* The first
+implementation indexed every reading under the word's last 1..5 runes,
+including keys shorter than the form's own suffix. An unknown word
+matching such a key got a (paradigm, form) whose suffix it does not end
+with: `readingForm`'s `TrimSuffix` was a no-op and the lemma became word +
+lemma suffix («зя» → «зяезти», «ся» → «сяться» on OpenCorpora, «ю» →
+«юный» on UniMorph, «глокая» → «глокаявысокий» with unpruned prediction),
+and `Forms` returned nil for it. Like pymorphy2's compiler, a reading now
+yields keys of max(len(form suffix), 1)..5 runes, none when its form
+suffix is longer than 5 runes, and none when its form has a non-empty
+paradigm prefix (OpenCorpora «по»/«наи» comparatives: the prefix-0 DAWG
+must only predict words that need no prefix). This applies to every
+prediction build — Builder/ImportTSV/`Merge` too, so their prediction
+bytes differ from 1.2.x (the format does not). `predictForPrefix` also
+skips a value whose form prefix/suffix the candidate word does not
+start/end with; this cleans Builder/merged files written before the fix
+without a format change and leaves pymorphy2 files unchanged (their keys
+already follow the rule; Parse output for 33 unknown words on
+`pymorphy.dat` is identical before and after).
+
 *Pruning.* The first real-dictionary measurement (Task 12 Step 5)
 tripped the spec's 50%-growth gate: unpruned prediction grew
 `opencorpora.dat` from 10,669,636 to 24,112,684 bytes (+126.0%) and
@@ -259,19 +284,24 @@ a suffix key attested by fewer than 2 readings is dropped, and per suffix
 and part-of-speech (the tag's first grammeme) only the single most
 attested `(paradigm, form, shard)` survives. `Builder`, `ImportTSV` and
 `Merge` keep unpruned prediction (`internal.BuildPrediction`'s zero-value
-`PredictionPruning` keeps everything, proven byte-identical to the
-pre-pruning behavior by `TestBuildPredictionPrunedZeroIsUnpruned`):
+`PredictionPruning` keeps everything, proven identical to the unpruned
+build by `TestBuildPredictionPrunedZeroIsUnpruned`):
 pruning by lemma-paradigm popularity would erase all prediction from the
 small, thematic dictionaries those two are typically used for. The
 thresholds are internal constants, not a public option (YAGNI) —
 a `Merge` with `RebuildPrediction` over an OpenCorpora/UniMorph base
 therefore still rebuilds unpruned, large prediction; noted as backlog in
-`docs/en/todo.md`.
+`docs/en/todo.md`. The pruning approximates pymorphy2 rather than
+reproducing it: gomorphy counts ending frequency after the productive-tag
+filter, and its per-class candidates are (paradigm, form) rather than
+pymorphy2's (form suffix, tag, prefix), so byte-parity with pymorphy2's
+prediction files is not expected.
 
 After pruning, both real-dictionary measurements moved well inside the
-gates: `opencorpora.dat` 10,669,636 → 14,895,196 bytes (+39.6%, was
-+126.0%), `unimorph.dat` 11,085,089 → 12,579,657 bytes (+13.5%, was
-+67.4%); build time with pruned prediction was ≈119 s for OpenCorpora and
+gates: `opencorpora.dat` 10,669,636 → 14,887,124 bytes (+39.5%, was
++126.0%), `unimorph.dat` 11,085,089 → 12,564,297 bytes (+13.3%, was
++67.4%) — remeasured after R14 (14,895,196 / 12,579,657 bytes before it);
+build time with pruned prediction was ≈119 s for OpenCorpora and
 ≈51 s for UniMorph (Apple M4 Pro); parsing an unknown word with pruned
 prediction took ≈1.0-1.1 µs for OpenCorpora («бутявкающий»,
 «шмуклерами») and ≈1.3-1.5 µs for UniMorph («бутявкающий», «глокая») —
@@ -321,8 +351,10 @@ number pruning targeted):
 
 | dictionary | ParseKnown/кота | ParseKnown/стали | ParseKnown/ежик | ParsePredicted/бутявкающий | ParsePredicted/глокая |
 |---|---:|---:|---:|---:|---:|
-| opencorpora | ~295 ns | ~754 ns | ~265 ns | ~1028 ns (**~1.0 µs**) | ~1082 ns (**~1.1 µs**) |
-| unimorph | ~1819 ns | ~2624 ns | ~1844 ns | ~1471 ns (**~1.3-1.5 µs**) | ~1344 ns (**~1.3 µs**) |
+| opencorpora | ~282 ns | ~758 ns | ~274 ns | ~1049 ns (**~1.0 µs**) | ~1066 ns (**~1.1 µs**) |
+| unimorph | ~1732 ns | ~2407 ns | ~1783 ns | ~1435 ns (**~1.4 µs**) | ~1246 ns (**~1.2 µs**) |
+
+(Medians of 5 runs, remeasured after R14.)
 
 `TestParseAllocs` (`pkg/morphology/parse_alloc_test.go`, fixture
 dictionary, no `-race`):
@@ -407,7 +439,7 @@ have missed it by nearly 7x.
   +67.4%). Rather than flip prediction to opt-in, the owner decided
   (2026-09-27) to prune it like pymorphy2's own compiler and keep
   default-on if the pruned numbers came in under the gate — they did
-  (+39.6% / +13.5%), so default-on shipped as originally planned, just
+  (+39.5% / +13.3% after R14), so default-on shipped as originally planned, just
   pruned.
 - **D-25 (I).** `internal.DAWG.LookupEach`'s decode buffer is a
   `sync.Pool`-backed fixed array rather than a stack array: a slice
@@ -465,7 +497,10 @@ Per the spec's Testing section for items G-L:
   all four pruning rules (`TestBuildPredictionPrunedParadigmPopularity`,
   `...EndingFreq`, `...MaxFormsPerClass`, and
   `TestBuildPredictionPrunedZeroIsUnpruned` proving `Builder`/`ImportTSV`/
-  `Merge` stay byte-identical).
+  `Merge` stay unpruned); R14 key lengths
+  (`TestBuildPredictionKeysContainFormSuffix`,
+  `pkg/morphology/prediction_affix_test.go`: short unknown words on a
+  Builder dictionary and the runtime guard on a hand-injected bad value).
 
 ## Findings
 

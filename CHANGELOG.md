@@ -27,21 +27,26 @@ full list with links.
   returns `Predicted` readings for unknown words instead of nil. Built by
   default; opt out with `XMLOptions.NoPrediction` (new
   `CompileFromXMLWithOptions`), `UniMorphOptions.NoPrediction` or
-  `gomorphy build --no-prediction`. Stored in new `pred-sharded-N`
-  sections; gomorphy 1.2.x opens such files without prediction. Pruned
+  `gomorphy build --no-prediction`. Single-shard dictionaries
+  (OpenCorpora) store it as `prediction-N`, readable by 1.2.x; multi-shard
+  ones (UniMorph) as `pred-sharded-N`, which 1.2.x skips. Pruned
   like pymorphy2's dictionary compiler (paradigms used by at least 3
   lemmas, endings attested at least twice, the most attested (paradigm,
   form) per ending and part of speech) — Builder, ImportTSV and `Merge`
-  keep unpruned prediction.
+  keep unpruned prediction. File growth: OpenCorpora +39.5%
+  (10.7 → 14.9 MB), UniMorph +13.3% (11.1 → 12.6 MB).
 
 ### Changed
+- `CompileFromXML*`/`CompileFromUniMorph*` and `gomorphy build|update`
+  (opencorpora, unimorph): `Parse` now returns `Predicted` readings for
+  unknown words instead of nil. Use `IsKnown` to test membership, or
+  `NoPrediction`/`--no-prediction` to keep the old behaviour.
 - `Parse`: no goroutine for single-shard dictionaries, no per-rune/per-value
   allocations; allocations per known word 1 (was 22–24), per predicted word
   3 (was 44) — see implementation/ner-support.md.
 - Builder/ImportTSV group forms into lexemes by lemma **and** part-of-speech
   class: «знать» NOUN and «знать» INFN become two lemmas. Dictionaries rebuilt
   from homonymous input differ from 1.2.0 output; existing files are unaffected.
-
 - `MergeOptions.RebuildPrediction` (CLI `merge --rebuild-prediction`) works
   for merged dictionaries with more than one shard.
 
@@ -49,6 +54,12 @@ full list with links.
 - `ErrPredictionSharded` — never returned any more.
 
 ### Fixed
+- Predicted readings no longer get lemmas built from a suffix the word does
+  not have («зя» → «зяезти», «глокая» → «глокаявысокий»): prediction keys
+  are never shorter than the form's suffix, as in pymorphy2's compiler, so
+  Builder/ImportTSV/`Merge --rebuild-prediction` prediction bytes differ
+  from 1.2.x (same format). `Parse` also skips such values in existing
+  Builder/merged files at lookup time.
 - Builder/ImportTSV (and the `*Dense` importers) fall back to a 2-byte alphabet
   instead of failing on more than 254 distinct characters.
 
