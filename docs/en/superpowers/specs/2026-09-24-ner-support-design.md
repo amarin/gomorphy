@@ -349,6 +349,32 @@ size and build time with and without prediction, and `ParsePredicted` on
 both via `GOMORPHY_BENCH_DICT`. If prediction grows a file by more than
 ~50%, the default-on decision is revisited before release.
 
+**Pruning (added 2026-09-27 after the first measurement).** Unpruned
+prediction grew `opencorpora.dat` from 10.2 to 23.0 MB (+126%) and
+`unimorph.dat` from 10.6 to 17.7 MB (+67%). An unknown UniMorph word took
+up to ~340 µs to predict (853 KB allocated), because short endings
+collect thousands of (paradigm, form) values. Owner decision: prune the way
+pymorphy2's dictionary compiler does, and keep default-on if the numbers
+become acceptable. Imports (`CompileFromXML*`, `CompileFromUniMorph*`)
+build with pymorphy2's compile defaults:
+
+- `min_paradigm_popularity = 3` — readings of paradigms used by fewer
+  than 3 lemmas (form-0 readings) do not feed prediction;
+- `min_ending_freq = 2` — a suffix key attested by fewer than 2 readings
+  is dropped;
+- `max_forms_per_class = 1` — per suffix and part of speech (the tag's
+  first grammeme, as in pymorphy2) only the most attested (paradigm,
+  form, shard) is kept. Ties go to the lowest (shard, paradigm, form).
+
+Builder, ImportTSV and `Merge` keep unpruned prediction: small thematic
+dictionaries would lose all prediction under `min_paradigm_popularity = 3`,
+and their files stay byte-identical. The thresholds are internal constants,
+not a public option (YAGNI). A `Merge` with `RebuildPrediction` over an
+OpenCorpora base therefore gets an unpruned, large prediction; this goes to
+the backlog. After pruning the measurements are repeated. If either file
+still grows by more than 50%, or predicting an unknown UniMorph word takes
+more than 50 µs (median), the owner decides again before release.
+
 ## Compatibility
 
 - A, B, E, G, H, I (`ParseAppend`) are additive.

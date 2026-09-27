@@ -3160,6 +3160,262 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
+### Task 12a: pymorphy2-style pruning of imported prediction (item L, part 4)
+
+Added 2026-09-27 after Task 12's measurement tripped the 50% gate (OpenCorpora +126%, UniMorph +67%,
+UniMorph `ParsePredicted` ≈340 µs). Spec L, "Pruning".
+
+**Files:**
+- Modify: `pkg/morphology/internal/prediction.go` (`PredictionPruning`, `ImportPredictionPruning`,
+  `BuildPredictionPruned`, pruning in the shared builder)
+- Modify: `pkg/morphology/internal/prediction_test.go`
+- Modify: `pkg/morphology/open.go` (`finishCompiled` uses the pruned build)
+- Modify: `pkg/morphology/compile_prediction_test.go` (fixtures with ≥3 lemmas per paradigm; the real-dictionary
+  nonce word)
+- Modify: `cmd/gomorphy/build_test.go` (fixture with ≥3 lemmas)
+
+**Interfaces:**
+- Consumes: `BuildPrediction`, `BuildPredictionFrom`, `shardPairs` (Task 10), `FirstGrammeme` (Task 1),
+  `finishCompiled` (Task 12).
+- Produces:
+  - `type PredictionPruning struct { MinEndingFreq, MinParadigmPopularity, MaxFormsPerClass int }` — zero value
+    keeps everything.
+  - `var ImportPredictionPruning = PredictionPruning{MinEndingFreq: 2, MinParadigmPopularity: 3, MaxFormsPerClass: 1}`
+  - `func BuildPredictionPruned(d *Dictionary, productive func(tag string) bool, p PredictionPruning) error`
+  - `BuildPrediction` and `BuildPredictionFrom` keep their signatures and behaviour (= zero pruning), so
+    Builder/ImportTSV/Merge output stays byte-identical.
+
+Rules (pymorphy2's `_suffixes_prediction_data`):
+1. Paradigm popularity = number of form-0 readings of `(shard, para)` across the input pairs. With
+   `MinParadigmPopularity > 0`, readings of paradigms below it are ignored entirely (they feed neither counts nor
+   ending frequencies).
+2. For every remaining productive reading and each suffix length 1..5: `counts[(suffix, para, form, shard)]++` and
+   `endingFreq[suffix]++`.
+3. With `MinEndingFreq > 0`, keys whose `endingFreq[suffix] < MinEndingFreq` are dropped.
+4. With `MaxFormsPerClass > 0`, keys are grouped by `(suffix, FirstGrammeme(tag of para/form))`; each group keeps
+   its `MaxFormsPerClass` entries with the highest count, ties broken by lowest `(shard, para, form)`.
+5. Encoding (6 vs 8 bytes, `sharded`) is unchanged.
+
+- [ ] **Step 1: Write the failing tests**
+
+Append to `pkg/morphology/internal/prediction_test.go`:
+
+```go
+// pruningCorpus: paradigm A (кошка/кошки, мышка/мышки, пешка/пешки — 3
+// lemmas), paradigm B (окно/окна — 1 lemma), paradigm C (ток/токи, сок/соки,
+// бок/боки, рок/роки — 4 lemmas) and paradigm D (single-form ADJS легки,
+// мягки, жарки — 3 lemmas). All tags productive.
+func pruningCorpus(t *testing.T) *Dictionary {
+	t.Helper()
+	var entries []BuildEntry
+	for _, s := range []string{"кошк", "мышк", "пешк"} {
+		entries = append(entries,
+			BuildEntry{Word: s + "а", Lemma: s + "а", Tag: "NOUN,femn,sing,nomn"},
+			BuildEntry{Word: s + "и", Lemma: s + "а", Tag: "NOUN,femn,sing,gent"})
+	}
+	entries = append(entries,
+		BuildEntry{Word: "окно", Lemma: "окно", Tag: "NOUN,neut,sing,nomn"},
+		BuildEntry{Word: "окна", Lemma: "окно", Tag: "NOUN,neut,sing,gent"})
+	for _, s := range []string{"ток", "сок", "бок", "рок"} {
+		entries = append(entries,
+			BuildEntry{Word: s, Lemma: s, Tag: "NOUN,masc,sing,nomn"},
+			BuildEntry{Word: s + "и", Lemma: s, Tag: "NOUN,masc,plur,nomn"})
+	}
+	for _, w := range []string{"легки", "мягки", "жарки"} {
+		entries = append(entries, BuildEntry{Word: w, Lemma: w, Tag: "ADJS,plur"})
+	}
+	d, err := BuildDictionaryFromEntries(BuildOptions{}, entries)
+	require.NoError(t, err)
+	require.Len(t, d.Words, 1)
+	return d
+}
+
+func TestBuildPredictionPrunedZeroIsUnpruned(t *testing.T) {
+	a, b := pruningCorpus(t), pruningCorpus(t)
+	require.NoError(t, BuildPrediction(a, predProductive))
+	require.NoError(t, BuildPredictionPruned(b, predProductive, PredictionPruning{}))
+	assert.Equal(t, a.Prediction[0].Bytes(), b.Prediction[0].Bytes())
+	assert.Equal(t, a.PredictionSharded, b.PredictionSharded)
+}
+
+func TestBuildPredictionPrunedParadigmPopularity(t *testing.T) {
+	d := pruningCorpus(t)
+	require.NoError(t, BuildPredictionPruned(d, predProductive, PredictionPruning{MinParadigmPopularity: 3}))
+	assert.Empty(t, predValues(t, d.Prediction[0], "на"), "окно's paradigm has 1 lemma")
+	assert.Empty(t, predValues(t, d.Prediction[0], "кно"))
+	pA, _ := buildLookup(t, d, "кошка")
+	assert.Equal(t, []struct{ Count, Para, Form uint16 }{{3, pA, 0}}, predValues(t, d.Prediction[0], "шка"))
+}
+
+func TestBuildPredictionPrunedEndingFreq(t *testing.T) {
+	d := pruningCorpus(t)
+	require.NoError(t, BuildPredictionPruned(d, predProductive, PredictionPruning{MinEndingFreq: 2}))
+	assert.Empty(t, predValues(t, d.Prediction[0], "ошка"), "only кошка ends in «ошка»")
+	assert.Empty(t, predValues(t, d.Prediction[0], "кошка"))
+	assert.NotEmpty(t, predValues(t, d.Prediction[0], "шка"), "кошка, мышка, пешка")
+	assert.Empty(t, predValues(t, d.Prediction[0], "на"), "only окна ends in «на»")
+	assert.Empty(t, predValues(t, d.Prediction[0], "кна"))
+	assert.NotEmpty(t, predValues(t, d.Prediction[0], "а"), "кошка, мышка, пешка, окна")
+}
+
+func TestBuildPredictionPrunedMaxFormsPerClass(t *testing.T) {
+	d := pruningCorpus(t)
+	require.NoError(t, BuildPredictionPruned(d, predProductive, PredictionPruning{MaxFormsPerClass: 1}))
+	pC, fC := buildLookup(t, d, "токи")
+	pD, fD := buildLookup(t, d, "легки")
+	// «ки»: NOUN A/1 (кошки…, 3), NOUN C/1 (токи…, 4), ADJS D/0 (легки…, 3):
+	// one per class — C wins NOUN, D is the only ADJS.
+	assert.ElementsMatch(t, []struct{ Count, Para, Form uint16 }{
+		{4, pC, fC},
+		{3, pD, fD},
+	}, predValues(t, d.Prediction[0], "ки"))
+}
+
+func TestImportPredictionPruningIsPymorphyDefault(t *testing.T) {
+	assert.Equal(t, PredictionPruning{MinEndingFreq: 2, MinParadigmPopularity: 3, MaxFormsPerClass: 1}, ImportPredictionPruning)
+}
+```
+
+In `pkg/morphology/compile_prediction_test.go`:
+- add fixtures with ≥3 lemmas per paradigm and switch the default-on tests to them:
+
+```go
+// predictionXML: three nouns sharing one paradigm (""/"а"), so the
+// pymorphy2-style pruning (≥3 lemmas per paradigm, ≥2 readings per ending)
+// keeps their endings.
+const predictionXML = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary corpus="opencorpora" russian="yes">
+ <grammemes>
+  <grammeme id="NOUN">сущ</grammeme><grammeme id="inan">неод</grammeme><grammeme id="masc">м</grammeme>
+  <grammeme id="sing">ед</grammeme><grammeme id="nomn">им</grammeme><grammeme id="gent">род</grammeme>
+ </grammemes>
+ <lemmata>
+  <lemma id="1" text="кот"><l t="кот"><g v="NOUN"/><g v="inan"/><g v="masc"/><g v="sing"/></l><f t="кот"><g v="nomn"/></f><f t="кота"><g v="gent"/></f></lemma>
+  <lemma id="2" text="лот"><l t="лот"><g v="NOUN"/><g v="inan"/><g v="masc"/><g v="sing"/></l><f t="лот"><g v="nomn"/></f><f t="лота"><g v="gent"/></f></lemma>
+  <lemma id="3" text="скот"><l t="скот"><g v="NOUN"/><g v="inan"/><g v="masc"/><g v="sing"/></l><f t="скот"><g v="nomn"/></f><f t="скота"><g v="gent"/></f></lemma>
+ </lemmata>
+</dictionary>`
+
+const predictionTSV = "кот\tкот\tN;NOM;SG\nкот\tкота\tN;GEN;SG\n" +
+	"лот\tлот\tN;NOM;SG\nлот\tлота\tN;GEN;SG\n" +
+	"скот\tскот\tN;NOM;SG\nскот\tскота\tN;GEN;SG\n"
+```
+
+  `TestCompileFromXMLPredictsByDefault` and `TestCompileFromUniMorphPredictsByDefault` use `predictionXML` /
+  `predictionTSV` instead of `exampleDictXML` / `uniMorphTSV` (keep «бота» as the unknown word and «кота» as the
+  known one); add to the XML test that the tiny `exampleDictXML` (one lemma per paradigm) now predicts nothing:
+  `assert.Nil(t, tiny.Parse("бота"), "pruning drops paradigms with fewer than 3 lemmas")`.
+- `TestCompileFromUniMorphPredictsAllPOS`: give every POS three lemmas that share its paradigm, e.g.
+
+```go
+	tsv := ""
+	for _, s := range []string{"стол", "вол", "кол"} {
+		tsv += s + "\t" + s + "ами\tN;INS;PL\n" + s + "\t" + s + "\tN;NOM;SG\n"
+	}
+	for _, s := range []string{"син", "зимн", "летн"} {
+		tsv += s + "ий\t" + s + "ими\tADJ;INS;PL\n" + s + "ий\t" + s + "ий\tADJ;NOM;SG;MASC\n"
+	}
+	for _, s := range []string{"чит", "кат", "мот"} {
+		tsv += s + "ать\t" + s + "ать\tV;NFIN\n" +
+			s + "ать\t" + s + "али\tV;PST;PL\n" +
+			s + "ать\t" + s + "авшими\tV.PTCP;ACT;PST;INS;PL\n" +
+			s + "ать\t" + s + "ая\tV.CVB;PRS\n"
+	}
+```
+
+  Keep the five probe words and the expected set of five POS. If one probe no longer reaches its POS because of
+  the per-class cap, pick a probe whose ending is unique to that POS in the fixture (e.g. «писавшими» for V.PTCP)
+  and say so in the report — the assertion stays "all five POS are predicted".
+- `TestRealDictionaryPredictsUnknownWords`: replace «кракозябрами» by a word absent from both sources — verify with
+  `grep -c -w <word> .data/opencorpora/dict.xml .data/unimorph/ru/data` (0 and 0) before using it, e.g. try
+  «шмуклерами», «кракозяврами».
+
+In `cmd/gomorphy/build_test.go`, `TestBuildCommand_NoPrediction` builds from a three-lemma fixture instead of
+`fixtureXML("кот")`: write a local `const threeCatsXML` with lemmas кот, лот, скот (nomn form only, same tags as
+`fixtureXML`) and keep «бот» as the probe.
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `go test ./pkg/morphology/internal/ -run 'Pruned|PymorphyDefault' -count=1`
+Expected: FAIL to compile — `BuildPredictionPruned`, `PredictionPruning`, `ImportPredictionPruning` undefined.
+
+- [ ] **Step 3: Implement**
+
+`pkg/morphology/internal/prediction.go`:
+
+```go
+// PredictionPruning trims a prediction DAWG the way pymorphy2's dictionary
+// compiler does. The zero value keeps everything.
+type PredictionPruning struct {
+	// MinEndingFreq drops suffix keys attested by fewer readings.
+	MinEndingFreq int
+	// MinParadigmPopularity ignores paradigms used by fewer lemmas
+	// (form-0 readings).
+	MinParadigmPopularity int
+	// MaxFormsPerClass keeps, per suffix and part of speech (the tag's
+	// first grammeme), only this many most attested (paradigm, form)
+	// entries; 0 keeps all.
+	MaxFormsPerClass int
+}
+
+// ImportPredictionPruning is pymorphy2's compile default, used for the
+// OpenCorpora and UniMorph imports.
+var ImportPredictionPruning = PredictionPruning{MinEndingFreq: 2, MinParadigmPopularity: 3, MaxFormsPerClass: 1}
+```
+
+- `BuildPrediction(d, productive)` becomes `return BuildPredictionPruned(d, productive, PredictionPruning{})`;
+  `BuildPredictionPruned` holds today's `BuildPrediction` body and calls `buildPrediction(pairs, d.Paradigms,
+  d.TagSet, productive, p)`.
+- `BuildPredictionFrom(pairs, paradigms, tagSet, productive)` becomes a one-line wrapper over
+  `buildPrediction(..., PredictionPruning{})`; `buildPrediction` holds today's body plus the rules above:
+  compute popularity first (only when `MinParadigmPopularity > 0`), count `endingFreq` alongside `counts`, then
+  filter keys (rules 3-4) before encoding. Keep the zero-pruning path allocation-equivalent to today (no grouping
+  maps when both `MinEndingFreq` and `MaxFormsPerClass` are 0). Sort within a class group with
+  `slices.SortFunc` by (count desc, shard, para, form asc).
+
+`pkg/morphology/open.go`, `finishCompiled`: call
+`internal.BuildPredictionPruned(d, productive, internal.ImportPredictionPruning)`; update its doc and the doc of
+`XMLOptions.NoPrediction`/`CompileFromXMLWithOptions` with one sentence: "Prediction is pruned like pymorphy2's
+(paradigms of at least 3 lemmas, endings attested at least twice, the most attested form per ending and part of
+speech)."
+
+- [ ] **Step 4: Run the tests**
+
+Run: `go test ./... -race -count=1`
+Expected: PASS. Builder/ImportTSV/Merge snapshot tests unchanged (zero pruning).
+
+- [ ] **Step 5: Measure again**
+
+```bash
+cd /Users/asmarin/dev/mine/gomorphy
+for t in opencorpora unimorph; do
+  /usr/bin/time -p go run ./cmd/gomorphy build $t -o /tmp/gomorphy-$t-pruned.dat
+done
+ls -l /tmp/gomorphy-*-nopred.dat /tmp/gomorphy-*-pred.dat /tmp/gomorphy-*-pruned.dat
+for t in opencorpora unimorph; do
+  GOMORPHY_BENCH_DICT=/tmp/gomorphy-$t-pruned.dat go test ./pkg/morphology/ \
+    -run TestRealDictionaryPredictsUnknownWords -bench BenchmarkRealDict -benchmem -count=5 \
+    | tee /tmp/gomorphy-bench-$t-pruned.txt
+done
+```
+
+(`/tmp/gomorphy-*-nopred.dat` and `-pred.dat` exist from Task 12; rebuild `-nopred` with `--no-prediction` if they
+are gone.) Expected: `TestRealDictionaryPredictsUnknownWords` PASS on both. Record sizes (growth vs `-nopred`),
+build times and `ParsePredicted` medians. **Gate (ruling R13):** if either growth is still > 50% or the UniMorph
+`ParsePredicted` median of either probe word is > 50 µs, commit anyway and report DONE_WITH_CONCERNS with the
+numbers — the owner decides before Task 13.
+
+- [ ] **Step 6: Lint and commit**
+
+Run: `gofmt -l . && go vet ./... && golangci-lint run ./...` — clean.
+
+```bash
+git add pkg/morphology/internal/prediction.go pkg/morphology/internal/prediction_test.go pkg/morphology/open.go pkg/morphology/compile_prediction_test.go cmd/gomorphy/build_test.go
+git commit -F <message file>   # "feat(morphology): prune imported prediction like pymorphy2" + trailer
+```
+
+---
+
 ### Task 13: Documentation, CHANGELOG, version 1.3.0
 
 **Files:**
