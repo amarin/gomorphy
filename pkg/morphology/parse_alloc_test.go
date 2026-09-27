@@ -51,7 +51,7 @@ func TestParseAllocs(t *testing.T) {
 		parseMax  float64 // Parse (allocates the result slice)
 	}{
 		{"кот", 1, 2},  // form 0: Normal is the word itself; measured 0/1
-		{"кота", 1, 2}, // form 1: Normal = prefix0+stem+suffix0 (one concat); measured 0/1
+		{"кота", 1, 2}, // form 1: prefix0 and suffix0 are empty here, so Normal needs no concat allocation; measured 0/1
 		{"бота", 3, 4}, // predicted: Word and Normal concats, seen map; measured 2/3
 	} {
 		require.NotEmpty(t, d.ParseAppend(buf[:0], tc.word))

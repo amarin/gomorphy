@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"slices"
+	"unicode/utf8"
 )
 
 // predictionMaxSuffix is the longest suffix key (in runes) the prediction
@@ -64,7 +65,7 @@ func BuildPredictionPruned(d *Dictionary, productive func(tag string) bool, p Pr
 		}
 		pairs[s] = wp
 	}
-	pred, sharded, err := buildPrediction(pairs, d.Paradigms, d.TagSet, productive, p)
+	pred, sharded, err := buildPrediction(pairs, d.Paradigms, d.Suffixes, d.Prefixes, d.TagSet, productive, p)
 	if err != nil {
 		return err
 	}
@@ -75,14 +76,16 @@ func BuildPredictionPruned(d *Dictionary, productive func(tag string) bool, p Pr
 
 // BuildPredictionFrom builds the pymorphy2 KnownSuffixAnalyzer prediction
 // DAWG for prefix id 0, with no pruning. pairs[s] are shard s's raw (word,
-// value) readings, resolved against paradigms[s] and tagSet. For every
-// reading whose tag is productive, the word's last 1..5 runes become
-// suffix keys; readings sharing a (suffix, paradigm, form, shard) key
-// accumulate a count. With one shard each key becomes count(BE16) +
-// para(BE16) + form(BE16); with more, shard(BE16) is appended and sharded
-// is true.
-func BuildPredictionFrom(pairs [][]WordValue, paradigms [][]Paradigm, tagSet *TagSet, productive func(tag string) bool) (*DAWG, bool, error) {
-	return buildPrediction(pairs, paradigms, tagSet, productive, PredictionPruning{})
+// value) readings, resolved against paradigms[s], suffixes[s], prefixes
+// and tagSet. For every reading whose tag is productive and whose form
+// prefix is empty, the word's last max(len(form suffix), 1)..5 runes
+// become suffix keys (a form suffix longer than 5 runes gives none, as in
+// pymorphy2's compiler); readings sharing a (suffix, paradigm, form,
+// shard) key accumulate a count. With one shard each key becomes
+// count(BE16) + para(BE16) + form(BE16); with more, shard(BE16) is
+// appended and sharded is true.
+func BuildPredictionFrom(pairs [][]WordValue, paradigms [][]Paradigm, suffixes [][]string, prefixes []string, tagSet *TagSet, productive func(tag string) bool) (*DAWG, bool, error) {
+	return buildPrediction(pairs, paradigms, suffixes, prefixes, tagSet, productive, PredictionPruning{})
 }
 
 // predKey identifies one prediction payload: an attested (paradigm, form)
@@ -95,7 +98,15 @@ type predKey struct {
 // buildPrediction is the shared implementation behind BuildPredictionFrom
 // (p is the zero PredictionPruning) and BuildPredictionPruned. See
 // PredictionPruning and the design doc (spec L, "Pruning") for the rules.
-func buildPrediction(pairs [][]WordValue, paradigms [][]Paradigm, tagSet *TagSet, productive func(tag string) bool, p PredictionPruning) (*DAWG, bool, error) {
+//
+// Key lengths follow pymorphy2's compiler (ruling R14): a reading yields
+// keys of max(len(form suffix), 1)..predictionMaxSuffix runes, so every key
+// ends with the form's suffix and readingForm can strip it; a reading whose
+// form suffix is longer than predictionMaxSuffix yields none. Readings
+// whose form has a non-empty paradigm prefix (OpenCorpora «по»/«наи»
+// comparatives) are skipped: this DAWG serves prefix id 0, and a word
+// predicted through it must not need a prefix.
+func buildPrediction(pairs [][]WordValue, paradigms [][]Paradigm, suffixes [][]string, prefixes []string, tagSet *TagSet, productive func(tag string) bool, p PredictionPruning) (*DAWG, bool, error) {
 	sharded := len(pairs) > 1
 
 	var skip map[[2]uint16]bool
@@ -128,6 +139,10 @@ func buildPrediction(pairs [][]WordValue, paradigms [][]Paradigm, tagSet *TagSet
 			break
 		}
 		ps := paradigms[s]
+		var ss []string
+		if s < len(suffixes) {
+			ss = suffixes[s]
+		}
 		for _, wv := range shard {
 			para, form := uint16(wv.Value>>16), uint16(wv.Value)
 			if int(para) >= len(ps) || int(form) >= ps[para].Len() {
@@ -143,9 +158,16 @@ func buildPrediction(pairs [][]WordValue, paradigms [][]Paradigm, tagSet *TagSet
 			if !productive(tag) {
 				continue
 			}
+			if stringAt(prefixes, ps[para].Prefix(int(form))) != "" {
+				continue
+			}
+			minLen := max(utf8.RuneCountInString(stringAt(ss, ps[para].Suffix(int(form)))), 1)
+			if minLen > predictionMaxSuffix {
+				continue
+			}
 			rr := []rune(wv.Word)
-			max := min(predictionMaxSuffix, len(rr))
-			for l := 1; l <= max; l++ {
+			maxLen := min(predictionMaxSuffix, len(rr))
+			for l := minLen; l <= maxLen; l++ {
 				suffix := string(rr[len(rr)-l:])
 				counts[predKey{suffix: suffix, para: para, form: form, shard: uint16(s)}]++
 				if endingFreq != nil {

@@ -45,8 +45,8 @@ func (x *Dictionary) Parse(word string) []Reading {
 
 // ParseAppend is Parse that appends the readings to dst and returns the
 // extended slice (dst unchanged when there are none). Reusing dst across
-// calls avoids allocating the result slice; the appended readings are
-// sorted by probability among themselves.
+// calls avoids allocating the result slice; the appended readings are in
+// the same order as Parse returns them.
 func (x *Dictionary) ParseAppend(dst []Reading, word string) []Reading {
 	if x == nil || x.d == nil || len(x.d.Words) == 0 {
 		return dst
@@ -158,7 +158,9 @@ func (x *Dictionary) predictAppend(dst []Reading, word string) []Reading {
 //
 // A 6-byte value (count|para|form) resolves against shard 0; an 8-byte
 // value (count|para|form|shard, sharded dictionaries) carries its shard.
-// Values naming a missing shard or paradigm are skipped.
+// Values naming a missing shard or paradigm are skipped, and so are values
+// whose form prefix/suffix the candidate word does not start/end with
+// (they neither count toward the 2-match threshold nor yield a reading).
 func (x *Dictionary) predictForPrefix(dst []Reading, id int, word string, splits []int, seen map[readingKey]bool) []Reading {
 	totalCount := 0
 
@@ -186,9 +188,17 @@ func (x *Dictionary) predictForPrefix(dst []Reading, id int, word string, splits
 			if !productive(x.paradigmTag(para, int(form))) {
 				return
 			}
+			// A value whose form affixes the candidate lacks would build a
+			// lemma from a suffix the word does not have (keys shorter than
+			// the form suffix in Builder/merged files before ruling R14).
+			candidate := wordStart + found
+			prefix, suffix := x.paradigmAffix(shard, para, int(form))
+			if !strings.HasPrefix(candidate, prefix) || !strings.HasSuffix(candidate, suffix) {
+				return
+			}
 			totalCount += count
 
-			r := x.readingForm(shard, wordStart+found, paraNum, form)
+			r := x.readingForm(shard, candidate, paraNum, form)
 			r.Predicted = true
 			k := readingKey{r.Word, r.Normal, r.Tag}
 			if seen[k] {

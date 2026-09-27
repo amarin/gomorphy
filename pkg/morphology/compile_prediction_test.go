@@ -81,7 +81,9 @@ func TestCompileFromUniMorphPredictsByDefault(t *testing.T) {
 // splits on "," and must filter none of them (spec L, "Tag filter"). Each
 // POS gets three lemmas sharing its paradigm, so pymorphy2-style pruning
 // (≥3 lemmas per paradigm, ≥2 readings per ending, one winner per
-// suffix+POS) keeps at least one probe per POS.
+// suffix+POS) keeps at least one probe per POS. Each probe ends with its
+// form's suffix (стулами/«ами»): a key never is shorter than the form
+// suffix (ruling R14), so «стульями» would not reach the N paradigm.
 func TestCompileFromUniMorphPredictsAllPOS(t *testing.T) {
 	tsv := ""
 	for _, s := range []string{"стол", "вол", "кол"} {
@@ -100,7 +102,7 @@ func TestCompileFromUniMorphPredictsAllPOS(t *testing.T) {
 	require.NoError(t, err)
 
 	pos := map[string]bool{}
-	for _, w := range []string{"стульями", "красными", "писали", "писавшими", "пиная"} {
+	for _, w := range []string{"стулами", "красными", "писали", "писавшими", "пиная"} {
 		assertAllPredicted(t, d, w)
 		for _, r := range d.Parse(w) {
 			p, _, _ := strings.Cut(r.Tag, ";")

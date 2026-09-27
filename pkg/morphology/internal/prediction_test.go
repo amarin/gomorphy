@@ -120,8 +120,9 @@ func TestBuildPrediction(t *testing.T) {
 		assert.NotEqual(t, uint16(3), v.Para, "CONJ paradigm must be filtered out")
 	}
 
-	// A 5-rune word produces suffix keys of lengths 1..5 (кошка → а, ка,
-	// шка, ошка, кошка), each resolving to (para 0, form 0).
+	// A 5-rune word with a 1-rune form suffix produces keys of lengths
+	// 1..5 (кошка → а, ка, шка, ошка, кошка), each resolving to (para 0,
+	// form 0).
 	for _, key := range []string{"а", "ка", "шка", "ошка", "кошка"} {
 		values := predValues(t, pred, key)
 		require.NotEmpty(t, values, "suffix key %q (len %d) must be present", key, len([]rune(key)))
@@ -155,7 +156,7 @@ func TestBuildPredictionFromMatchesBuildPrediction(t *testing.T) {
 			pairs = append(pairs, WordValue{Word: w, Value: binary.BigEndian.Uint32(v[:4])})
 		}
 	})
-	pred, sharded, err := BuildPredictionFrom([][]WordValue{pairs}, d.Paradigms, d.TagSet, all)
+	pred, sharded, err := BuildPredictionFrom([][]WordValue{pairs}, d.Paradigms, d.Suffixes, d.Prefixes, d.TagSet, all)
 	require.NoError(t, err)
 	assert.False(t, sharded, "one shard keeps 6-byte values")
 
@@ -315,4 +316,64 @@ func TestBuildPredictionShardedDenseMatchesRaw(t *testing.T) {
 	assert.True(t, dense.PredictionSharded)
 	assert.Equal(t, raw.Prediction[0].Bytes(), dense.Prediction[0].Bytes(),
 		"keys are decoded through the alphabet, so a dense dictionary predicts the same")
+}
+
+// affixCorpus is a hand-built single-shard prediction input (ruling R14):
+//
+//	para 0 — кошка (suffix «а») / кошкой («ой»)
+//	para 1 — человек / людьми / люди: stem "", so the suffixes are the
+//	         whole words (7, 6 and 4 runes)
+//	para 2 — глокий («ий») / поглокее (prefix «по», suffix «ее», COMP)
+func affixCorpus(t *testing.T) ([][]WordValue, [][]Paradigm, [][]string, []string, *TagSet) {
+	t.Helper()
+	ts := NewTagSet("test")
+	tag := func(name string) uint16 {
+		id, err := ts.Add(name)
+		require.NoError(t, err)
+		return id
+	}
+	nomn, ablt, plur := tag("NOUN,sing,nomn"), tag("NOUN,plur,ablt"), tag("NOUN,plur,nomn")
+	adjf, comp := tag("ADJF,masc,sing,nomn"), tag("COMP,Cmp2")
+	suffixes := []string{"а", "ой", "человек", "людьми", "люди", "ий", "ее"}
+	paradigms := []Paradigm{
+		NewParadigm([]uint16{0, 1}, []uint16{nomn, ablt}, []uint16{0, 0}),
+		NewParadigm([]uint16{2, 3, 4}, []uint16{nomn, ablt, plur}, []uint16{0, 0, 0}),
+		NewParadigm([]uint16{5, 6}, []uint16{adjf, comp}, []uint16{0, 1}),
+	}
+	wv := func(word string, para, form uint32) WordValue { return WordValue{Word: word, Value: para<<16 | form} }
+	pairs := []WordValue{
+		wv("кошка", 0, 0), wv("кошкой", 0, 1),
+		wv("человек", 1, 0), wv("людьми", 1, 1), wv("люди", 1, 2),
+		wv("глокий", 2, 0), wv("поглокее", 2, 1),
+	}
+	return [][]WordValue{pairs}, [][]Paradigm{paradigms}, [][]string{suffixes}, []string{"", "по"}, ts
+}
+
+func TestBuildPredictionKeysContainFormSuffix(t *testing.T) {
+	pairs, paradigms, suffixes, prefixes, ts := affixCorpus(t)
+	pred, _, err := BuildPredictionFrom(pairs, paradigms, suffixes, prefixes, ts, func(string) bool { return true })
+	require.NoError(t, err)
+
+	// кошкой (form suffix «ой», 2 runes) yields «ой»..«ошкой», never «й».
+	for _, key := range []string{"ой", "кой", "шкой", "ошкой"} {
+		assert.Equal(t, []struct{ Count, Para, Form uint16 }{{1, 0, 1}}, predValues(t, pred, key), key)
+	}
+	// глокий («ий») yields no 1-rune key either, so «й» is absent.
+	assert.Empty(t, predValues(t, pred, "й"), "no key shorter than a 2-rune form suffix")
+	assert.NotEmpty(t, predValues(t, pred, "ий"))
+
+	// Form suffixes longer than 5 runes (человек, людьми) give no key at all.
+	for _, key := range []string{"к", "ек", "век", "овек", "еловек", "и", "ми", "ьми", "дьми", "юдьми"} {
+		assert.Empty(t, predValues(t, pred, key), key)
+	}
+	// люди's 4-rune form suffix gives only the 4-rune key.
+	assert.Equal(t, []struct{ Count, Para, Form uint16 }{{1, 1, 2}}, predValues(t, pred, "люди"))
+	for _, key := range []string{"ди", "юди"} {
+		assert.Empty(t, predValues(t, pred, key), key)
+	}
+
+	// поглокее has the paradigm prefix «по»: prefix-0 prediction skips it.
+	for _, key := range []string{"е", "ее", "кее", "окее", "локее"} {
+		assert.Empty(t, predValues(t, pred, key), key)
+	}
 }

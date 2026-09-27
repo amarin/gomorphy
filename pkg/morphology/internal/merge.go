@@ -473,7 +473,7 @@ func MergeDictionaries(base *Dictionary, overlays []*Dictionary, opts MergeOptio
 				return nil, fmt.Errorf("merge: prediction: shard %d: %w", i, err)
 			}
 		}
-		pred, sharded, err := BuildPredictionFrom(pairs, out.Paradigms, out.TagSet, opts.Productive)
+		pred, sharded, err := BuildPredictionFrom(pairs, out.Paradigms, out.Suffixes, out.Prefixes, out.TagSet, opts.Productive)
 		if err != nil {
 			return nil, fmt.Errorf("merge: prediction: %w", err)
 		}
