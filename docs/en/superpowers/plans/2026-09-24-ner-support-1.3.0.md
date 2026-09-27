@@ -18,7 +18,7 @@ width-1-then-2 alphabet choice into `internal/alphabet.go` and uses it in `Recom
 adds benchmarks and records a baseline, then adds allocation-free lookup primitives in `internal`
 (`DenseAlphabet.EncodeRune`, `DAWG.LookupEach`, `DAWG.FindJoined`) and rebuilds `Parse` on them
 behind a new `ParseAppend`. L generalizes `internal.BuildPrediction` to N shards (one prefix-0
-DAWG whose 8-byte values carry the shard), stores it in new `prediction-sharded-N` sections, resolves
+DAWG whose 8-byte values carry the shard), stores it in new `pred-sharded-N` sections, resolves
 the shard in `predictForPrefix` (on top of I's rewrite) and builds it by default in
 `CompileFromXML*`/`CompileFromUniMorph*`. The binary format changes only additively (L).
 
@@ -36,11 +36,11 @@ directive.
 
 ## Global Constraints
 
-- The GMOR binary format changes only additively (spec L): new `prediction-sharded-N` sections
+- The GMOR binary format changes only additively (spec L): new `pred-sharded-N` sections
   with 8-byte `count|para|form|shard` values for dictionaries with more than one shard. Single-shard
   files (pymorphy2, Builder, ImportTSV) stay byte-identical; existing `.dat` files open and parse
   unchanged; gomorphy 1.2.x opens new files without prediction instead of failing. A file never
-  holds both `prediction-N` and `prediction-sharded-N`.
+  holds both `prediction-N` and `pred-sharded-N`.
 - **Go 1.25 at most**: `go.mod` says `go 1.25.0` (owner policy "current Go minus two minor
   versions", 1.2.0 Task 10). Everything up to 1.25 is allowed — `strings.SplitSeq`/`FieldsSeq`,
   range-over-func, `iter`, `t.Context()`, `sync.WaitGroup.Go`, and `b.Loop()` (Go 1.24), which
@@ -93,7 +93,7 @@ directive.
 | `pkg/morphology/internal/dictionary.go` | modify | `PredictionSharded` |
 | `pkg/morphology/internal/prediction.go`, `prediction_test.go` | modify | N-shard `BuildPrediction`/`BuildPredictionFrom` |
 | `pkg/morphology/internal/merge.go`, `merge_test.go`, `pkg/morphology/merge.go`, `cmd/gomorphy/merge.go` | modify | sharded `RebuildPrediction`, `ErrPredictionSharded` deprecated |
-| `pkg/morphology/save.go` | modify | `prediction-sharded-N` sections |
+| `pkg/morphology/save.go` | modify | `pred-sharded-N` sections |
 | `pkg/morphology/prediction_sharded_test.go` | create | sharded lookup, save/open tests |
 | `pkg/morphology/open.go` | modify | `predictionSections`; `XMLOptions`, `CompileFromXMLWithOptions`, `finishCompiled` |
 | `pkg/morphology/importers/unimorph/import.go` | modify | `Options.NoPrediction` |
@@ -2363,7 +2363,7 @@ Expected: FAIL to compile — `BuildPredictionFrom` returns 2 values, `Predictio
 	Prediction  []*DAWG
 	// PredictionSharded is the value format of Prediction: true for 8-byte
 	// count|para|form|shard values (dictionaries with more than one shard,
-	// saved as prediction-sharded-N), false for 6-byte count|para|form
+	// saved as pred-sharded-N), false for 6-byte count|para|form
 	// values resolved against shard 0 (saved as prediction-N).
 	PredictionSharded bool
 ```
@@ -2541,7 +2541,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: `internal.Dictionary.PredictionSharded`, `internal.BuildPrediction` (Task 10);
   `Dictionary.Forms` (Task 3); `predictForPrefix(dst []Reading, id int, word string, splits []int, seen map[readingKey]bool) []Reading` (Task 9).
-- Produces: section name `prediction-sharded-N` (N = prefix id); `Reading.Shard` of predicted
+- Produces: section name `pred-sharded-N` (N = prefix id); `Reading.Shard` of predicted
   readings taken from the value.
 
 - [ ] **Step 1: Write the failing tests**
@@ -2646,7 +2646,7 @@ func TestShardedPredictionSaveOpen(t *testing.T) {
 	require.NoError(t, err)
 	cont, err := internal.OpenContainer(data)
 	require.NoError(t, err)
-	_, _, err = cont.Section("prediction-sharded-0")
+	_, _, err = cont.Section("pred-sharded-0")
 	require.NoError(t, err)
 	_, _, err = cont.Section("prediction-0")
 	require.Error(t, err, "gomorphy 1.2.x reads only prediction-N and must find none")
@@ -2679,7 +2679,7 @@ func TestSingleShardPredictionKeepsOldSection(t *testing.T) {
 	require.NoError(t, err)
 	_, _, err = cont.Section("prediction-0")
 	require.NoError(t, err)
-	_, _, err = cont.Section("prediction-sharded-0")
+	_, _, err = cont.Section("pred-sharded-0")
 	require.Error(t, err)
 
 	o, err := OpenBytes(data)
@@ -2694,7 +2694,7 @@ func TestOpenRejectsBothPredictionKinds(t *testing.T) {
 	require.NoError(t, err)
 	var sharded internal.Section
 	for _, s := range sections {
-		if s.Name == "prediction-sharded-0" {
+		if s.Name == "pred-sharded-0" {
 			sharded = s
 		}
 	}
@@ -2712,7 +2712,7 @@ func TestOpenRejectsBothPredictionKinds(t *testing.T) {
 
 Run: `go test ./pkg/morphology/ -run 'Shard|BothPrediction|SingleShardPrediction' -count=1`
 Expected: FAIL — `бревна` gets no shard-1 reading (prediction resolves against shard 0), the file
-has `prediction-0` instead of `prediction-sharded-0`, and the "both" file opens.
+has `prediction-0` instead of `pred-sharded-0`, and the "both" file opens.
 
 - [ ] **Step 3: Implement**
 
@@ -2759,13 +2759,13 @@ and replace the doc paragraph `// Predictions always resolve against shard 0: �
 	if err != nil {
 		return nil, err
 	}
-	sharded, err := predictionSections(cont, "prediction-sharded-%d")
+	sharded, err := predictionSections(cont, "pred-sharded-%d")
 	if err != nil {
 		return nil, err
 	}
 	switch {
 	case len(plain) > 0 && len(sharded) > 0:
-		return nil, fmt.Errorf("morphology: both prediction-N and prediction-sharded-N sections present")
+		return nil, fmt.Errorf("morphology: both prediction-N and pred-sharded-N sections present")
 	case len(sharded) > 0:
 		d.Prediction, d.PredictionSharded = sharded, true
 	default:
@@ -2799,7 +2799,7 @@ func predictionSections(cont *internal.Container, format string) ([]*internal.DA
 ```go
 	predName := "prediction-%d"
 	if x.d.PredictionSharded {
-		predName = "prediction-sharded-%d"
+		predName = "pred-sharded-%d"
 	}
 	for i, pred := range x.d.Prediction {
 		if pred == nil {
@@ -2812,7 +2812,7 @@ func predictionSections(cont *internal.Container, format string) ([]*internal.DA
 ```
 
 and in the `SaveTo` doc replace `prediction-N,` with
-`prediction-N (or prediction-sharded-N, 8-byte values with a shard, for sharded prediction),`.
+`prediction-N (or pred-sharded-N, 8-byte values with a shard, for sharded prediction),`.
 
 - [ ] **Step 4: Run the tests**
 
@@ -3191,7 +3191,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   returns `Predicted` readings for unknown words instead of nil. Built by
   default; opt out with `XMLOptions.NoPrediction` (new
   `CompileFromXMLWithOptions`), `UniMorphOptions.NoPrediction` or
-  `gomorphy build --no-prediction`. Stored in new `prediction-sharded-N`
+  `gomorphy build --no-prediction`. Stored in new `pred-sharded-N`
   sections; gomorphy 1.2.x opens such files without prediction.
 
 ### Changed
@@ -3365,7 +3365,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   stays; G3 — `go 1.25.0` + `toolchain go1.27.1` by the policy "current Go minus two minor
   versions" (this plan relies on it for `b.Loop`). G2 stays as in the 1.2.0 plan (moot, D-9).
 - **Q9 (L).** RESOLVED 2026-09-27 (owner): prediction for sharded dictionaries is in 1.3.0 as item
-  L — one prefix-0 DAWG with the shard in an 8-byte value, new `prediction-sharded-N` sections,
+  L — one prefix-0 DAWG with the shard in an 8-byte value, new `pred-sharded-N` sections,
   built by default with an opt-out. Revisit the default if Task 12 Step 5 measures more than 50%
   file growth.
 - **Q10 (L, G).** If Q7 is taken (`productive` switches to `internal.NextGrammeme`, splitting on

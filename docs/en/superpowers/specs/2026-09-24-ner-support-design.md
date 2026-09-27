@@ -278,9 +278,10 @@ KnownSuffixAnalyzer as it already works for pymorphy2 and Builder
 dictionaries, extended to N shards; no new heuristics.
 
 **Format.** A sharded prediction is one DAWG per paradigm prefix id, in a
-new section `prediction-sharded-P`. Key: a word suffix of 1..5 runes.
+new section `pred-sharded-P`. Key: a word suffix of 1..5 runes.
 Value: `count(BE16) | para(BE16) | form(BE16) | shard(BE16)` — 8 bytes
-instead of today's 6.
+instead of today's 6. The name is short because GMOR catalog entries hold
+section names in a fixed 16-byte field.
 
 - One DAWG for the whole dictionary, not one per shard: the "widen the
   suffix until ≥2 matches" heuristic and the `seen` dedup keep working
@@ -292,11 +293,11 @@ instead of today's 6.
   The shard count does **not** decide the format: `Merge` can carry a base's
   6-byte prediction into a multi-shard result, where 6-byte values still mean
   shard 0 and stay correct.
-- A file holds either `prediction-N` or `prediction-sharded-N` sections,
+- A file holds either `prediction-N` or `pred-sharded-N` sections,
   never both; both present is an open error. Single-shard dictionaries
   (pymorphy2, Builder, ImportTSV) keep writing 6-byte `prediction-N`, so
   their files are byte-identical to today's.
-- gomorphy 1.2.x does not know `prediction-sharded-*` and skips it: a new
+- gomorphy 1.2.x does not know `pred-sharded-*` and skips it: a new
   OpenCorpora/UniMorph file opens there with no prediction, exactly as
   today, and never yields wrong readings. This is why the section is new
   rather than 8-byte values under the old name — 1.2.x would read those as
@@ -358,7 +359,7 @@ both via `GOMORPHY_BENCH_DICT`. If prediction grows a file by more than
   non-"ru" `Language` and no explicit policy no longer get е→ё.
 - J changes paradigm grouping for built dictionaries with homonymous lemmas —
   new `.dat` files differ; existing files open unchanged.
-- L adds `prediction-sharded-N` sections to newly built OpenCorpora/UniMorph
+- L adds `pred-sharded-N` sections to newly built OpenCorpora/UniMorph
   files (and to sharded `Merge` results with `RebuildPrediction`). The change
   is additive: no format version bump, single-shard files stay
   byte-identical, existing files open unchanged, and 1.2.x opens new files
@@ -425,6 +426,6 @@ both via `GOMORPHY_BENCH_DICT`. If prediction grows a file by more than
 - G5. RESOLVED 2026-09-24: POS-class homonym grouping (J) is on by default with
   no option to turn it off.
 - G6. RESOLVED 2026-09-27: sharded prediction (L) is one DAWG per prefix with
-  the shard in an 8-byte value, in new `prediction-sharded-N` sections (not
+  the shard in an 8-byte value, in new `pred-sharded-N` sections (not
   one DAWG per shard); built by default for OpenCorpora/UniMorph imports,
   opt-out via `NoPrediction`/`--no-prediction`.
